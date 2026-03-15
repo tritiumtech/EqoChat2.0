@@ -38,7 +38,35 @@ update_by    BIGINT COMMENT '更新人ID',
 del_token    BIGINT DEFAULT 0 COMMENT '删除标记: 0=有效, 非0=已删除'
 ```
 
-### MyBatis自动填充
+### 软删除说明
+
+使用 MyBatis Plus `@TableLogic` 注解实现自动软删除：
+
+| 操作 | 实际执行 SQL | 说明 |
+|------|-------------|------|
+| **查询** | `SELECT ... WHERE del_token = 0` | 自动拼接条件，只查有效数据 |
+| **删除** | `UPDATE ... SET del_token = 1` | 逻辑删除，非物理删除 |
+| **更新** | `UPDATE ... WHERE del_token = 0` | 自动限制只更新有效数据 |
+
+**实体类配置**:
+```java
+@TableLogic
+private Long delToken;
+```
+
+**查询示例**（无需手动加条件）:
+```java
+// 自动添加 WHERE del_token = 0
+userMapper.selectById(1L);
+// 自动添加 WHERE del_token = 0
+userMapper.selectList(new QueryWrapper<>());
+```
+
+**删除示例**（逻辑删除）:
+```java
+// 执行 UPDATE user_profile SET del_token = 1 WHERE id = 1 AND del_token = 0
+userMapper.deleteById(1L);
+```
 
 ```java
 @Component
@@ -50,7 +78,7 @@ public class AuditMetaObjectHandler implements MetaObjectHandler {
         this.strictInsertFill(metaObject, "updateTime", LocalDateTime.class, LocalDateTime.now());
         this.strictInsertFill(metaObject, "createBy", Long.class, userId);
         this.strictInsertFill(metaObject, "updateBy", Long.class, userId);
-        this.strictInsertFill(metaObject, "delToken", Long.class, 0L);
+        // del_token 由 @TableLogic 自动处理
     }
     
     @Override
@@ -61,10 +89,19 @@ public class AuditMetaObjectHandler implements MetaObjectHandler {
     }
 }
 
-// 实体类中软删除判断方法
-public boolean isDeleted() {
-    return delToken != null && delToken != 0L;
+// 实体类中使用 @TableLogic 注解
+public class UserProfile {
+    @TableLogic
+    private Long delToken;
 }
+
+// MyBatis Plus 配置
+mybatis-plus:
+  global-config:
+    db-config:
+      logic-delete-field: delToken
+      logic-delete-value: 1        # 删除时的值（任意非0）
+      logic-not-delete-value: 0    # 未删除时值
 ```
 
 ---

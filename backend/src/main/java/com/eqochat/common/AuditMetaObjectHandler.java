@@ -62,16 +62,9 @@ public class AuditMetaObjectHandler implements MetaObjectHandler {
     }
     
     /**
-     * 生成删除标记（使用时间戳）
+     * 生成删除标记（使用时间戳）- 用于自定义逻辑删除场景
      */
     public static Long generateDelToken() {
         return System.currentTimeMillis();
-    }
-    
-    /**
-     * 检查是否已删除
-     */
-    public static boolean isDeleted(Long delToken) {
-        return delToken != null && !DEL_TOKEN_NOT_DELETED.equals(delToken);
     }
 }

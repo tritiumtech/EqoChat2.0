@@ -59,14 +59,11 @@ public class OperationLog {
     @TableField(value = "update_by", fill = FieldFill.INSERT_UPDATE)
     private Long updateBy;
     
-    @TableField(value = "del_token", fill = FieldFill.INSERT)
+    @TableLogic
     private Long delToken;
     
     public enum OperatorType {
         USER, AGENT
     }
     
-    public boolean isDeleted() {
-        return delToken != null && delToken != 0L;
-    }
 }

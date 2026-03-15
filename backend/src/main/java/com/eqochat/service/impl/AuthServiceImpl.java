@@ -143,7 +143,7 @@ public class AuthServiceImpl implements AuthService {
             Long userId = jwtTokenUtil.getUserIdFromToken(token);
             UserProfile user = userProfileService.getById(userId);
             
-            if (user == null || user.isDeleted()) {
+            if (user == null || (user.getDelToken() != null && user.getDelToken() != 0L)) {
                 throw new RuntimeException("用户不存在");
             }
             

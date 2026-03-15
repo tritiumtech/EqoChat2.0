@@ -65,7 +65,7 @@ public class GroupProfile {
     @TableField(value = "update_by", fill = FieldFill.INSERT_UPDATE)
     private Long updateBy;
     
-    @TableField(value = "del_token", fill = FieldFill.INSERT)
+    @TableLogic
     private Long delToken;
     
     public enum GroupType {
@@ -80,7 +80,4 @@ public class GroupProfile {
         ACTIVE, DISBANDED
     }
     
-    public boolean isDeleted() {
-        return delToken != null && delToken != 0L;
-    }
 }

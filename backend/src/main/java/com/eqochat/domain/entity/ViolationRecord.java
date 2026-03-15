@@ -71,7 +71,7 @@ public class ViolationRecord {
     @TableField(value = "update_by", fill = FieldFill.INSERT_UPDATE)
     private Long updateBy;
     
-    @TableField(value = "del_token", fill = FieldFill.INSERT)
+    @TableLogic
     private Long delToken;
     
     public enum SubjectType {
@@ -86,7 +86,4 @@ public class ViolationRecord {
         PENDING, CONFIRMED, REJECTED, APPEALED
     }
     
-    public boolean isDeleted() {
-        return delToken != null && delToken != 0L;
-    }
 }

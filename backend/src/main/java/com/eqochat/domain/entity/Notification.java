@@ -68,7 +68,7 @@ public class Notification {
     @TableField(value = "update_by", fill = FieldFill.INSERT_UPDATE)
     private Long updateBy;
     
-    @TableField(value = "del_token", fill = FieldFill.INSERT)
+    @TableLogic
     private Long delToken;
     
     public enum RecipientType {
@@ -88,7 +88,4 @@ public class Notification {
         LOW, NORMAL, HIGH, URGENT
     }
     
-    public boolean isDeleted() {
-        return delToken != null && delToken != 0L;
-    }
 }
