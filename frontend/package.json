@@ -1,0 +1,31 @@
+{
+  "name": "eqochat-app",
+  "version": "1.0.0",
+  "description": "EqoChat - 人与数字生命协同社交平台",
+  "main": "main.js",
+  "scripts": {
+    "dev": "uni",
+    "dev:app": "uni --app",
+    "dev:h5": "uni --h5",
+    "dev:mp-weixin": "uni --mp-weixin",
+    "build": "uni build",
+    "build:app": "uni build --app",
+    "build:h5": "uni build --h5",
+    "build:mp-weixin": "uni build --mp-weixin"
+  },
+  "dependencies": {
+    "@dcloudio/uni-app": "3.0.0-alpha-4010520240409001",
+    "@dcloudio/uni-app-plus": "3.0.0-alpha-4010520240409001",
+    "@dcloudio/uni-h5": "3.0.0-alpha-4010520240409001",
+    "@dcloudio/uni-mp-weixin": "3.0.0-alpha-4010520240409001",
+    "vue": "^3.4.21",
+    "vue-i18n": "^9.10.2",
+    "pinia": "^2.1.7"
+  },
+  "devDependencies": {
+    "@dcloudio/types": "^3.4.8",
+    "@dcloudio/vite-plugin-uni": "3.0.0-alpha-4010520240409001",
+    "typescript": "^5.3.3",
+    "vite": "^5.2.0"
+  }
+}

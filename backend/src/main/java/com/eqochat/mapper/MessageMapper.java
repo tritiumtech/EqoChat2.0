@@ -1,0 +1,21 @@
+package com.eqochat.mapper;
+
+import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.eqochat.domain.entity.Message;
+import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Select;
+
+import java.util.List;
+
+@Mapper
+public interface MessageMapper extends BaseMapper<Message> {
+    
+    @Select("SELECT * FROM message WHERE conversation_id = #{conversationId} AND del_token = '0' ORDER BY create_time DESC LIMIT #{limit}")
+    List<Message> selectByConversationId(@Param("conversationId") Long conversationId, @Param("limit") Integer limit);
+    
+    @Select("SELECT * FROM message WHERE conversation_id = #{conversationId} AND id < #{lastId} AND del_token = '0' ORDER BY create_time DESC LIMIT #{limit}")
+    List<Message> selectByConversationIdWithCursor(@Param("conversationId") Long conversationId, 
+                                                      @Param("lastId") Long lastId, 
+                                                      @Param("limit") Integer limit);
+}
