@@ -21,13 +21,21 @@
 
 ### 审计字段规范（所有表统一）
 
+| 字段名 | 数据类型 | 默认值 | 说明 |
+|--------|----------|--------|------|
+| create_time | TIMESTAMP | CURRENT_TIMESTAMP | 创建时间 |
+| update_time | TIMESTAMP | CURRENT_TIMESTAMP ON UPDATE | 更新时间 |
+| create_by | BIGINT | NULL | 创建人ID |
+| update_by | BIGINT | NULL | 更新人ID |
+| del_token | BIGINT | 0 | 删除标记: 0=有效, 非0=已删除(存时间戳或随机数) |
+
 ```sql
 -- 所有表必须包含以下5个审计字段
 create_time  TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
 update_time  TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
 create_by    BIGINT COMMENT '创建人ID',
 update_by    BIGINT COMMENT '更新人ID',
-del_token    VARCHAR(64) DEFAULT '0' COMMENT '删除标记: 0=未删除, UUID=已删除'
+del_token    BIGINT DEFAULT 0 COMMENT '删除标记: 0=有效, 非0=已删除'
 ```
 
 ### MyBatis自动填充
@@ -42,7 +50,7 @@ public class AuditMetaObjectHandler implements MetaObjectHandler {
         this.strictInsertFill(metaObject, "updateTime", LocalDateTime.class, LocalDateTime.now());
         this.strictInsertFill(metaObject, "createBy", Long.class, userId);
         this.strictInsertFill(metaObject, "updateBy", Long.class, userId);
-        this.strictInsertFill(metaObject, "delToken", String.class, "0");
+        this.strictInsertFill(metaObject, "delToken", Long.class, 0L);
     }
     
     @Override
@@ -51,6 +59,11 @@ public class AuditMetaObjectHandler implements MetaObjectHandler {
         this.strictUpdateFill(metaObject, "updateTime", LocalDateTime.class, LocalDateTime.now());
         this.strictUpdateFill(metaObject, "updateBy", Long.class, userId);
     }
+}
+
+// 实体类中软删除判断方法
+public boolean isDeleted() {
+    return delToken != null && delToken != 0L;
 }
 ```
 
@@ -120,14 +133,13 @@ CREATE TABLE user_profile (
     update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     create_by BIGINT COMMENT '创建人ID',
     update_by BIGINT COMMENT '更新人ID',
-    del_token VARCHAR(64) DEFAULT '0' COMMENT '删除标记: 0=未删除, UUID=已删除',
+    del_token BIGINT DEFAULT 0 COMMENT '删除标记: 0=有效, 非0=已删除',
     
     -- 索引
     INDEX idx_user_phone (phone),
     INDEX idx_user_email (email),
     INDEX idx_user_status (status),
     INDEX idx_user_create_time (create_time),
-    INDEX idx_user_del_token (del_token)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户资料表';
 ```
 
@@ -168,13 +180,12 @@ CREATE TABLE user_auth_record (
     update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     create_by BIGINT COMMENT '创建人ID',
     update_by BIGINT COMMENT '更新人ID',
-    del_token VARCHAR(64) DEFAULT '0' COMMENT '删除标记',
+    del_token BIGINT DEFAULT 0 COMMENT '删除标记: 0=有效, 非0=已删除',
     
     -- 外键与索引
     FOREIGN KEY (user_id) REFERENCES user_profile(id) ON DELETE CASCADE,
     INDEX idx_auth_user (user_id),
     INDEX idx_auth_type (auth_type),
-    INDEX idx_auth_del_token (del_token)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户认证记录';
 ```
 
@@ -216,7 +227,7 @@ CREATE TABLE agent_profile (
     update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     create_by BIGINT COMMENT '创建人ID',
     update_by BIGINT COMMENT '更新人ID',
-    del_token VARCHAR(64) DEFAULT '0' COMMENT '删除标记',
+    del_token BIGINT DEFAULT 0 COMMENT '删除标记: 0=有效, 非0=已删除',
     
     -- 外键与索引
     FOREIGN KEY (owner_id) REFERENCES user_profile(id),
@@ -224,7 +235,6 @@ CREATE TABLE agent_profile (
     INDEX idx_agent_status (status),
     INDEX idx_agent_type (agent_type),
     INDEX idx_agent_permission (permission_level),
-    INDEX idx_agent_del_token (del_token)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='智能体资料表';
 ```
 
@@ -259,7 +269,7 @@ CREATE TABLE agent_binding (
     update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     create_by BIGINT COMMENT '创建人ID',
     update_by BIGINT COMMENT '更新人ID',
-    del_token VARCHAR(64) DEFAULT '0' COMMENT '删除标记',
+    del_token BIGINT DEFAULT 0 COMMENT '删除标记: 0=有效, 非0=已删除',
     
     -- 外键与索引
     FOREIGN KEY (agent_id) REFERENCES agent_profile(id) ON DELETE CASCADE,
@@ -267,7 +277,6 @@ CREATE TABLE agent_binding (
     UNIQUE KEY uk_binding (agent_id, owner_id),
     INDEX idx_binding_agent (agent_id),
     INDEX idx_binding_owner (owner_id),
-    INDEX idx_binding_del_token (del_token)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='智能体绑定记录';
 ```
 
@@ -303,14 +312,13 @@ CREATE TABLE conversation (
     update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     create_by BIGINT COMMENT '创建人ID',
     update_by BIGINT COMMENT '更新人ID',
-    del_token VARCHAR(64) DEFAULT '0' COMMENT '删除标记',
+    del_token BIGINT DEFAULT 0 COMMENT '删除标记: 0=有效, 非0=已删除',
     
     -- 外键与索引
     FOREIGN KEY (creator_id) REFERENCES user_profile(id),
     INDEX idx_conv_type (conversation_type),
     INDEX idx_conv_creator (creator_id),
     INDEX idx_conv_last_msg (last_message_at),
-    INDEX idx_conv_del_token (del_token)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='会话表';
 ```
 
@@ -345,14 +353,13 @@ CREATE TABLE conversation_participant (
     update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     create_by BIGINT COMMENT '创建人ID',
     update_by BIGINT COMMENT '更新人ID',
-    del_token VARCHAR(64) DEFAULT '0' COMMENT '删除标记',
+    del_token BIGINT DEFAULT 0 COMMENT '删除标记: 0=有效, 非0=已删除',
     
     -- 外键与索引
     FOREIGN KEY (conversation_id) REFERENCES conversation(id) ON DELETE CASCADE,
     UNIQUE KEY uk_participant (conversation_id, participant_id, participant_type),
     INDEX idx_part_conv (conversation_id),
     INDEX idx_part_id (participant_id),
-    INDEX idx_part_del_token (del_token)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='会话参与者';
 ```
 
@@ -392,7 +399,7 @@ CREATE TABLE message (
     update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     create_by BIGINT COMMENT '创建人ID',
     update_by BIGINT COMMENT '更新人ID',
-    del_token VARCHAR(64) DEFAULT '0' COMMENT '删除标记',
+    del_token BIGINT DEFAULT 0 COMMENT '删除标记: 0=有效, 非0=已删除',
     
     -- 外键与索引
     FOREIGN KEY (conversation_id) REFERENCES conversation(id) ON DELETE CASCADE,
@@ -401,7 +408,6 @@ CREATE TABLE message (
     INDEX idx_msg_create_time (create_time),
     INDEX idx_msg_conv_create_time (conversation_id, create_time DESC),
     INDEX idx_msg_date (msg_date),
-    INDEX idx_msg_del_token (del_token)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='消息表';
 ```
 
@@ -442,12 +448,11 @@ CREATE TABLE message_read_receipt (
     update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     create_by BIGINT COMMENT '创建人ID',
     update_by BIGINT COMMENT '更新人ID',
-    del_token VARCHAR(64) DEFAULT '0' COMMENT '删除标记',
+    del_token BIGINT DEFAULT 0 COMMENT '删除标记: 0=有效, 非0=已删除',
     
     -- 索引
     UNIQUE KEY uk_receipt (message_id, reader_id, reader_type),
     INDEX idx_receipt_msg (message_id),
-    INDEX idx_receipt_del_token (del_token)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='消息已读记录';
 ```
 
@@ -471,7 +476,7 @@ CREATE TABLE user_follow (
     update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     create_by BIGINT COMMENT '创建人ID',
     update_by BIGINT COMMENT '更新人ID',
-    del_token VARCHAR(64) DEFAULT '0' COMMENT '删除标记',
+    del_token BIGINT DEFAULT 0 COMMENT '删除标记: 0=有效, 非0=已删除',
     
     -- 外键与索引
     FOREIGN KEY (follower_id) REFERENCES user_profile(id) ON DELETE CASCADE,
@@ -479,7 +484,6 @@ CREATE TABLE user_follow (
     UNIQUE KEY uk_follow (follower_id, following_id),
     INDEX idx_follow_follower (follower_id),
     INDEX idx_follow_following (following_id),
-    INDEX idx_follow_del_token (del_token)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='关注关系';
 ```
 
@@ -506,7 +510,7 @@ CREATE TABLE user_friend (
     update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     create_by BIGINT COMMENT '创建人ID',
     update_by BIGINT COMMENT '更新人ID',
-    del_token VARCHAR(64) DEFAULT '0' COMMENT '删除标记',
+    del_token BIGINT DEFAULT 0 COMMENT '删除标记: 0=有效, 非0=已删除',
     
     -- 外键与索引
     FOREIGN KEY (user_id) REFERENCES user_profile(id) ON DELETE CASCADE,
@@ -514,7 +518,6 @@ CREATE TABLE user_friend (
     UNIQUE KEY uk_friend (user_id, friend_id),
     INDEX idx_friend_user (user_id),
     INDEX idx_friend_friend (friend_id),
-    INDEX idx_friend_del_token (del_token)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='好友关系';
 ```
 
@@ -544,7 +547,7 @@ CREATE TABLE friend_request (
     update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     create_by BIGINT COMMENT '创建人ID',
     update_by BIGINT COMMENT '更新人ID',
-    del_token VARCHAR(64) DEFAULT '0' COMMENT '删除标记',
+    del_token BIGINT DEFAULT 0 COMMENT '删除标记: 0=有效, 非0=已删除',
     
     -- 外键与索引
     FOREIGN KEY (requester_id) REFERENCES user_profile(id),
@@ -552,7 +555,6 @@ CREATE TABLE friend_request (
     INDEX idx_req_requester (requester_id),
     INDEX idx_req_recipient (recipient_id),
     INDEX idx_req_status (status),
-    INDEX idx_req_del_token (del_token)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='好友申请';
 ```
 
@@ -592,13 +594,12 @@ CREATE TABLE group_profile (
     update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     create_by BIGINT COMMENT '创建人ID',
     update_by BIGINT COMMENT '更新人ID',
-    del_token VARCHAR(64) DEFAULT '0' COMMENT '删除标记',
+    del_token BIGINT DEFAULT 0 COMMENT '删除标记: 0=有效, 非0=已删除',
     
     -- 外键与索引
     FOREIGN KEY (conversation_id) REFERENCES conversation(id),
     FOREIGN KEY (owner_id) REFERENCES user_profile(id),
     INDEX idx_group_owner (owner_id),
-    INDEX idx_group_del_token (del_token)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='群组资料';
 ```
 
@@ -627,7 +628,7 @@ CREATE TABLE group_member (
     update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     create_by BIGINT COMMENT '创建人ID',
     update_by BIGINT COMMENT '更新人ID',
-    del_token VARCHAR(64) DEFAULT '0' COMMENT '删除标记',
+    del_token BIGINT DEFAULT 0 COMMENT '删除标记: 0=有效, 非0=已删除',
     
     -- 外键与索引
     FOREIGN KEY (group_id) REFERENCES group_profile(id) ON DELETE CASCADE,
@@ -635,7 +636,6 @@ CREATE TABLE group_member (
     UNIQUE KEY uk_member (group_id, user_id),
     INDEX idx_member_group (group_id),
     INDEX idx_member_user (user_id),
-    INDEX idx_member_del_token (del_token)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='群组成员';
 ```
 
@@ -674,14 +674,13 @@ CREATE TABLE notification (
     update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     create_by BIGINT COMMENT '创建人ID',
     update_by BIGINT COMMENT '更新人ID',
-    del_token VARCHAR(64) DEFAULT '0' COMMENT '删除标记',
+    del_token BIGINT DEFAULT 0 COMMENT '删除标记: 0=有效, 非0=已删除',
     
     -- 索引
     INDEX idx_notif_recipient (recipient_id),
     INDEX idx_notif_type (notification_type),
     INDEX idx_notif_unread (recipient_id, is_read),
     INDEX idx_notif_create_time (create_time DESC),
-    INDEX idx_notif_del_token (del_token)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='通知表';
 ```
 
@@ -722,12 +721,11 @@ CREATE TABLE credit_record (
     update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     create_by BIGINT COMMENT '创建人ID',
     update_by BIGINT COMMENT '更新人ID',
-    del_token VARCHAR(64) DEFAULT '0' COMMENT '删除标记',
+    del_token BIGINT DEFAULT 0 COMMENT '删除标记: 0=有效, 非0=已删除',
     
     -- 索引
     INDEX idx_credit_subject (subject_id, subject_type),
     INDEX idx_credit_create_time (create_time),
-    INDEX idx_credit_del_token (del_token)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='信用记录';
 ```
 
@@ -767,14 +765,13 @@ CREATE TABLE violation_record (
     update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     create_by BIGINT COMMENT '创建人ID',
     update_by BIGINT COMMENT '更新人ID',
-    del_token VARCHAR(64) DEFAULT '0' COMMENT '删除标记',
+    del_token BIGINT DEFAULT 0 COMMENT '删除标记: 0=有效, 非0=已删除',
     
     -- 索引
     INDEX idx_violation_subject (subject_id, subject_type),
     INDEX idx_violation_type (violation_type),
     INDEX idx_violation_severity (severity),
     INDEX idx_violation_status (status),
-    INDEX idx_violation_del_token (del_token)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='违规记录';
 ```
 
@@ -811,12 +808,11 @@ CREATE TABLE did_document (
     update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     create_by BIGINT COMMENT '创建人ID',
     update_by BIGINT COMMENT '更新人ID',
-    del_token VARCHAR(64) DEFAULT '0' COMMENT '删除标记',
+    del_token BIGINT DEFAULT 0 COMMENT '删除标记: 0=有效, 非0=已删除',
     
     -- 索引
     INDEX idx_did_method (did_method),
     INDEX idx_did_active (is_active),
-    INDEX idx_did_del_token (del_token)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='DID文档';
 ```
 
@@ -849,12 +845,11 @@ CREATE TABLE did_verification (
     update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     create_by BIGINT COMMENT '创建人ID',
     update_by BIGINT COMMENT '更新人ID',
-    del_token VARCHAR(64) DEFAULT '0' COMMENT '删除标记',
+    del_token BIGINT DEFAULT 0 COMMENT '删除标记: 0=有效, 非0=已删除',
     
     -- 外键与索引
     FOREIGN KEY (did) REFERENCES did_document(did),
     INDEX idx_verification_did (did),
-    INDEX idx_verification_del_token (del_token)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='DID验证记录';
 ```
 
@@ -878,10 +873,9 @@ CREATE TABLE system_config (
     update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     create_by BIGINT COMMENT '创建人ID',
     update_by BIGINT COMMENT '更新人ID',
-    del_token VARCHAR(64) DEFAULT '0' COMMENT '删除标记',
+    del_token BIGINT DEFAULT 0 COMMENT '删除标记: 0=有效, 非0=已删除',
     
     -- 索引
-    INDEX idx_config_del_token (del_token)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='系统配置';
 ```
 
@@ -913,14 +907,13 @@ CREATE TABLE operation_log (
     update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     create_by BIGINT COMMENT '创建人ID',
     update_by BIGINT COMMENT '更新人ID',
-    del_token VARCHAR(64) DEFAULT '0' COMMENT '删除标记',
+    del_token BIGINT DEFAULT 0 COMMENT '删除标记: 0=有效, 非0=已删除',
     
     -- 索引
     INDEX idx_oplog_operator (operator_id),
     INDEX idx_oplog_type (operation_type),
     INDEX idx_oplog_create_time (create_time),
     INDEX idx_oplog_date (log_date),
-    INDEX idx_oplog_del_token (del_token)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='操作日志';
 ```
 
@@ -934,12 +927,12 @@ CREATE TABLE operation_log (
 CREATE VIEW v_user_full AS
 SELECT 
     u.*,
-    (SELECT COUNT(*) FROM user_follow WHERE follower_id = u.id AND del_token = '0') as following_count,
-    (SELECT COUNT(*) FROM user_follow WHERE following_id = u.id AND del_token = '0') as followers_count,
-    (SELECT COUNT(*) FROM user_friend WHERE user_id = u.id AND status = 'ACTIVE' AND del_token = '0') as friends_count,
-    (SELECT COUNT(*) FROM agent_profile WHERE owner_id = u.id AND status = 'ACTIVE' AND del_token = '0') as agent_count
+    (SELECT COUNT(*) FROM user_follow WHERE follower_id = u.id AND del_token = 0) as following_count,
+    (SELECT COUNT(*) FROM user_follow WHERE following_id = u.id AND del_token = 0) as followers_count,
+    (SELECT COUNT(*) FROM user_friend WHERE user_id = u.id AND status = 'ACTIVE' AND del_token = 0) as friends_count,
+    (SELECT COUNT(*) FROM agent_profile WHERE owner_id = u.id AND status = 'ACTIVE' AND del_token = 0) as agent_count
 FROM user_profile u
-WHERE u.del_token = '0';
+WHERE u.del_token = 0;
 ```
 
 ### v_conversation_full（会话完整信息视图）
@@ -948,9 +941,9 @@ WHERE u.del_token = '0';
 CREATE VIEW v_conversation_full AS
 SELECT 
     c.*,
-    (SELECT COUNT(*) FROM conversation_participant WHERE conversation_id = c.id AND del_token = '0') as participant_count
+    (SELECT COUNT(*) FROM conversation_participant WHERE conversation_id = c.id AND del_token = 0) as participant_count
 FROM conversation c
-WHERE c.del_token = '0';
+WHERE c.del_token = 0;
 ```
 
 ---
@@ -1010,8 +1003,8 @@ INSERT INTO system_config (config_key, config_value, description, create_by, upd
 
 **查询时过滤已删除数据**:
 ```sql
--- 所有业务查询都必须加上 del_token = '0' 条件
-SELECT * FROM user_profile WHERE del_token = '0' AND status = 'ACTIVE';
+-- 所有业务查询都必须加上 del_token = 0 条件
+SELECT * FROM user_profile WHERE del_token = 0 AND status = 'ACTIVE';
 ```
 
 **逻辑删除**:
@@ -1022,7 +1015,7 @@ UPDATE user_profile SET del_token = UUID(), update_by = 1001 WHERE id = 123;
 
 **恢复删除**:
 ```sql
-UPDATE user_profile SET del_token = '0', update_by = 1001 WHERE id = 123;
+UPDATE user_profile SET del_token = 0, update_by = 1001 WHERE id = 123;
 ```
 
 ### B. 版本变更记录

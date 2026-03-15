@@ -69,7 +69,7 @@ public class Notification {
     private Long updateBy;
     
     @TableField(value = "del_token", fill = FieldFill.INSERT)
-    private String delToken;
+    private Long delToken;
     
     public enum RecipientType {
         USER, AGENT
@@ -89,6 +89,6 @@ public class Notification {
     }
     
     public boolean isDeleted() {
-        return delToken != null && !"0".equals(delToken);
+        return delToken != null && delToken != 0L;
     }
 }

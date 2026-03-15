@@ -75,7 +75,7 @@ public class AgentProfile {
     private Long updateBy;
     
     @TableField(value = "del_token", fill = FieldFill.INSERT)
-    private String delToken;
+    private Long delToken;
     
     public enum AgentType {
         GENERAL, PERSONAL, ASSISTANT, BUSINESS
@@ -86,6 +86,6 @@ public class AgentProfile {
     }
     
     public boolean isDeleted() {
-        return delToken != null && !"0".equals(delToken);
+        return delToken != null && delToken != 0L;
     }
 }

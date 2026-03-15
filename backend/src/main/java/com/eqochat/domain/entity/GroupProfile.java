@@ -66,7 +66,7 @@ public class GroupProfile {
     private Long updateBy;
     
     @TableField(value = "del_token", fill = FieldFill.INSERT)
-    private String delToken;
+    private Long delToken;
     
     public enum GroupType {
         GENERAL, WORK, INTEREST
@@ -81,6 +81,6 @@ public class GroupProfile {
     }
     
     public boolean isDeleted() {
-        return delToken != null && !"0".equals(delToken);
+        return delToken != null && delToken != 0L;
     }
 }

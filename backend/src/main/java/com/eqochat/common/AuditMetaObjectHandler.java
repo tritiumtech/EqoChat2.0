@@ -16,13 +16,13 @@ import java.util.UUID;
  * - update_time: 更新时间 (TIMESTAMP)  
  * - create_by: 创建人ID
  * - update_by: 更新人ID
- * - del_token: 删除标记 (0=未删除, UUID=已删除)
+ * - del_token: 删除标记 (0=有效, 非0=已删除)
  */
 @Slf4j
 @Component
 public class AuditMetaObjectHandler implements MetaObjectHandler {
     
-    private static final String DEL_TOKEN_NOT_DELETED = "0";
+    private static final Long DEL_TOKEN_NOT_DELETED = 0L;
     
     @Override
     public void insertFill(MetaObject metaObject) {
@@ -44,7 +44,7 @@ public class AuditMetaObjectHandler implements MetaObjectHandler {
         this.strictInsertFill(metaObject, "updateBy", Long.class, currentUserId);
         
         // 填充 del_token (如果为空)
-        this.strictInsertFill(metaObject, "delToken", String.class, DEL_TOKEN_NOT_DELETED);
+        this.strictInsertFill(metaObject, "delToken", Long.class, DEL_TOKEN_NOT_DELETED);
     }
     
     @Override
@@ -62,16 +62,16 @@ public class AuditMetaObjectHandler implements MetaObjectHandler {
     }
     
     /**
-     * 生成删除标记UUID
+     * 生成删除标记（使用时间戳）
      */
-    public static String generateDelToken() {
-        return UUID.randomUUID().toString().replace("-", "");
+    public static Long generateDelToken() {
+        return System.currentTimeMillis();
     }
     
     /**
      * 检查是否已删除
      */
-    public static boolean isDeleted(String delToken) {
+    public static boolean isDeleted(Long delToken) {
         return delToken != null && !DEL_TOKEN_NOT_DELETED.equals(delToken);
     }
 }

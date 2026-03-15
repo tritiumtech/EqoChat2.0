@@ -40,7 +40,7 @@ public interface UserProfileService extends IService<UserProfile> {
         if (user == null) {
             return false;
         }
-        user.setDelToken("0");
+        user.setDelToken(0L);
         return updateById(user);
     }
 }
