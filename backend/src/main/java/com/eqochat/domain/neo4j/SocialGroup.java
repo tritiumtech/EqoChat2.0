@@ -44,7 +44,7 @@ public class SocialGroup {
     @Builder.Default
     private List<SocialUser> members = new ArrayList<>();
     
-    @Relationship(type = "RELATED_TO", direction = Relationship.Direction.UNDIRECTED)
+    @Relationship(type = "RELATED_TO", direction = Relationship.Direction.INCOMING)
     @Builder.Default
     private List<RelatedTo> relatedGroups = new ArrayList<>();
 }

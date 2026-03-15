@@ -53,11 +53,11 @@ public class SocialAgent {
     @Relationship(type = "OWNS", direction = Relationship.Direction.INCOMING)
     private SocialUser owner;
     
-    @Relationship(type = "INTERACTS_WITH", direction = Relationship.Direction.UNDIRECTED)
+    @Relationship(type = "INTERACTS_WITH", direction = Relationship.Direction.INCOMING)
     @Builder.Default
     private List<InteractsWith> interactions = new ArrayList<>();
     
-    @Relationship(type = "SIMILAR_TO", direction = Relationship.Direction.UNDIRECTED)
+    @Relationship(type = "SIMILAR_TO", direction = Relationship.Direction.INCOMING)
     @Builder.Default
     private List<SimilarTo> similarAgents = new ArrayList<>();
 }

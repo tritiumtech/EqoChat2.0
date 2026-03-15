@@ -49,7 +49,7 @@ public class SocialUser {
     @Builder.Default
     private List<Follows> followers = new ArrayList<>();
     
-    @Relationship(type = "FRIEND_WITH", direction = Relationship.Direction.UNDIRECTED)
+    @Relationship(type = "FRIEND_WITH", direction = Relationship.Direction.OUTGOING)
     @Builder.Default
     private List<FriendWith> friends = new ArrayList<>();
     

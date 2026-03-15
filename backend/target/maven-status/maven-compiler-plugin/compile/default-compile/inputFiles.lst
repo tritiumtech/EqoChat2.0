@@ -3,6 +3,7 @@
 /home/ubuntu/tech/personal_repos/EqoChat2/EqoChat2.0/backend/src/main/java/com/eqochat/domain/entity/UserFriend.java
 /home/ubuntu/tech/personal_repos/EqoChat2/EqoChat2.0/backend/src/main/java/com/eqochat/service/AuthService.java
 /home/ubuntu/tech/personal_repos/EqoChat2/EqoChat2.0/backend/src/main/java/com/eqochat/security/WebSocketAuthInterceptor.java
+/home/ubuntu/tech/personal_repos/EqoChat2/EqoChat2.0/backend/src/main/java/com/eqochat/domain/neo4j/SimilarTo.java
 /home/ubuntu/tech/personal_repos/EqoChat2/EqoChat2.0/backend/src/main/java/com/eqochat/domain/entity/OperationLog.java
 /home/ubuntu/tech/personal_repos/EqoChat2/EqoChat2.0/backend/src/main/java/com/eqochat/domain/entity/UserAuthRecord.java
 /home/ubuntu/tech/personal_repos/EqoChat2/EqoChat2.0/backend/src/main/java/com/eqochat/config/UserContextFilter.java
@@ -75,3 +76,4 @@
 /home/ubuntu/tech/personal_repos/EqoChat2/EqoChat2.0/backend/src/main/java/com/eqochat/mapper/UserAuthRecordMapper.java
 /home/ubuntu/tech/personal_repos/EqoChat2/EqoChat2.0/backend/src/main/java/com/eqochat/config/MyBatisPlusConfig.java
 /home/ubuntu/tech/personal_repos/EqoChat2/EqoChat2.0/backend/src/main/java/com/eqochat/domain/entity/Message.java
+/home/ubuntu/tech/personal_repos/EqoChat2/EqoChat2.0/backend/src/main/java/com/eqochat/domain/neo4j/RelatedTo.java
