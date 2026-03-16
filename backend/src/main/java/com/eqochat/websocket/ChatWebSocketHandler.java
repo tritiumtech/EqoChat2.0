@@ -1,6 +1,8 @@
 package com.eqochat.websocket;
 
 import com.eqochat.common.UserContext;
+import com.eqochat.domain.entity.ConversationParticipant;
+import com.eqochat.service.ConversationParticipantService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -26,6 +28,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
     private final ObjectMapper objectMapper;
     private final WebSocketSessionManager sessionManager;
     private final WebSocketMessageHandler messageHandler;
+    private final ConversationParticipantService participantService;
     
     // 存储用户会话 userId -> session
     private final ConcurrentHashMap<String, WebSocketSession> userSessions = new ConcurrentHashMap<>();
@@ -50,6 +53,18 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         UserContext.setCurrentUser(Long.parseLong(userId));
         
         log.info("WebSocket连接建立: userId={}, sessionId={}", userId, session.getId());
+
+        // 自动加入已存在会话
+        try {
+            Long uid = Long.parseLong(userId);
+            for (ConversationParticipant participant : participantService.listByParticipantId(uid)) {
+                if (participant.getConversationId() != null) {
+                    sessionManager.joinConversation(participant.getConversationId().toString(), userId);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("加载会话参与者失败: userId={}", userId, e);
+        }
         
         // 发送连接确认
         sendConnectAck(session, userId);

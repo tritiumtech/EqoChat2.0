@@ -1,10 +1,16 @@
 package com.eqochat.websocket;
 
 import com.eqochat.domain.entity.Message;
+import com.eqochat.domain.entity.ConversationParticipant;
+import com.eqochat.domain.entity.MessageReadReceipt;
+import com.eqochat.mapper.MessageReadReceiptMapper;
+import com.eqochat.service.ConversationService;
+import com.eqochat.service.ConversationParticipantService;
 import com.eqochat.service.MessageService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.WebSocketSession;
 
@@ -23,8 +29,11 @@ public class WebSocketMessageHandler {
     
     private final ObjectMapper objectMapper;
     private final MessageService messageService;
+    private final ConversationService conversationService;
+    private final ConversationParticipantService participantService;
+    private final MessageReadReceiptMapper messageReadReceiptMapper;
     private final WebSocketSessionManager sessionManager;
-    private final ChatWebSocketHandler chatWebSocketHandler;
+    private final WebSocketSender webSocketSender;
     
     /**
      * 处理消息
@@ -34,7 +43,7 @@ public class WebSocketMessageHandler {
         
         switch (message.getType()) {
             case CHAT_MESSAGE:
-                handleChatMessage(userId, message);
+                handleChatMessage(userId, message, session);
                 break;
             case CHAT_TYPING:
                 handleTypingMessage(userId, message);
@@ -47,24 +56,36 @@ public class WebSocketMessageHandler {
                 break;
             default:
                 log.warn("未知消息类型: {}", message.getType());
-                chatWebSocketHandler.sendError(session, 400, "未知消息类型", message.getId());
+                webSocketSender.sendError(session, 400, "未知消息类型", message.getId());
         }
     }
     
     /**
      * 处理聊天消息
      */
-    private void handleChatMessage(String userId, WebSocketMessage.BaseMessage message) {
+    private void handleChatMessage(String userId, WebSocketMessage.BaseMessage message, WebSocketSession session) {
         try {
             WebSocketMessage.ChatMessagePayload payload = objectMapper.convertValue(
                     message.getPayload(), WebSocketMessage.ChatMessagePayload.class);
             
+            if (payload.getConversationId() == null) {
+                webSocketSender.sendError(session, 400, "缺少会话ID", message.getId());
+                return;
+            }
+
+            Long conversationId = Long.parseLong(payload.getConversationId());
+            Long senderId = Long.parseLong(userId);
             log.info("处理聊天消息: userId={}, conversationId={}", userId, payload.getConversationId());
+
+            if (participantService.findByConversationAndParticipant(conversationId, senderId).isEmpty()) {
+                webSocketSender.sendError(session, 403, "无权限发送消息", message.getId());
+                return;
+            }
             
             // 保存消息到数据库
             Message msg = Message.builder()
-                    .conversationId(Long.parseLong(payload.getConversationId()))
-                    .senderId(Long.parseLong(userId))
+                    .conversationId(conversationId)
+                    .senderId(senderId)
                     .senderType("USER")
                     .messageType(payload.getMessageType())
                     .content(payload.getContent())
@@ -77,9 +98,33 @@ public class WebSocketMessageHandler {
                     .build();
             
             messageService.save(msg);
+            conversationService.updateLastMessage(
+                    conversationId,
+                    msg.getId(),
+                    msg.getCreateTime() != null ? msg.getCreateTime() : LocalDateTime.now()
+            );
+
+            participantService.updateLastRead(
+                    conversationId,
+                    senderId,
+                    msg.getId(),
+                    msg.getCreateTime() != null ? msg.getCreateTime() : LocalDateTime.now()
+            );
+
+            // 确保会话用户已加入广播列表
+            joinConversationUsers(payload.getConversationId());
             
             // 广播给会话中的所有用户
-            broadcastToConversation(payload.getConversationId(), message);
+            WebSocketMessage.BaseMessage outMessage = WebSocketMessage.BaseMessage.builder()
+                    .id(String.valueOf(msg.getId()))
+                    .type(WebSocketMessage.MessageType.CHAT_MESSAGE)
+                    .senderId(userId)
+                    .senderType("USER")
+                    .recipientId(payload.getConversationId())
+                    .timestamp(msg.getCreateTime() != null ? msg.getCreateTime() : LocalDateTime.now())
+                    .payload(payload)
+                    .build();
+            broadcastToConversation(payload.getConversationId(), outMessage);
             
         } catch (Exception e) {
             log.error("处理聊天消息失败", e);
@@ -98,7 +143,7 @@ public class WebSocketMessageHandler {
             Set<String> users = sessionManager.getConversationUsers(payload.getConversationId());
             for (String uid : users) {
                 if (!uid.equals(userId)) {
-                    chatWebSocketHandler.sendMessageToUser(uid, message);
+                    webSocketSender.sendToUser(uid, message);
                 }
             }
             
@@ -115,13 +160,61 @@ public class WebSocketMessageHandler {
             WebSocketMessage.ReadReceiptPayload payload = objectMapper.convertValue(
                     message.getPayload(), WebSocketMessage.ReadReceiptPayload.class);
             
+            if (payload.getMessageId() == null) {
+                return;
+            }
+
+            Long messageId = Long.parseLong(payload.getMessageId());
+            Message stored = messageService.getById(messageId);
+            if (stored == null) {
+                return;
+            }
+            Long readerId = Long.parseLong(userId);
+
             log.info("处理已读回执: userId={}, messageId={}", userId, payload.getMessageId());
             
             // 更新消息已读状态
-            messageService.markAsRead(Long.parseLong(payload.getMessageId()), Long.parseLong(userId));
+            if (!readerId.equals(stored.getSenderId())) {
+                messageService.markAsRead(messageId, readerId);
+            }
+
+            participantService.updateLastRead(
+                    stored.getConversationId(),
+                    readerId,
+                    messageId,
+                    LocalDateTime.now()
+            );
+
+            MessageReadReceipt receipt = MessageReadReceipt.builder()
+                    .messageId(messageId)
+                    .readerId(readerId)
+                    .readerType(MessageReadReceipt.ReaderType.USER)
+                    .readAt(LocalDateTime.now())
+                    .build();
+
+            try {
+                messageReadReceiptMapper.insert(receipt);
+            } catch (DuplicateKeyException ignore) {
+                // 已存在已读记录，忽略
+            }
             
             // 通知消息发送者
-            // TODO: 获取消息发送者并通知
+            if (stored.getSenderId() != null && !stored.getSenderId().equals(readerId)) {
+                WebSocketMessage.BaseMessage readMessage = WebSocketMessage.BaseMessage.builder()
+                        .id(UUID.randomUUID().toString())
+                        .type(WebSocketMessage.MessageType.CHAT_READ)
+                        .senderId(userId)
+                        .senderType("USER")
+                        .recipientId(String.valueOf(stored.getSenderId()))
+                        .timestamp(LocalDateTime.now())
+                        .payload(WebSocketMessage.ReadReceiptPayload.builder()
+                                .conversationId(String.valueOf(stored.getConversationId()))
+                                .messageId(String.valueOf(messageId))
+                                .readerId(String.valueOf(readerId))
+                                .build())
+                        .build();
+                webSocketSender.sendToUser(String.valueOf(stored.getSenderId()), readMessage);
+            }
             
         } catch (Exception e) {
             log.error("处理已读回执失败", e);
@@ -150,7 +243,20 @@ public class WebSocketMessageHandler {
     private void broadcastToConversation(String conversationId, WebSocketMessage.BaseMessage message) {
         Set<String> users = sessionManager.getConversationUsers(conversationId);
         for (String userId : users) {
-            chatWebSocketHandler.sendMessageToUser(userId, message);
+            webSocketSender.sendToUser(userId, message);
+        }
+    }
+
+    private void joinConversationUsers(String conversationId) {
+        try {
+            Long convId = Long.parseLong(conversationId);
+            for (ConversationParticipant participant : participantService.listByConversationId(convId)) {
+                if (participant.getParticipantId() != null) {
+                    sessionManager.joinConversation(conversationId, participant.getParticipantId().toString());
+                }
+            }
+        } catch (Exception e) {
+            log.warn("加入会话广播列表失败: conversationId={}", conversationId, e);
         }
     }
 }

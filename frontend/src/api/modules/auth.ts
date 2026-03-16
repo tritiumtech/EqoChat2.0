@@ -1,4 +1,4 @@
-import request from '../request'
+import request from '@/utils/request'
 
 export const authApi = {
   // 发送验证码
@@ -9,9 +9,10 @@ export const authApi = {
   // 注册
   register(data: {
     phone: string
-    code: string
+    verifyCode: string
     password: string
     nickname: string
+    avatarUrl?: string
   }) {
     return request.post('/api/v1/auth/register', data)
   },

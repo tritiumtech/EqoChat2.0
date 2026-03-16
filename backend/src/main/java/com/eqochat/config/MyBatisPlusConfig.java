@@ -1,11 +1,9 @@
 package com.eqochat.config;
 
 import com.baomidou.mybatisplus.annotation.DbType;
-import com.baomidou.mybatisplus.core.handlers.MetaObjectHandler;
 import com.baomidou.mybatisplus.extension.plugins.MybatisPlusInterceptor;
 import com.baomidou.mybatisplus.extension.plugins.inner.OptimisticLockerInnerInterceptor;
 import com.baomidou.mybatisplus.extension.plugins.inner.PaginationInnerInterceptor;
-import com.eqochat.common.AuditMetaObjectHandler;
 import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -30,11 +28,4 @@ public class MyBatisPlusConfig {
         return interceptor;
     }
     
-    /**
-     * 审计字段自动填充处理器
-     */
-    @Bean
-    public MetaObjectHandler metaObjectHandler() {
-        return new AuditMetaObjectHandler();
-    }
 }

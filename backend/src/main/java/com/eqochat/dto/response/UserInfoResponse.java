@@ -20,6 +20,7 @@ public class UserInfoResponse {
     private String did;
     private String phone;
     private String email;
+    private String locale;
     private String nickname;
     private String avatarUrl;
     private String bio;

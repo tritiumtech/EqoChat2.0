@@ -63,7 +63,26 @@ public class JwtTokenUtil {
      */
     public Long getUserIdFromToken(String token) {
         Claims claims = getAllClaimsFromToken(token);
-        return claims.get("userId", Long.class);
+        Object raw = claims.get("userId");
+        if (raw instanceof Number) {
+            return ((Number) raw).longValue();
+        }
+        if (raw instanceof String) {
+            try {
+                return Long.parseLong((String) raw);
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
+        String subject = claims.getSubject();
+        if (subject != null) {
+            try {
+                return Long.parseLong(subject);
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
+        return null;
     }
     
     /**

@@ -1,16 +1,18 @@
 package com.eqochat.controller;
 
 import com.eqochat.common.ApiResponse;
+import com.eqochat.common.BizException;
 import com.eqochat.dto.request.LoginRequest;
 import com.eqochat.dto.request.RegisterRequest;
+import com.eqochat.dto.request.VerifyCodeRequest;
 import com.eqochat.dto.response.LoginResponse;
 import com.eqochat.dto.response.UserInfoResponse;
 import com.eqochat.service.AuthService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
-import reactor.core.publisher.Mono;
 
 /**
  * 认证控制器
@@ -27,48 +29,67 @@ public class AuthController {
      * 发送验证码
      */
     @PostMapping("/verify-code")
-    public Mono<ApiResponse<Void>> sendVerifyCode(@RequestParam String phone) {
-        log.info("发送验证码: phone={}", phone);
-        return authService.sendVerifyCode(phone)
-                .then(Mono.just(ApiResponse.success()));
+    public ApiResponse<Void> sendVerifyCode(@RequestBody @Valid VerifyCodeRequest request) {
+        log.info("发送验证码: phone={}", request.getPhone());
+        authService.sendVerifyCode(request.getPhone());
+        return ApiResponse.success();
     }
     
     /**
      * 用户注册
      */
     @PostMapping("/register")
-    public Mono<ApiResponse<LoginResponse>> register(@RequestBody @Valid RegisterRequest request) {
+    public ApiResponse<LoginResponse> register(@RequestBody @Valid RegisterRequest request) {
         log.info("用户注册: phone={}", request.getPhone());
-        return authService.register(request)
-                .map(ApiResponse::success);
+        LoginResponse response = authService.register(request);
+        return ApiResponse.success(response);
     }
     
     /**
      * 用户登录
      */
     @PostMapping("/login")
-    public Mono<ApiResponse<LoginResponse>> login(@RequestBody @Valid LoginRequest request) {
+    public ApiResponse<LoginResponse> login(@RequestBody @Valid LoginRequest request) {
         log.info("用户登录: phone={}", request.getPhone());
-        return authService.login(request)
-                .map(ApiResponse::success);
+        LoginResponse response = authService.login(request);
+        return ApiResponse.success(response);
     }
     
     /**
      * 刷新token
      */
     @PostMapping("/refresh")
-    public Mono<ApiResponse<LoginResponse>> refreshToken(@RequestHeader("Authorization") String authHeader) {
+    public ApiResponse<LoginResponse> refreshToken(@RequestHeader("Authorization") String authHeader) {
         String token = authHeader.substring(7);
-        return authService.refreshToken(token)
-                .map(ApiResponse::success);
+        LoginResponse response = authService.refreshToken(token);
+        return ApiResponse.success(response);
     }
     
     /**
      * 获取当前用户信息
      */
     @GetMapping("/me")
-    public Mono<ApiResponse<UserInfoResponse>> getCurrentUser(@RequestAttribute("userId") Long userId) {
-        return authService.getUserInfo(userId)
-                .map(ApiResponse::success);
+    public ApiResponse<UserInfoResponse> getCurrentUser() {
+        UserInfoResponse response = authService.getUserInfo(resolveUserId());
+        return ApiResponse.success(response);
+    }
+
+    private Long resolveUserId() {
+        var auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || auth.getPrincipal() == null) {
+            throw BizException.of(401, "auth.token.invalid");
+        }
+        Object principal = auth.getPrincipal();
+        if (principal instanceof Long) {
+            return (Long) principal;
+        }
+        if (principal instanceof String) {
+            try {
+                return Long.parseLong((String) principal);
+            } catch (NumberFormatException ignored) {
+                // fall through
+            }
+        }
+        throw BizException.of(401, "auth.token.invalid");
     }
 }

@@ -18,4 +18,19 @@ public interface MessageMapper extends BaseMapper<Message> {
     List<Message> selectByConversationIdWithCursor(@Param("conversationId") Long conversationId, 
                                                       @Param("lastId") Long lastId, 
                                                       @Param("limit") Integer limit);
+
+    @Select("""
+            <script>
+            SELECT COUNT(*) FROM message
+            WHERE conversation_id = #{conversationId}
+              AND del_token = '0'
+              AND sender_id != #{userId}
+              <if test="lastReadMessageId != null">
+                AND id &gt; #{lastReadMessageId}
+              </if>
+            </script>
+            """)
+    long countUnreadMessages(@Param("conversationId") Long conversationId,
+                             @Param("userId") Long userId,
+                             @Param("lastReadMessageId") Long lastReadMessageId);
 }

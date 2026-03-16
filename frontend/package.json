@@ -9,22 +9,26 @@
     "dev:h5": "uni --h5",
     "dev:mp-weixin": "uni --mp-weixin",
     "build": "uni build",
+    "build:staging": "uni build --mode staging",
     "build:app": "uni build --app",
     "build:h5": "uni build --h5",
     "build:mp-weixin": "uni build --mp-weixin"
   },
   "dependencies": {
-    "@dcloudio/uni-app": "3.0.0-alpha-4010520240409001",
-    "@dcloudio/uni-app-plus": "3.0.0-alpha-4010520240409001",
-    "@dcloudio/uni-h5": "3.0.0-alpha-4010520240409001",
-    "@dcloudio/uni-mp-weixin": "3.0.0-alpha-4010520240409001",
+    "@dcloudio/uni-app": "3.0.0-4080520251106001",
+    "@dcloudio/uni-app-plus": "3.0.0-4080520251106001",
+    "@dcloudio/uni-components": "3.0.0-4080520251106001",
+    "@dcloudio/uni-h5": "3.0.0-4080520251106001",
+    "@dcloudio/uni-mp-weixin": "3.0.0-4080520251106001",
     "vue": "^3.4.21",
     "vue-i18n": "^9.10.2",
     "pinia": "^2.1.7"
   },
   "devDependencies": {
     "@dcloudio/types": "^3.4.8",
-    "@dcloudio/vite-plugin-uni": "3.0.0-alpha-4010520240409001",
+    "@dcloudio/vite-plugin-uni": "3.0.0-4080520251106001",
+    "@uni-helper/vite-plugin-uni-manifest": "^0.2.7",
+    "@uni-helper/vite-plugin-uni-pages": "0.2.20",
     "typescript": "^5.3.3",
     "vite": "^5.2.0"
   }

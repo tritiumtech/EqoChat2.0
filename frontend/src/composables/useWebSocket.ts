@@ -5,7 +5,7 @@
 
 import { ref, onMounted, onUnmounted, type Ref } from 'vue'
 import { wsClient, MessageType, type WebSocketCallbacks, type ConnectionInfo } from '@/utils/websocket'
-import { useUserStore } from '@/stores/modules/user'
+import { useUserStore } from '@/store/modules/user'
 import type { ChatMessagePayload, TypingPayload, ReadReceiptPayload, PresencePayload } from '@/types/websocket'
 
 export interface UseWebSocketReturn {

@@ -11,20 +11,20 @@ import lombok.Data;
 @Data
 public class RegisterRequest {
     
-    @NotBlank(message = "手机号不能为空")
-    @Pattern(regexp = "^1[3-9]\\d{9}$", message = "手机号格式不正确")
+    @NotBlank(message = "{auth.phone.required}")
+    @Pattern(regexp = "^1[3-9]\\d{9}$", message = "{auth.phone.invalid}")
     private String phone;
     
-    @NotBlank(message = "验证码不能为空")
-    @Size(min = 4, max = 6, message = "验证码长度不正确")
+    @NotBlank(message = "{auth.verify_code.required}")
+    @Size(min = 4, max = 6, message = "{auth.verify_code.length}")
     private String verifyCode;
     
-    @NotBlank(message = "密码不能为空")
-    @Size(min = 6, max = 20, message = "密码长度必须在6-20位之间")
+    @NotBlank(message = "{auth.password.required}")
+    @Size(min = 6, max = 20, message = "{auth.password.length}")
     private String password;
     
-    @NotBlank(message = "昵称不能为空")
-    @Size(min = 2, max = 50, message = "昵称长度必须在2-50位之间")
+    @NotBlank(message = "{auth.nickname.required}")
+    @Size(min = 2, max = 50, message = "{auth.nickname.length}")
     private String nickname;
     
     private String avatarUrl;

@@ -1,6 +1,7 @@
 package com.eqochat.service.impl;
 
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.eqochat.common.BizException;
 import com.eqochat.domain.entity.Message;
 import com.eqochat.mapper.MessageMapper;
 import com.eqochat.service.MessageService;
@@ -27,13 +28,11 @@ public class MessageServiceImpl extends ServiceImpl<MessageMapper, Message>
     
     @Override
     public List<Message> getConversationMessages(Long conversationId, Long lastMessageId, Integer limit) {
-        // TODO: 实现分页查询
-        return lambdaQuery()
-                .eq(Message::getConversationId, conversationId)
-                .eq(Message::getDelToken, "0")
-                .orderByDesc(Message::getCreateTime)
-                .last("LIMIT " + (limit != null ? limit : 20))
-                .list();
+        int pageSize = limit != null ? limit : 20;
+        if (lastMessageId != null) {
+            return baseMapper.selectByConversationIdWithCursor(conversationId, lastMessageId, pageSize);
+        }
+        return baseMapper.selectByConversationId(conversationId, pageSize);
     }
     
     @Override
@@ -56,7 +55,7 @@ public class MessageServiceImpl extends ServiceImpl<MessageMapper, Message>
                 updateById(message);
                 log.info("消息已撤回: messageId={}", messageId);
             } else {
-                throw new RuntimeException("消息已超过2分钟，无法撤回");
+                throw BizException.of("message.recall.timeout");
             }
         }
     }

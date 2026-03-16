@@ -26,6 +26,9 @@ public class UserProfile {
     
     @TableField("email")
     private String email;
+
+    @TableField("locale")
+    private String locale;
     
     @TableField("nickname")
     private String nickname;
