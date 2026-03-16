@@ -2,14 +2,12 @@
   <view class="page">
     <view class="header">
       <view class="header-left">
-        <button class="btn-back" @click="goBack">{{ t('common.back') }}</button>
+        <view class="back-wrap" @click="goBack">
+          <text class="back-icon">‹</text>
+        </view>
         <view class="avatar">{{ title.slice(0, 1) }}</view>
         <view class="title-block">
           <text class="title">{{ title }}</text>
-          <view class="status-pill">
-            <view :class="['dot', isConnected ? 'online' : 'offline']" />
-            <text class="status">{{ isConnected ? t('common.online') : t('common.connecting') }}</text>
-          </view>
         </view>
       </view>
     </view>
@@ -376,14 +374,20 @@ const goBack = () => {
   gap: 16rpx;
 }
 
-.btn-back {
+.back-wrap {
+  width: 56rpx;
   height: 56rpx;
-  line-height: 56rpx;
-  padding: 0 20rpx;
   border-radius: 28rpx;
-  background: rgba(255, 255, 255, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.back-icon {
   color: #fff;
-  font-size: 24rpx;
+  font-size: 32rpx;
+  line-height: 1;
 }
 
 .avatar {
@@ -412,7 +416,6 @@ const goBack = () => {
 .title-block {
   display: flex;
   flex-direction: column;
-  gap: 6rpx;
 }
 
 .title {
@@ -422,30 +425,7 @@ const goBack = () => {
   display: block;
 }
 
-.status-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 8rpx;
-  padding: 4rpx 12rpx;
-  border-radius: var(--radius-pill);
-  background: rgba(255, 255, 255, 0.18);
-  color: rgba(255, 255, 255, 0.8);
-  font-size: 20rpx;
-}
-
-.dot {
-  width: 10rpx;
-  height: 10rpx;
-  border-radius: 50%;
-}
-
-.dot.online {
-  background: #34d399;
-}
-
-.dot.offline {
-  background: #fca5a5;
-}
+/* 连接状态已移除，保留名称即可 */
 
 .message-list {
   flex: 1;

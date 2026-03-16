@@ -60,8 +60,6 @@ public class ConversationServiceImpl extends ServiceImpl<ConversationMapper, Con
                 .orderByDesc(Conversation::getLastMessageAt)
                 .list();
         
-        Map<Long, List<ConversationParticipant>> participantsByConv = participants.stream()
-                .collect(Collectors.groupingBy(ConversationParticipant::getConversationId));
         Map<Long, ConversationParticipant> selfParticipantMap = participants.stream()
                 .filter(p -> p.getConversationId() != null)
                 .collect(Collectors.toMap(ConversationParticipant::getConversationId, p -> p, (a, b) -> a));
@@ -87,19 +85,26 @@ public class ConversationServiceImpl extends ServiceImpl<ConversationMapper, Con
                 }
             }
             
-            String title = conversation.getTitle();
-            String avatarUrl = conversation.getAvatarUrl();
+            String title;
+            String avatarUrl;
             if (TYPE_SINGLE.equals(conversation.getConversationType())) {
-                Long otherId = findOtherParticipantId(participantsByConv.get(conversation.getId()), userId);
+                // 单聊场景下强制使用对方用户的信息作为展示名称与头像
+                title = null;
+                avatarUrl = null;
+                // 这里必须拉取当前会话下的所有参与者，不能只看“自己”的参与记录
+                List<ConversationParticipant> convParticipants = participantService.listByConversationId(conversation.getId());
+                Long otherId = findOtherParticipantId(convParticipants, userId);
                 if (otherId != null) {
                     UserProfile otherUser = userProfileService.getById(otherId);
                     if (otherUser != null) {
                         title = resolveDisplayName(otherUser);
-                        if (avatarUrl == null || avatarUrl.isBlank()) {
-                            avatarUrl = otherUser.getAvatarUrl();
-                        }
+                        avatarUrl = otherUser.getAvatarUrl();
                     }
                 }
+            } else {
+                // 群聊或其他类型保留会话自身配置
+                title = conversation.getTitle();
+                avatarUrl = conversation.getAvatarUrl();
             }
 
             ConversationParticipant selfParticipant = selfParticipantMap.get(conversation.getId());
@@ -212,19 +217,23 @@ public class ConversationServiceImpl extends ServiceImpl<ConversationMapper, Con
         }
 
         List<ConversationParticipant> participants = participantService.listByConversationId(conversationId);
-        String title = conversation.getTitle();
-        String avatarUrl = conversation.getAvatarUrl();
+        String title;
+        String avatarUrl;
         if (TYPE_SINGLE.equals(conversation.getConversationType())) {
+            // 单聊详情同样强制使用对方用户信息
+            title = null;
+            avatarUrl = null;
             Long otherId = findOtherParticipantId(participants, userId);
             if (otherId != null) {
                 UserProfile otherUser = userProfileService.getById(otherId);
                 if (otherUser != null) {
                     title = resolveDisplayName(otherUser);
-                    if (!StringUtils.hasText(avatarUrl)) {
-                        avatarUrl = otherUser.getAvatarUrl();
-                    }
+                    avatarUrl = otherUser.getAvatarUrl();
                 }
             }
+        } else {
+            title = conversation.getTitle();
+            avatarUrl = conversation.getAvatarUrl();
         }
 
         Message lastMessage = null;
@@ -353,6 +362,10 @@ public class ConversationServiceImpl extends ServiceImpl<ConversationMapper, Con
         }
         if (StringUtils.hasText(user.getDid())) {
             return user.getDid();
+        }
+        // 所有可读字段都为空时，至少用用户ID作为可区分标识
+        if (user.getId() != null) {
+            return "用户" + user.getId();
         }
         return "会话";
     }
