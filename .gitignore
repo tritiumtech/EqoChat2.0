@@ -1,0 +1,7 @@
+backend/src/main/resources/application-local.yml
+backend/src/main/resources/application-local.yaml
+backend/src/main/resources/application-local.properties
+backend/target
+frontend/node_modules
+frontend/pnpm-lock.yaml
+.idea
