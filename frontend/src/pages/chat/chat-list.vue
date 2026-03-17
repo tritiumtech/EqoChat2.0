@@ -8,10 +8,6 @@
         </view>
         <view class="chip">{{ conversations.length }}</view>
       </view>
-      <view class="new-chat">
-        <input v-model="newUserId" class="input" type="number" :placeholder="t('placeholder.new_chat')" />
-        <button class="btn" @click="createConversation">{{ t('action.create') }}</button>
-      </view>
     </view>
 
     <view class="list">
@@ -41,37 +37,26 @@ import { onShow } from '@dcloudio/uni-app'
 import { useI18n } from 'vue-i18n'
 import { conversationApi, type ConversationSummary } from '@/api/modules/conversation'
 import { useUserStore } from '@/store/modules/user'
+import { useChatStore } from '@/store/modules/chat'
 import EmptyState from '@/components/EmptyState.vue'
 import ConversationItem from '@/components/chat/ConversationItem.vue'
 
 const conversations = ref<ConversationSummary[]>([])
 const loading = ref(false)
-const newUserId = ref('')
 const userStore = useUserStore()
+const chatStore = useChatStore()
 const { t } = useI18n()
 
 const fetchConversations = async () => {
   loading.value = true
   try {
-    conversations.value = await conversationApi.listConversations()
+    const list = await conversationApi.listConversations()
+    conversations.value = list
+    chatStore.setConversations(list)
   } catch (err: any) {
     uni.showToast({ title: err?.message || t('toast.load_failed'), icon: 'none' })
   } finally {
     loading.value = false
-  }
-}
-
-const createConversation = async () => {
-  if (!newUserId.value) {
-    uni.showToast({ title: t('placeholder.new_chat'), icon: 'none' })
-    return
-  }
-  try {
-    const data = await conversationApi.createConversation({ targetUserId: Number(newUserId.value) })
-    newUserId.value = ''
-    openConversation(data)
-  } catch (err: any) {
-    uni.showToast({ title: err?.message || t('toast.create_failed'), icon: 'none' })
   }
 }
 
@@ -150,34 +135,6 @@ onShow(() => {
   align-items: center;
   justify-content: center;
   font-weight: 700;
-}
-
-.new-chat {
-  display: flex;
-  gap: 16rpx;
-  background: rgba(255, 255, 255, 0.1);
-  padding: 16rpx;
-  border-radius: var(--radius-lg);
-}
-
-.input {
-  flex: 1;
-  background: rgba(255, 255, 255, 0.9);
-  border-radius: 16rpx;
-  padding: 18rpx 20rpx;
-  font-size: 26rpx;
-  color: var(--c-ink);
-}
-
-.btn {
-  height: 72rpx;
-  line-height: 72rpx;
-  padding: 0 28rpx;
-  border-radius: var(--radius-pill);
-  background: linear-gradient(135deg, #ff7a59 0%, #ff9f6b 100%);
-  color: #1a1720;
-  font-weight: 700;
-  font-size: 24rpx;
 }
 
 .list {

@@ -15,7 +15,7 @@
     <scroll-view
       class="message-list"
       scroll-y
-      :scroll-into-view="scrollIntoView"
+      :scroll-top="scrollTop"
     >
       <view v-if="loading" class="state">{{ t('common.loading') }}</view>
       <view v-else-if="messages.length === 0" class="state">{{ t('common.empty_conversation') }}</view>
@@ -59,7 +59,7 @@
 
 <script setup lang="ts">
 import { ref, nextTick, computed } from 'vue'
-import { onLoad, onShow } from '@dcloudio/uni-app'
+import { onLoad, onShow, onHide } from '@dcloudio/uni-app'
 import { useI18n } from 'vue-i18n'
 import { useWebSocket } from '@/composables/useWebSocket'
 import { conversationApi, type MessageItem } from '@/api/modules/conversation'
@@ -82,11 +82,13 @@ const conversationId = ref<number>(0)
 const title = ref('会话')
 const inputText = ref('')
 const messages = ref<ChatMessage[]>([])
-const scrollIntoView = ref('bottom')
+const scrollTop = ref(999999)
+const scrollToBottomSeed = ref(999999)
 const messageIdSet = new Set<string>()
 const hasConversation = computed(() => conversationId.value > 0)
 const canSend = computed(() => hasConversation.value && inputText.value.trim().length > 0)
 const loading = ref(false)
+const isPageVisible = ref(true)
 const pendingTimers = new Map<string, number>()
 
 const { isConnected, sendMessage, sendReadReceipt } = useWebSocket({
@@ -109,7 +111,7 @@ const { isConnected, sendMessage, sendReadReceipt } = useWebSocket({
       })
     }
     scrollToBottom()
-    if (senderId !== userStore.userInfo?.id) {
+    if (isPageVisible.value && senderId !== userStore.userInfo?.id) {
       sendReadReceipt(payload.conversationId, id)
     }
   }
@@ -148,7 +150,7 @@ const loadHistory = async () => {
         }
       })
     const latest = messages.value[messages.value.length - 1]
-    if (latest && latest.senderId !== userStore.userInfo?.id) {
+    if (isPageVisible.value && latest && latest.senderId !== userStore.userInfo?.id) {
       sendReadReceipt(String(conversationId.value), latest.id)
     }
     scrollToBottom()
@@ -160,9 +162,9 @@ const loadHistory = async () => {
 }
 
 const scrollToBottom = () => {
-  scrollIntoView.value = 'bottom'
   nextTick(() => {
-    scrollIntoView.value = 'bottom'
+    scrollToBottomSeed.value += 1
+    scrollTop.value = scrollToBottomSeed.value
   })
 }
 
@@ -321,6 +323,7 @@ onLoad((query) => {
 })
 
 onShow(() => {
+  isPageVisible.value = true
   if (!userStore.isLoggedIn) {
     uni.reLaunch({ url: '/pages/auth/login' })
     return
@@ -339,6 +342,10 @@ onShow(() => {
   }
   loadConversationMeta()
   loadHistory()
+})
+
+onHide(() => {
+  isPageVisible.value = false
 })
 
 const goBack = () => {
@@ -432,6 +439,11 @@ const goBack = () => {
   padding: 24rpx 24rpx 200rpx;
   min-height: 0;
   box-sizing: border-box;
+}
+
+.message-list::-webkit-scrollbar {
+  width: 0;
+  display: none;
 }
 
 .state {

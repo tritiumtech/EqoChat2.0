@@ -45,16 +45,20 @@ class Request {
     const locale = uni.getStorageSync('locale') || 'zh-CN'
     
     const normalizeError = (payload: any): ApiError => {
-      if (payload && typeof payload === 'object') {
-        const message = payload.message || payload.msg || payload.error || '请求失败'
-        return {
-          code: payload.code,
-          message,
-          errorCode: payload.errorCode,
-          timestamp: payload.timestamp
-        }
+      if (!payload || typeof payload !== 'object') {
+        return { message: String(payload || '请求失败') }
       }
-      return { message: String(payload || '请求失败') }
+      const rawData = typeof payload.data === 'string' ? (() => {
+        try { return JSON.parse(payload.data) } catch { return null }
+      })() : payload.data
+      const source = rawData && typeof rawData === 'object' ? rawData : payload
+      const message = source.message || source.msg || source.error || payload.message || payload.msg || '请求失败'
+      return {
+        code: payload.code ?? source.code,
+        message: typeof message === 'string' ? message : '请求失败',
+        errorCode: payload.errorCode ?? source.errorCode,
+        timestamp: payload.timestamp ?? source.timestamp
+      }
     }
 
     return new Promise((resolve, reject) => {
@@ -81,29 +85,34 @@ class Request {
             reject({ message: '未登录' })
             return
           }
+          let payload = res.data
+          if (typeof payload === 'string') {
+            try { payload = JSON.parse(payload) } catch { /* ignore */ }
+          }
           if (res.statusCode >= 200 && res.statusCode < 300) {
-            const payload = res.data as ApiResponse<T> | T
+            const typedPayload = payload as ApiResponse<T> | T
             if (
-              payload &&
-              typeof payload === 'object' &&
-              'code' in payload &&
-              typeof (payload as ApiResponse<T>).code === 'number'
+              typedPayload &&
+              typeof typedPayload === 'object' &&
+              'code' in typedPayload &&
+              typeof (typedPayload as ApiResponse<T>).code === 'number'
             ) {
-              const apiPayload = payload as ApiResponse<T>
+              const apiPayload = typedPayload as ApiResponse<T>
               if (apiPayload.code === 200) {
                 resolve(apiPayload.data as T)
               } else {
                 reject(normalizeError(apiPayload))
               }
             } else {
-              resolve(payload as T)
+              resolve(typedPayload as T)
             }
           } else {
-            reject(normalizeError(res.data))
+            reject(normalizeError(payload ?? res.data))
           }
         },
-        fail: (err) => {
-          reject(normalizeError(err))
+        fail: (err: any) => {
+          const msg = err?.message || err?.msg || err?.errMsg || '网络请求失败'
+          reject({ message: typeof msg === 'string' ? msg : '网络请求失败' })
         }
       })
     })
@@ -125,6 +134,14 @@ class Request {
   delete<T>(url: string) {
     return this.request<T>('DELETE', url)
   }
+}
+
+/** 从 API 错误对象中提取用户可见的提示文案 */
+export function getApiErrorMessage(err: any, fallback = '请求失败'): string {
+  if (err == null) return fallback
+  if (typeof err === 'string') return err || fallback
+  const msg = err.message ?? err.msg ?? err.errMsg ?? err.data?.message ?? err.data?.msg
+  return (typeof msg === 'string' && msg.trim()) ? msg : fallback
 }
 
 export default new Request({ baseURL: BASE_URL })

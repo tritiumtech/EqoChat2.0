@@ -73,6 +73,13 @@
       }
     },
     {
+      "path": "pages/contact/contact-detail",
+      "type": "page",
+      "style": {
+        "navigationBarTitleText": "好友详情"
+      }
+    },
+    {
       "path": "pages/discover/discover",
       "type": "page",
       "style": {

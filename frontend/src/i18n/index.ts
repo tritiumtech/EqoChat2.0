@@ -45,13 +45,18 @@ const messages = {
       not_logged_in: '未登录'
     },
     action: {
+      start_chat: '发起聊天',
       login: '登录',
       login_loading: '登录中...',
       register: '注册',
       register_loading: '注册中...',
       send_code: '发送验证码',
       create: '发起',
-      add: '添加'
+      add: '添加',
+      add_friend: '添加好友',
+      send_request: '发送申请',
+      accept: '同意',
+      reject: '拒绝'
     },
     field: {
       phone: '手机号',
@@ -66,9 +71,14 @@ const messages = {
       verify_code: '请输入验证码',
       message: '输入消息...',
       new_chat: '输入用户ID开始聊天',
-      new_contact: '输入用户ID添加好友'
+      new_contact: '输入用户ID添加好友',
+      friend_request_message: '请输入验证信息（选填）'
     },
     toast: {
+      request_sent: '申请已发送',
+      request_accepted: '已同意',
+      request_rejected: '已拒绝',
+      cancel: '取消',
       phone_password_required: '请输入手机号和密码',
       fill_required: '请填写完整信息',
       send_code_success: '验证码已发送',
@@ -108,7 +118,16 @@ const messages = {
       },
       contact: {
         title: '联系人',
-        subtitle: '与你常联系的伙伴'
+        subtitle: '与你常联系的伙伴',
+        friend_requests: '好友申请',
+        friends: '好友',
+        no_requests: '暂无好友申请',
+        add_modal_subtitle: '输入对方 ID 并填写验证信息，等待对方同意',
+        add_modal_label_id: '对方用户 ID',
+        add_modal_label_message: '验证信息',
+        add_modal_optional: '选填',
+        detail: '好友详情',
+        user_id: '用户 ID'
       },
       discover: {
         title: '发现',
@@ -153,13 +172,18 @@ const messages = {
       not_logged_in: 'Not logged in'
     },
     action: {
+      start_chat: 'Start Chat',
       login: 'Log In',
       login_loading: 'Logging in...',
       register: 'Sign Up',
       register_loading: 'Signing up...',
       send_code: 'Send Code',
       create: 'Start',
-      add: 'Add'
+      add: 'Add',
+      add_friend: 'Add Friend',
+      send_request: 'Send Request',
+      accept: 'Accept',
+      reject: 'Reject'
     },
     field: {
       phone: 'Phone',
@@ -174,9 +198,14 @@ const messages = {
       verify_code: 'Verification code',
       message: 'Type a message...',
       new_chat: 'Enter user ID to chat',
-      new_contact: 'Enter user ID to add'
+      new_contact: 'Enter user ID to add',
+      friend_request_message: 'Verification message (optional)'
     },
     toast: {
+      request_sent: 'Request sent',
+      request_accepted: 'Accepted',
+      request_rejected: 'Rejected',
+      cancel: 'Cancel',
       phone_password_required: 'Phone and password are required',
       fill_required: 'Please complete the form',
       send_code_success: 'Code sent',
@@ -216,7 +245,16 @@ const messages = {
       },
       contact: {
         title: 'Contacts',
-        subtitle: 'People you connect with most'
+        subtitle: 'People you connect with most',
+        friend_requests: 'Friend Requests',
+        friends: 'Friends',
+        no_requests: 'No friend requests',
+        add_modal_subtitle: 'Enter their ID and verification message, wait for approval',
+        add_modal_label_id: 'User ID',
+        add_modal_label_message: 'Verification message',
+        add_modal_optional: 'optional',
+        detail: 'Contact Detail',
+        user_id: 'User ID'
       },
       discover: {
         title: 'Discover',

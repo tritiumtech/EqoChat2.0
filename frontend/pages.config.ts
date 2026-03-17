@@ -57,6 +57,12 @@ export default defineUniPages({
       },
     },
     {
+      path: 'pages/contact/contact-detail',
+      style: {
+        navigationBarTitleText: '好友详情',
+      },
+    },
+    {
       path: 'pages/discover/discover',
       style: {
         navigationBarTitleText: '发现',
