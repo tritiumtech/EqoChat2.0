@@ -1,7 +1,7 @@
 package com.eqochat.controller;
 
 import com.eqochat.common.ApiResponse;
-import com.eqochat.common.BizException;
+import com.eqochat.common.UserContext;
 import com.eqochat.dto.request.LoginRequest;
 import com.eqochat.dto.request.RegisterRequest;
 import com.eqochat.dto.request.VerifyCodeRequest;
@@ -11,7 +11,6 @@ import com.eqochat.service.AuthService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 /**
@@ -70,26 +69,6 @@ public class AuthController {
      */
     @GetMapping("/me")
     public ApiResponse<UserInfoResponse> getCurrentUser() {
-        UserInfoResponse response = authService.getUserInfo(resolveUserId());
-        return ApiResponse.success(response);
-    }
-
-    private Long resolveUserId() {
-        var auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || auth.getPrincipal() == null) {
-            throw BizException.of(401, "auth.token.invalid");
-        }
-        Object principal = auth.getPrincipal();
-        if (principal instanceof Long) {
-            return (Long) principal;
-        }
-        if (principal instanceof String) {
-            try {
-                return Long.parseLong((String) principal);
-            } catch (NumberFormatException ignored) {
-                // fall through
-            }
-        }
-        throw BizException.of(401, "auth.token.invalid");
+        return ApiResponse.success(authService.getUserInfo(UserContext.requireCurrentUser()));
     }
 }

@@ -1,7 +1,7 @@
 package com.eqochat.controller;
 
 import com.eqochat.common.ApiResponse;
-import com.eqochat.common.BizException;
+import com.eqochat.common.UserContext;
 import com.eqochat.dto.request.CreateConversationRequest;
 import com.eqochat.dto.request.SendMessageRequest;
 import com.eqochat.dto.response.ConversationSummaryResponse;
@@ -10,7 +10,6 @@ import com.eqochat.service.ConversationService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -25,21 +24,18 @@ public class ConversationController {
     
     @GetMapping
     public ApiResponse<List<ConversationSummaryResponse>> listConversations() {
-        Long userId = resolveUserId();
-        return ApiResponse.success(conversationService.listConversations(userId));
+        return ApiResponse.success(conversationService.listConversations(UserContext.requireCurrentUser()));
     }
 
     @GetMapping("/{conversationId}")
     public ApiResponse<ConversationSummaryResponse> getConversation(@PathVariable Long conversationId) {
-        Long userId = resolveUserId();
-        return ApiResponse.success(conversationService.getConversation(userId, conversationId));
+        return ApiResponse.success(conversationService.getConversation(UserContext.requireCurrentUser(), conversationId));
     }
     
     @PostMapping
     public ApiResponse<ConversationSummaryResponse> createConversation(
             @RequestBody @Valid CreateConversationRequest request) {
-        Long userId = resolveUserId();
-        return ApiResponse.success(conversationService.createConversation(userId, request));
+        return ApiResponse.success(conversationService.createConversation(UserContext.requireCurrentUser(), request));
     }
     
     @GetMapping("/{conversationId}/messages")
@@ -47,34 +43,15 @@ public class ConversationController {
             @PathVariable Long conversationId,
             @RequestParam(required = false) Long lastMessageId,
             @RequestParam(required = false) Integer limit) {
-        Long userId = resolveUserId();
-        return ApiResponse.success(conversationService.getMessages(userId, conversationId, lastMessageId, limit));
+        return ApiResponse.success(conversationService.getMessages(
+                UserContext.requireCurrentUser(), conversationId, lastMessageId, limit));
     }
 
     @PostMapping("/{conversationId}/messages")
     public ApiResponse<MessageResponse> sendMessage(
             @PathVariable Long conversationId,
             @RequestBody @Valid SendMessageRequest request) {
-        Long userId = resolveUserId();
-        return ApiResponse.success(conversationService.sendMessage(userId, conversationId, request));
-    }
-    
-    private Long resolveUserId() {
-        var auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || auth.getPrincipal() == null) {
-            throw BizException.of(401, "auth.token.invalid");
-        }
-        Object principal = auth.getPrincipal();
-        if (principal instanceof Long) {
-            return (Long) principal;
-        }
-        if (principal instanceof String) {
-            try {
-                return Long.parseLong((String) principal);
-            } catch (NumberFormatException ignored) {
-                // fall through
-            }
-        }
-        throw BizException.of(401, "auth.token.invalid");
+        return ApiResponse.success(conversationService.sendMessage(
+                UserContext.requireCurrentUser(), conversationId, request));
     }
 }

@@ -5,3 +5,5 @@ backend/target
 frontend/node_modules
 frontend/pnpm-lock.yaml
 .idea
+frontend/dist
+frontend/.hbuilderx

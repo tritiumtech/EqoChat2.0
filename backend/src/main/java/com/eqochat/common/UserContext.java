@@ -2,9 +2,10 @@ package com.eqochat.common;
 
 import lombok.extern.slf4j.Slf4j;
 
+
 /**
  * 当前用户上下文
- * 使用ThreadLocal存储当前登录用户ID
+ * 使用ThreadLocal存储当前登录用户ID，由 UserContextFilter 设置
  */
 @Slf4j
 public class UserContext {
@@ -49,5 +50,16 @@ public class UserContext {
      */
     public static Long getCurrentUserOrSystem() {
         return getCurrentUserOrDefault(0L);
+    }
+
+    /**
+     * 获取当前用户ID，未登录时抛出 401
+     */
+    public static Long requireCurrentUser() {
+        Long userId = CURRENT_USER.get();
+        if (userId == null) {
+            throw BizException.of(401, "auth.token.invalid");
+        }
+        return userId;
     }
 }
