@@ -103,13 +103,13 @@ class WebSocketClient {
     })
 
     // 设置超时
-    this.connectTimeoutTimer = window.setTimeout(() => {
+    this.connectTimeoutTimer = setTimeout(() => {
       if (!this.isConnected) {
         console.error('WebSocket连接超时')
         this.close()
         this.scheduleReconnect()
       }
-    }, this.config.connectTimeout)
+    }, this.config.connectTimeout) as unknown as number
 
     // 监听打开
     this.ws.onOpen(() => {
@@ -358,11 +358,11 @@ class WebSocketClient {
    */
   private startHeartbeat(): void {
     this.stopHeartbeat()
-    this.heartbeatTimer = window.setInterval(() => {
+    this.heartbeatTimer = setInterval(() => {
       if (this.isConnected) {
         this.sendHeartbeat()
       }
-    }, this.config.heartbeatInterval)
+    }, this.config.heartbeatInterval) as unknown as number
   }
 
   /**
@@ -387,9 +387,9 @@ class WebSocketClient {
     this.reconnectCount++
     console.log(`计划${this.config.reconnectInterval}ms后重连(第${this.reconnectCount}次)...`)
 
-    this.reconnectTimer = window.setTimeout(() => {
+    this.reconnectTimer = setTimeout(() => {
       this.connect()
-    }, this.config.reconnectInterval)
+    }, this.config.reconnectInterval) as unknown as number
   }
 
   /**

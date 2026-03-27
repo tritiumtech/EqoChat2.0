@@ -51,7 +51,7 @@ const handleLogin = async () => {
     const data = await authApi.login({ phone: phone.value, password: password.value })
     userStore.setToken(data.token)
     userStore.setUserInfo(data.userInfo)
-    uni.switchTab({ url: '/pages/chat/chat-list' })
+    uni.redirectTo({ url: '/pages/chat/chat-list' })
   } catch (err: any) {
     uni.showToast({ title: err?.message || t('toast.login_failed'), icon: 'none' })
   } finally {

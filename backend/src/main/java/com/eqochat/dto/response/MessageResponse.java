@@ -15,5 +15,6 @@ public class MessageResponse {
     private String senderType;
     private String messageType;
     private String content;
+    private MessageAttachmentResponse attachment;
     private LocalDateTime createTime;
 }

@@ -16,4 +16,5 @@ public class ConversationSummaryResponse {
     private String lastMessage;
     private LocalDateTime lastMessageAt;
     private Integer unreadCount;
+    private Boolean online;
 }

@@ -3,6 +3,8 @@ package com.eqochat.dto.response;
 import lombok.Builder;
 import lombok.Data;
 
+import java.util.List;
+
 @Data
 @Builder
 public class ContactResponse {
@@ -11,4 +13,5 @@ public class ContactResponse {
     private String nickname;
     private String avatarUrl;
     private String status;
+    private List<String> tags;
 }

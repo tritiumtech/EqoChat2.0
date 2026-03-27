@@ -1,24 +1,28 @@
 :root {
-  /* 基础背景与前景色 */
-  --c-bg: #f6f2ee;
-  --c-bg-2: #edf2ff;
-  --c-ink: #1a1720;
-  --c-muted: #6b6673;
+  /* 基础背景与前景色（对齐 Chatinterfacedesign theme.css） */
+  --c-bg: #ffffff;
+  --c-bg-2: #ececf0;
+  --c-ink: #030213;
+  --c-muted: #717182;
 
   /* 主色与辅助色 */
-  --c-primary: #ff7a59;
-  --c-primary-deep: #e85b3a;
-  --c-secondary: #4f6bff;
+  --c-primary: #030213;
+  --c-primary-deep: #1f1e2f;
+  --c-secondary: #5b67f1;
+  --c-violet: #7c3aed;
 
   /* 表面与边框、阴影 */
   --c-surface: #ffffff;
-  --c-border: rgba(26, 23, 32, 0.08);
-  --c-shadow: 0 24rpx 60rpx rgba(27, 21, 44, 0.16);
-  --c-shadow-soft: 0 12rpx 32rpx rgba(27, 21, 44, 0.1);
+  --c-border: rgba(0, 0, 0, 0.1);
+  --c-input-bg: #f3f3f5;
+  --c-accent: #e9ebef;
+  --c-destructive: #d4183d;
+  --c-shadow: 0 24rpx 60rpx rgba(0, 0, 0, 0.12);
+  --c-shadow-soft: 0 10rpx 24rpx rgba(0, 0, 0, 0.06);
 
   /* 消息语义色 */
   --c-message-inbound: #ffffff;
-  --c-message-outbound: #ffefe6;
+  --c-message-outbound: #f3f3f5;
   --c-message-system: #e5e7eb;
 
   /* 圆角体系 */

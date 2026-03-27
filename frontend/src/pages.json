@@ -5,38 +5,7 @@
     "navigationBarBackgroundColor": "#F8F8F8",
     "backgroundColor": "#F8F8F8"
   },
-  "tabBar": {
-    "color": "#7A7E83",
-    "selectedColor": "#3CC51F",
-    "borderStyle": "black",
-    "backgroundColor": "#ffffff",
-    "list": [
-      {
-        "pagePath": "pages/chat/chat-list",
-        "text": "聊天"
-      },
-      {
-        "pagePath": "pages/contact/contact-list",
-        "text": "联系人"
-      },
-      {
-        "pagePath": "pages/discover/discover",
-        "text": "发现"
-      },
-      {
-        "pagePath": "pages/profile/profile",
-        "text": "我的"
-      }
-    ]
-  },
   "pages": [
-    {
-      "path": "pages/index/index",
-      "type": "home",
-      "style": {
-        "navigationBarTitleText": "EqoChat"
-      }
-    },
     {
       "path": "pages/auth/login",
       "type": "page",
@@ -62,7 +31,8 @@
       "path": "pages/chat/chat-room",
       "type": "page",
       "style": {
-        "navigationBarTitleText": ""
+        "navigationBarTitleText": "",
+        "navigationStyle": "custom"
       }
     },
     {
@@ -80,10 +50,10 @@
       }
     },
     {
-      "path": "pages/discover/discover",
+      "path": "pages/world/world",
       "type": "page",
       "style": {
-        "navigationBarTitleText": "发现"
+        "navigationBarTitleText": "世界"
       }
     },
     {

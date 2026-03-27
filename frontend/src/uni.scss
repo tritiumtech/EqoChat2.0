@@ -1,6 +1,8 @@
-$uni-color-primary: #1890ff;
+@import "@/uni_modules/uview-plus/theme.scss";
+
+$uni-color-primary: #030213;
 $uni-color-success: #52c41a;
 $uni-color-warning: #faad14;
-$uni-color-error: #f5222d;
-$uni-text-color: #111827;
-$uni-bg-color: #f7f9fc;
+$uni-color-error: #d4183d;
+$uni-text-color: #030213;
+$uni-bg-color: #ffffff;

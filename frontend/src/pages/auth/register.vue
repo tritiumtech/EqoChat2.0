@@ -106,7 +106,7 @@ const handleRegister = async () => {
     })
     userStore.setToken(data.token)
     userStore.setUserInfo(data.userInfo)
-    uni.switchTab({ url: '/pages/chat/chat-list' })
+    uni.redirectTo({ url: '/pages/chat/chat-list' })
   } catch (err: any) {
     uni.showToast({ title: err?.message || t('toast.register_failed'), icon: 'none' })
   } finally {

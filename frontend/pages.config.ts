@@ -7,37 +7,7 @@ export default defineUniPages({
     navigationBarBackgroundColor: '#F8F8F8',
     backgroundColor: '#F8F8F8',
   },
-  tabBar: {
-    color: '#7A7E83',
-    selectedColor: '#3CC51F',
-    borderStyle: 'black',
-    backgroundColor: '#ffffff',
-    list: [
-      {
-        pagePath: 'pages/chat/chat-list',
-        text: '聊天',
-      },
-      {
-        pagePath: 'pages/contact/contact-list',
-        text: '联系人',
-      },
-      {
-        pagePath: 'pages/discover/discover',
-        text: '发现',
-      },
-      {
-        pagePath: 'pages/profile/profile',
-        text: '我的',
-      },
-    ],
-  },
   pages: [
-    {
-      path: 'pages/index/index',
-      style: {
-        navigationBarTitleText: 'EqoChat',
-      },
-    },
     {
       path: 'pages/chat/chat-list',
       style: {
@@ -48,6 +18,7 @@ export default defineUniPages({
       path: 'pages/chat/chat-room',
       style: {
         navigationBarTitleText: '',
+        navigationStyle: 'custom',
       },
     },
     {
@@ -63,9 +34,9 @@ export default defineUniPages({
       },
     },
     {
-      path: 'pages/discover/discover',
+      path: 'pages/world/world',
       style: {
-        navigationBarTitleText: '发现',
+        navigationBarTitleText: '世界',
       },
     },
     {

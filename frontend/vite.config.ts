@@ -12,6 +12,15 @@ export default ({ mode }: { mode: string }) => {
   return defineConfig({
     envDir: './env',
     plugins: [uni()],
+    css: {
+      preprocessorOptions: {
+        scss: {
+          // uview-plus 目前仍使用 legacy API 与 @import，先静默弃用警告
+          silenceDeprecations: ['legacy-js-api', 'import'],
+          quietDeps: true,
+        },
+      },
+    },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, 'src'),

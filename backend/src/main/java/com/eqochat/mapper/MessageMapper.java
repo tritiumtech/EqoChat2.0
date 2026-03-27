@@ -11,13 +11,19 @@ import java.util.List;
 @Mapper
 public interface MessageMapper extends BaseMapper<Message> {
     
-    @Select("SELECT * FROM message WHERE conversation_id = #{conversationId} AND del_token = '0' ORDER BY create_time DESC LIMIT #{limit}")
+    @Select("SELECT * FROM message WHERE conversation_id = #{conversationId} AND del_token = '0' ORDER BY id DESC LIMIT #{limit}")
     List<Message> selectByConversationId(@Param("conversationId") Long conversationId, @Param("limit") Integer limit);
     
-    @Select("SELECT * FROM message WHERE conversation_id = #{conversationId} AND id < #{lastId} AND del_token = '0' ORDER BY create_time DESC LIMIT #{limit}")
+    @Select("SELECT * FROM message WHERE conversation_id = #{conversationId} AND id < #{lastId} AND del_token = '0' ORDER BY id DESC LIMIT #{limit}")
     List<Message> selectByConversationIdWithCursor(@Param("conversationId") Long conversationId, 
                                                       @Param("lastId") Long lastId, 
                                                       @Param("limit") Integer limit);
+
+    @Select("SELECT COUNT(*) FROM message WHERE conversation_id = #{conversationId} AND del_token = '0'")
+    long countByConversationId(@Param("conversationId") Long conversationId);
+
+    @Select("SELECT COUNT(*) FROM message WHERE conversation_id = #{conversationId} AND id < #{lastId} AND del_token = '0'")
+    long countOlderMessages(@Param("conversationId") Long conversationId, @Param("lastId") Long lastId);
 
     @Select("""
             <script>

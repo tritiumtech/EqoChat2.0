@@ -1,9 +1,11 @@
 package com.eqochat.service.impl;
 
 import com.eqochat.common.BizException;
+import com.eqochat.domain.entity.UserContactTag;
 import com.eqochat.domain.entity.UserFriend;
 import com.eqochat.domain.entity.UserProfile;
 import com.eqochat.dto.response.ContactResponse;
+import com.eqochat.mapper.UserContactTagMapper;
 import com.eqochat.mapper.UserFriendMapper;
 import com.eqochat.service.ContactService;
 import com.eqochat.service.UserProfileService;
@@ -13,7 +15,9 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -22,6 +26,7 @@ import java.util.stream.Collectors;
 public class ContactServiceImpl implements ContactService {
     
     private final UserFriendMapper userFriendMapper;
+    private final UserContactTagMapper userContactTagMapper;
     private final UserProfileService userProfileService;
     
     @Override
@@ -36,6 +41,8 @@ public class ContactServiceImpl implements ContactService {
                 .collect(Collectors.toList());
         
         List<UserProfile> profiles = userProfileService.listByIds(friendIds);
+        var tagsByFriendId = friendIds.stream()
+                .collect(Collectors.toMap(id -> id, id -> userContactTagMapper.selectActiveTagNames(userId, id)));
         
         return profiles.stream()
                 .map(profile -> ContactResponse.builder()
@@ -43,6 +50,7 @@ public class ContactServiceImpl implements ContactService {
                         .nickname(profile.getNickname())
                         .avatarUrl(profile.getAvatarUrl())
                         .status(profile.getStatus() != null ? profile.getStatus().name() : null)
+                        .tags(tagsByFriendId.getOrDefault(profile.getId(), List.of()))
                         .build())
                 .collect(Collectors.toList());
     }
@@ -89,6 +97,53 @@ public class ContactServiceImpl implements ContactService {
                 .nickname(friendProfile.getNickname())
                 .avatarUrl(friendProfile.getAvatarUrl())
                 .status(friendProfile.getStatus() != null ? friendProfile.getStatus().name() : null)
+                .tags(List.of())
                 .build();
+    }
+
+    @Override
+    public List<String> updateContactTags(Long userId, Long friendId, List<String> tags) {
+        if (friendId == null) {
+            throw BizException.of("contact.user.not_found");
+        }
+        boolean areFriends = userFriendMapper.areFriends(userId, friendId);
+        if (!areFriends) {
+            throw BizException.of("contact.not_friend");
+        }
+        List<String> normalized = normalizeTags(tags);
+        userContactTagMapper.hardDeleteAll(userId, friendId);
+        for (String tag : normalized) {
+            userContactTagMapper.insert(UserContactTag.builder()
+                    .userId(userId)
+                    .friendId(friendId)
+                    .tagName(tag)
+                    .delToken("0")
+                    .build());
+        }
+        return normalized;
+    }
+
+    private static List<String> normalizeTags(List<String> tags) {
+        if (tags == null || tags.isEmpty()) return List.of();
+        Set<String> seen = new LinkedHashSet<>();
+        List<String> out = new ArrayList<>();
+        for (String raw : tags) {
+            String n = normalizeTag(raw);
+            if (n == null) continue;
+            String key = n.toLowerCase();
+            if (seen.contains(key)) continue;
+            seen.add(key);
+            out.add(n);
+            if (out.size() >= 20) break;
+        }
+        return out;
+    }
+
+    private static String normalizeTag(String raw) {
+        if (raw == null) return null;
+        String t = raw.trim().replaceAll("\\s+", " ");
+        if (t.isBlank()) return null;
+        if (t.length() > 24) return t.substring(0, 24);
+        return t;
     }
 }

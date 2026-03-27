@@ -1,60 +1,98 @@
 <template>
   <view class="page">
-    <scroll-view class="scroll-body" scroll-y>
-      <view class="hero">
-        <view class="hero-top">
-          <view>
-            <text class="title">{{ t('page.contact.title') }}</text>
-            <text class="subtitle">{{ t('page.contact.subtitle') }}</text>
-          </view>
-          <view class="chip">{{ contacts.length }}</view>
-        </view>
-        <button class="btn-add" @click="showAddModal = true; addFormError = ''">{{ t('action.add_friend') }}</button>
+    <view class="head">
+      <view class="head-row">
+        <text class="screen-title">{{ t('page.contact.title') }}</text>
+        <button class="add-btn" @click="showAddModal = true; addFormError = ''">
+          <text class="add-glyph">+</text>
+        </button>
       </view>
+      <SearchBar v-model="searchQuery" :placeholder="t('page.contact.search_placeholder')" />
+    </view>
 
-      <view v-if="receivedRequests.length > 0" class="section">
-        <text class="section-title">{{ t('page.contact.friend_requests') }}</text>
-        <view v-for="req in receivedRequests" :key="req.id" class="request-item">
-          <view class="avatar">
-            <text>{{ req.requesterNickname?.slice(0, 1) || '?' }}</text>
-          </view>
-          <view class="content">
-            <text class="name">{{ req.requesterNickname || '用户' + req.requesterId }}</text>
-            <text class="meta" v-if="req.requestMessage">{{ req.requestMessage }}</text>
-            <text class="meta" v-else>ID: {{ req.requesterId }}</text>
-          </view>
-          <view class="actions">
-            <button class="btn-sm accept" @click="handleAccept(req.id)">{{ t('action.accept') }}</button>
-            <button class="btn-sm reject" @click="handleReject(req.id)">{{ t('action.reject') }}</button>
-          </view>
-        </view>
-      </view>
-
-      <view class="list">
-        <text v-if="contacts.length > 0" class="section-title">{{ t('page.contact.friends') }} ({{ contacts.length }})</text>
-        <view v-if="loading" class="state">{{ t('common.loading') }}</view>
-        <view v-else-if="contacts.length === 0 && receivedRequests.length === 0" class="state">{{ t('common.empty_contact') }}</view>
-        <navigator
-          v-else
-          v-for="item in contacts"
-          :key="item.id"
-          class="contact-item"
-          :url="'/pages/contact/contact-detail?id=' + item.id"
-          open-type="navigate"
-          hover-class="contact-item-hover"
+    <scroll-view class="chips-scroll" scroll-x :show-scrollbar="false">
+      <view class="chips-inner">
+        <button
+          class="chip"
+          :class="{ active: tagFilter === 'all' }"
+          @click="tagFilter = 'all'"
         >
-          <view class="item-inner">
-            <view class="avatar contact-avatar">
-              <text>{{ (item.nickname || '?').slice(0, 1) }}</text>
-            </view>
-            <view class="content">
-              <text class="name">{{ item.nickname }}</text>
-              <text class="meta">ID: {{ item.id }}</text>
-            </view>
-          </view>
-        </navigator>
+          {{ t('page.contact.filter_all') }}
+        </button>
+        <button
+          class="chip"
+          v-for="topic in topicFilters"
+          :key="topic"
+          :class="{ active: tagFilter === topic }"
+          @click="tagFilter = topic"
+        >
+          #{{ topic }}
+        </button>
       </view>
     </scroll-view>
+
+    <view v-if="receivedRequests.length > 0" class="requests-bar">
+      <text class="requests-title">{{ t('page.contact.friend_requests') }} ({{ receivedRequests.length }})</text>
+      <scroll-view class="req-scroll" scroll-x :show-scrollbar="false">
+        <view v-for="req in receivedRequests" :key="req.id" class="req-card">
+          <text class="req-name">{{ req.requesterNickname || `ID ${req.requesterId}` }}</text>
+          <view class="req-actions">
+            <button class="req-btn accept" @click="handleAccept(req.id)">{{ t('action.accept') }}</button>
+            <button class="req-btn reject" @click="handleReject(req.id)">{{ t('action.reject') }}</button>
+          </view>
+        </view>
+      </scroll-view>
+    </view>
+
+    <view class="list-zone">
+      <scroll-view
+        class="main-scroll"
+        scroll-y
+        :scroll-into-view="scrollIntoView"
+        scroll-with-animation
+      >
+        <view v-if="loading" class="state">{{ t('common.loading') }}</view>
+        <view v-else-if="letters.length === 0" class="empty">
+          <text class="empty-title">{{ t('page.contact.empty_filter') }}</text>
+          <text class="empty-sub">{{ t('page.contact.empty_filter_hint') }}</text>
+        </view>
+        <block v-else>
+          <view v-for="letter in letters" :key="letter" :id="letterId(letter)" class="section">
+            <view class="letter-head">
+              <text class="letter-text">{{ letter }}</text>
+            </view>
+            <view
+              v-for="item in grouped[letter]"
+              :key="item.id"
+              class="contact-row"
+              @click="goDetail(item.id)"
+            >
+              <view class="avatar-wrap">
+                <view class="avatar" :style="avatarStyle(item)">
+                  <text class="avatar-letter">{{ (item.nickname || '?').slice(0, 1) }}</text>
+                </view>
+              </view>
+              <view class="info">
+                <text class="name">{{ item.nickname }}</text>
+                <text class="role">
+                  {{ item.tags?.length ? `#${item.tags[0]}` : `${t('page.contact.user_id')}: ${item.id}` }}
+                </text>
+              </view>
+            </view>
+          </view>
+        </block>
+        <view class="scroll-pad" />
+      </scroll-view>
+
+      <view v-if="letters.length > 0" class="index-bar">
+        <text
+          v-for="letter in letters"
+          :key="letter"
+          class="index-letter"
+          @click="scrollToLetter(letter)"
+        >{{ letter }}</text>
+      </view>
+    </view>
 
     <ModalSheet :visible="showAddModal" @close="showAddModal = false; addFormError = ''">
       <template #header>
@@ -103,11 +141,13 @@
         </view>
       </template>
     </ModalSheet>
+
+    <BottomNav />
   </view>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
+import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { useI18n } from 'vue-i18n'
 import { contactApi, type ContactItem as Contact } from '@/api/modules/contact'
@@ -115,6 +155,8 @@ import { friendRequestApi, type FriendRequestItem } from '@/api/modules/friendRe
 import { useUserStore } from '@/store/modules/user'
 import { getApiErrorMessage } from '@/utils/request'
 import ModalSheet from '@/components/ModalSheet.vue'
+import SearchBar from '@/components/SearchBar.vue'
+import BottomNav from '@/components/BottomNav.vue'
 
 const contacts = ref<Contact[]>([])
 const receivedRequests = ref<FriendRequestItem[]>([])
@@ -125,10 +167,81 @@ const addForm = reactive({ friendId: '', requestMessage: '' })
 const userStore = useUserStore()
 const { t } = useI18n()
 
+const searchQuery = ref('')
+const tagFilter = ref('all')
+const scrollIntoView = ref('')
+let queryTimer: number | null = null
+
+const avatarHue = (s: string) => {
+  const hues = ['#14B8A6', '#3B82F6', '#8B5CF6', '#EC4899', '#F59E0B', '#10B981', '#6366F1', '#EF4444']
+  let h = 0
+  for (let i = 0; i < s.length; i++) h = s.charCodeAt(i) + ((h << 5) - h)
+  return hues[Math.abs(h) % hues.length]!
+}
+
+const avatarStyle = (item: Contact) => {
+  const c = avatarHue(item.nickname || String(item.id))
+  return { background: `linear-gradient(135deg, ${c}f0, ${c}c0)` }
+}
+
+const topicFilters = computed(() => {
+  const topics = new Set<string>()
+  for (const c of contacts.value) {
+    for (const tag of c.tags || []) {
+      if (tag?.trim()) topics.add(tag.trim())
+    }
+  }
+  return Array.from(topics).sort((a, b) => a.localeCompare(b, 'zh-CN'))
+})
+
+const filteredContacts = computed(() => {
+  if (tagFilter.value === 'all') return contacts.value
+  return contacts.value.filter((x) => (x.tags || []).includes(tagFilter.value))
+})
+
+const grouped = computed(() => {
+  const map: Record<string, Contact[]> = {}
+  for (const c of filteredContacts.value) {
+    const name = c.nickname?.trim() || '?'
+    const letter = name.charAt(0).toUpperCase()
+    const key = /[A-Z0-9]/.test(letter) ? letter : '#'
+    if (!map[key]) map[key] = []
+    map[key]!.push(c)
+  }
+  for (const k of Object.keys(map)) {
+    map[k]!.sort((a, b) => (a.nickname || '').localeCompare(b.nickname || '', 'zh-CN'))
+  }
+  return map
+})
+
+const letters = computed(() => Object.keys(grouped.value).sort((a, b) => a.localeCompare(b, 'en')))
+
+const letterAnchors: Record<string, string> = {
+  '#': 'sym',
+}
+
+const letterId = (letter: string) => 'letter-' + (letterAnchors[letter] ?? letter)
+
+const scrollToLetter = (letter: string) => {
+  scrollIntoView.value = ''
+  nextTick(() => {
+    scrollIntoView.value = letterId(letter)
+  })
+}
+
+const goDetail = (id: number) => {
+  uni.navigateTo({ url: '/pages/contact/contact-detail?id=' + id })
+}
+
 const fetchContacts = async () => {
   loading.value = true
   try {
-    contacts.value = await contactApi.listContacts()
+    const q = searchQuery.value.trim()
+    const list = await contactApi.listContacts({ q: q || undefined })
+    contacts.value = list.map((item) => ({ ...item, tags: item.tags || [] }))
+    if (tagFilter.value !== 'all' && !topicFilters.value.includes(tagFilter.value)) {
+      tagFilter.value = 'all'
+    }
   } catch (err: any) {
     uni.showToast({ title: err?.message || t('toast.load_failed'), icon: 'none' })
   } finally {
@@ -197,189 +310,289 @@ onShow(() => {
   fetchContacts()
   fetchReceivedRequests()
 })
+
+watch(searchQuery, () => {
+  if (queryTimer) clearTimeout(queryTimer)
+  queryTimer = setTimeout(() => {
+    fetchContacts()
+  }, 220) as unknown as number
+})
 </script>
 
 <style scoped>
+@import "@/styles/tokens.css";
+
 .page {
   min-height: 100vh;
-  background: linear-gradient(180deg, #f6f2ee 0%, #f0f7ff 100%);
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(165deg, var(--c-bg) 0%, var(--c-bg-2) 100%);
+  box-sizing: border-box;
 }
 
-.hero {
-  background: #15131c;
-  color: #fff;
-  border-radius: var(--radius-xl);
-  padding: 28rpx 24rpx;
-  box-shadow: var(--c-shadow);
-  margin-bottom: 24rpx;
+.head {
+  flex-shrink: 0;
+  padding: 20rpx 24rpx 12rpx;
+  background: rgba(255, 255, 255, 0.96);
+  border-bottom: 1rpx solid var(--c-border);
+  box-shadow: 0 6rpx 16rpx rgba(0, 0, 0, 0.04);
 }
 
-.hero-top {
+.head-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   margin-bottom: 20rpx;
 }
 
-.title {
+.screen-title {
   font-size: 40rpx;
   font-weight: 700;
-  display: block;
+  color: var(--c-ink);
 }
 
-.subtitle {
-  font-size: 24rpx;
-  color: rgba(255, 255, 255, 0.7);
-  margin-top: 8rpx;
-  display: block;
-}
-
-.chip {
-  min-width: 64rpx;
-  height: 64rpx;
-  border-radius: var(--radius-pill);
-  background: rgba(255, 255, 255, 0.18);
+.add-btn {
+  width: 80rpx;
+  height: 80rpx;
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: var(--radius-lg);
+  background: var(--c-primary);
+  color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: 700;
+  box-shadow: 0 10rpx 20rpx rgba(3, 2, 19, 0.24);
 }
 
-.btn-add {
-  width: 100%;
-  height: 72rpx;
-  line-height: 72rpx;
-  border-radius: var(--radius-lg);
-  background: linear-gradient(135deg, #8aa2ff 0%, #b0c0ff 100%);
-  color: #1a1720;
-  font-weight: 700;
-  font-size: 28rpx;
+.add-glyph {
+  font-size: 44rpx;
+  font-weight: 300;
+  line-height: 1;
+  color: #fff;
+}
+
+.chips-scroll {
+  flex-shrink: 0;
+  white-space: nowrap;
+  border-bottom: 1rpx solid var(--c-border);
+  background: rgba(255, 255, 255, 0.75);
+}
+
+.chips-inner {
+  display: inline-flex;
+  gap: 16rpx;
+  padding: 16rpx 24rpx 20rpx;
+}
+
+.chip {
+  flex-shrink: 0;
+  padding: 12rpx 24rpx;
+  border-radius: var(--radius-md);
+  font-size: 24rpx;
+  font-weight: 600;
+  background: #f3f3f5;
+  color: var(--c-muted);
   border: none;
+  margin: 0;
 }
 
-.section {
-  margin-bottom: 24rpx;
+.chip.active {
+  background: var(--c-primary);
+  color: #fff;
 }
 
-.section-title {
+.requests-bar {
+  flex-shrink: 0;
+  padding: 16rpx 0 8rpx;
+  background: rgba(255, 255, 255, 0.85);
+  border-bottom: 1rpx solid var(--c-border);
+}
+
+.requests-title {
   display: block;
-  font-size: 26rpx;
+  font-size: 24rpx;
   font-weight: 600;
   color: var(--c-muted);
-  margin-bottom: 16rpx;
+  padding: 0 24rpx 12rpx;
 }
 
-.request-item {
-  display: flex;
-  align-items: center;
+.req-scroll {
+  white-space: nowrap;
+}
+
+.req-card {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 12rpx;
+  margin-left: 24rpx;
+  padding: 16rpx 20rpx;
+  min-width: 240rpx;
   background: var(--c-surface);
-  padding: 20rpx;
+  border: 1rpx solid rgba(0, 0, 0, 0.08);
   border-radius: var(--radius-lg);
-  margin-bottom: 12rpx;
-  border: 1rpx solid var(--c-border);
+  vertical-align: top;
+  box-shadow: 0 8rpx 18rpx rgba(0, 0, 0, 0.05);
 }
 
-.request-item .avatar {
-  background: linear-gradient(135deg, #ffeaa7 0%, #fdcb6e 100%);
-  color: #5c4a00;
+.req-name {
+  font-size: 26rpx;
+  font-weight: 600;
+  color: var(--c-ink);
 }
 
-.actions {
+.req-actions {
   display: flex;
   gap: 12rpx;
 }
 
-.btn-sm {
-  padding: 12rpx 24rpx;
-  font-size: 24rpx;
+.req-btn {
+  flex: 1;
+  padding: 8rpx 16rpx;
+  font-size: 22rpx;
   font-weight: 600;
   border-radius: var(--radius-pill);
   border: none;
+  margin: 0;
 }
 
-.btn-sm.accept {
-  background: linear-gradient(135deg, #55efc4 0%, #00b894 100%);
-  color: #004d40;
+.req-btn.accept {
+  background: rgba(16, 185, 129, 0.2);
+  color: #047857;
 }
 
-.btn-sm.reject {
-  background: rgba(26, 23, 32, 0.08);
+.req-btn.reject {
+  background: rgba(26, 23, 32, 0.06);
   color: var(--c-muted);
 }
 
-.scroll-body {
-  height: 100vh;
+.list-zone {
+  flex: 1;
+  height: 0;
+  position: relative;
+}
+
+.main-scroll {
+  height: 100%;
+  padding: 8rpx 24rpx 24rpx 20rpx;
+  padding-right: 56rpx;
+  padding-bottom: calc(24rpx + 96rpx + env(safe-area-inset-bottom));
   box-sizing: border-box;
-  padding: 24rpx;
 }
 
-.list {
-  display: flex;
-  flex-direction: column;
-  gap: 16rpx;
+.section {
+  margin-bottom: 16rpx;
 }
 
-.contact-item {
-  display: block;
-  text-decoration: none;
-  color: inherit;
+.letter-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 12rpx 8rpx;
+  background: rgba(255, 255, 255, 0.95);
+  border-bottom: 1rpx solid var(--c-border);
+  margin-bottom: 8rpx;
 }
 
-.contact-item:active {
-  opacity: 0.95;
+.letter-text {
+  font-size: 22rpx;
+  font-weight: 800;
+  color: var(--c-primary);
+  letter-spacing: 2rpx;
 }
 
-.contact-item-hover {
-  opacity: 0.9;
-}
-
-.item-inner {
+.contact-row {
   display: flex;
   align-items: center;
-  background: var(--c-surface);
-  padding: 22rpx;
+  gap: 20rpx;
+  padding: 16rpx 12rpx;
   border-radius: var(--radius-lg);
-  box-shadow: var(--c-shadow-soft);
-  border: 1rpx solid var(--c-border);
 }
 
-.contact-avatar {
-  width: 80rpx;
-  height: 80rpx;
-  border-radius: 24rpx;
-  background: linear-gradient(135deg, #c6f6d5 0%, #9ae6b4 100%);
+.contact-row:active {
+  background: rgba(3, 2, 19, 0.05);
+}
+
+.avatar-wrap {
+  position: relative;
+}
+
+.avatar {
+  width: 96rpx;
+  height: 96rpx;
+  border-radius: var(--radius-lg);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #065f46;
-  font-size: 30rpx;
-  font-weight: 700;
-  margin-right: 18rpx;
+  box-shadow: var(--c-shadow-soft);
 }
 
-.list .content {
+.avatar-letter {
+  font-size: 34rpx;
+  font-weight: 700;
+  color: #fff;
+}
+
+.info {
   flex: 1;
+  min-width: 0;
 }
 
-.list .name {
+.name {
   font-size: 30rpx;
-  color: var(--c-ink);
   font-weight: 700;
+  color: var(--c-ink);
   display: block;
 }
 
-.list .meta {
+.role {
   font-size: 24rpx;
   color: var(--c-muted);
-  margin-top: 8rpx;
+  margin-top: 6rpx;
   display: block;
 }
 
-.state {
+.index-bar {
+  position: absolute;
+  right: 4rpx;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 2rpx;
+  z-index: 5;
+}
+
+.index-letter {
+  font-size: 18rpx;
+  font-weight: 700;
+  color: var(--c-primary);
+  padding: 4rpx 8rpx;
+}
+
+.state,
+.empty {
   text-align: center;
-  color: var(--c-muted);
-  margin-top: 40rpx;
+  padding: 80rpx 32rpx;
+}
+
+.empty-title {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: var(--c-ink);
+  display: block;
+}
+
+.empty-sub {
   font-size: 24rpx;
+  color: var(--c-muted);
+  margin-top: 12rpx;
+  display: block;
+}
+
+.scroll-pad {
+  height: 48rpx;
 }
 
 .modal-header {
@@ -392,11 +605,10 @@ onShow(() => {
   height: 96rpx;
   margin: 0 auto 20rpx;
   border-radius: 50%;
-  background: linear-gradient(135deg, #e8edff 0%, #f0f4ff 100%);
+  background: #f3f3f5;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 8rpx 24rpx rgba(138, 162, 255, 0.2);
 }
 
 .modal-icon {
@@ -437,7 +649,7 @@ onShow(() => {
   color: var(--c-ink);
 }
 
-.form-label .optional {
+.optional {
   font-weight: 400;
   color: var(--c-muted);
   font-size: 24rpx;
@@ -446,22 +658,16 @@ onShow(() => {
 .input-wrap {
   display: flex;
   align-items: center;
-  background: linear-gradient(180deg, #fafbfd 0%, #f4f6fb 100%);
-  border: 2rpx solid rgba(138, 162, 255, 0.2);
+  background: #f8f8fb;
+  border: 2rpx solid rgba(3, 2, 19, 0.12);
   border-radius: var(--radius-lg);
   padding: 0 24rpx;
-  transition: all 0.2s ease;
-}
-
-.input-wrap:focus-within {
-  border-color: rgba(138, 162, 255, 0.6);
-  box-shadow: 0 0 0 4rpx rgba(138, 162, 255, 0.12);
 }
 
 .input-prefix {
   font-size: 28rpx;
   font-weight: 600;
-  color: #8aa2ff;
+  color: var(--c-primary);
   margin-right: 8rpx;
 }
 
@@ -475,27 +681,11 @@ onShow(() => {
 
 .textarea-wrap {
   position: relative;
-  background: linear-gradient(180deg, #fafbfd 0%, #f4f6fb 100%);
-  border: 2rpx solid rgba(138, 162, 255, 0.2);
+  background: #f8f8fb;
+  border: 2rpx solid rgba(3, 2, 19, 0.12);
   border-radius: var(--radius-lg);
   padding: 24rpx;
   min-height: 160rpx;
-  transition: all 0.2s ease;
-}
-
-.textarea-wrap:focus-within {
-  border-color: rgba(138, 162, 255, 0.6);
-  box-shadow: 0 0 0 4rpx rgba(138, 162, 255, 0.12);
-}
-
-.form-error {
-  margin-top: 8rpx;
-  padding: 16rpx;
-  font-size: 26rpx;
-  color: #e53e3e;
-  background: rgba(229, 62, 62, 0.08);
-  border-radius: var(--radius-md);
-  border: 1rpx solid rgba(229, 62, 62, 0.2);
 }
 
 .modal-form .textarea {
@@ -504,7 +694,6 @@ onShow(() => {
   background: transparent;
   font-size: 28rpx;
   color: var(--c-ink);
-  line-height: 1.5;
 }
 
 .char-count {
@@ -513,6 +702,14 @@ onShow(() => {
   bottom: 16rpx;
   font-size: 22rpx;
   color: var(--c-muted);
+}
+
+.form-error {
+  padding: 16rpx;
+  font-size: 26rpx;
+  color: #e53e3e;
+  background: rgba(229, 62, 62, 0.08);
+  border-radius: var(--radius-md);
 }
 
 .modal-footer {
@@ -527,10 +724,14 @@ onShow(() => {
   height: 88rpx;
   line-height: 88rpx;
   font-size: 28rpx;
-  color: var(--c-muted);
-  background: rgba(26, 23, 32, 0.04);
+  color: var(--c-ink);
+  background: rgba(3, 2, 19, 0.06);
   border-radius: var(--radius-lg);
-  border: none;
+  border: 1rpx solid rgba(3, 2, 19, 0.12);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .btn-send {
@@ -538,20 +739,25 @@ onShow(() => {
   height: 88rpx;
   line-height: 88rpx;
   font-size: 28rpx;
-  font-weight: 600;
+  font-weight: 700;
   color: #fff;
-  background: linear-gradient(135deg, #6b8cff 0%, #8aa2ff 100%);
+  background: linear-gradient(135deg, var(--c-primary) 0%, var(--c-primary-deep) 100%);
   border-radius: var(--radius-lg);
-  border: none;
-  box-shadow: 0 8rpx 24rpx rgba(107, 140, 255, 0.35);
+  border: 1rpx solid rgba(3, 2, 19, 0.2);
+  margin: 0;
+  box-shadow: 0 8rpx 18rpx rgba(3, 2, 19, 0.18);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .btn-send-text {
   color: #fff;
+  font-weight: 700;
 }
 
 .btn-send[disabled] {
-  opacity: 0.5;
+  opacity: 0.45;
   box-shadow: none;
 }
 </style>

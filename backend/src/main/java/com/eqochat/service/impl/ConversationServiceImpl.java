@@ -9,6 +9,8 @@ import com.eqochat.domain.entity.UserProfile;
 import com.eqochat.dto.request.CreateConversationRequest;
 import com.eqochat.dto.request.SendMessageRequest;
 import com.eqochat.dto.response.ConversationSummaryResponse;
+import com.eqochat.dto.response.MessageAttachmentResponse;
+import com.eqochat.dto.response.MessagePageResponse;
 import com.eqochat.dto.response.MessageResponse;
 import com.eqochat.mapper.ConversationMapper;
 import com.eqochat.mapper.MessageMapper;
@@ -16,8 +18,11 @@ import com.eqochat.service.ConversationParticipantService;
 import com.eqochat.service.ConversationService;
 import com.eqochat.service.MessageService;
 import com.eqochat.service.UserProfileService;
+import com.eqochat.websocket.WebSocketSessionManager;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -37,6 +42,8 @@ public class ConversationServiceImpl extends ServiceImpl<ConversationMapper, Con
     private final MessageService messageService;
     private final MessageMapper messageMapper;
     private final UserProfileService userProfileService;
+    private final ObjectMapper objectMapper;
+    private final WebSocketSessionManager webSocketSessionManager;
     
     @Override
     public List<ConversationSummaryResponse> listConversations(Long userId) {
@@ -87,19 +94,22 @@ public class ConversationServiceImpl extends ServiceImpl<ConversationMapper, Con
             
             String title;
             String avatarUrl;
+            Boolean online = null;
             if (TYPE_SINGLE.equals(conversation.getConversationType())) {
                 // 单聊场景下强制使用对方用户的信息作为展示名称与头像
                 title = null;
                 avatarUrl = null;
                 // 这里必须拉取当前会话下的所有参与者，不能只看“自己”的参与记录
                 List<ConversationParticipant> convParticipants = participantService.listByConversationId(conversation.getId());
-                Long otherId = findOtherParticipantId(convParticipants, userId);
+                ConversationParticipant other = findOtherParticipant(convParticipants, userId);
+                Long otherId = other != null ? other.getParticipantId() : null;
                 if (otherId != null) {
                     UserProfile otherUser = userProfileService.getById(otherId);
                     if (otherUser != null) {
                         title = resolveDisplayName(otherUser);
                         avatarUrl = otherUser.getAvatarUrl();
                     }
+                    online = webSocketSessionManager.isOnline(String.valueOf(otherId));
                 }
             } else {
                 // 群聊或其他类型保留会话自身配置
@@ -119,6 +129,7 @@ public class ConversationServiceImpl extends ServiceImpl<ConversationMapper, Con
                     .lastMessage(lastMessage != null ? lastMessage.getContent() : null)
                     .lastMessageAt(lastMessage != null ? lastMessage.getCreateTime() : conversation.getLastMessageAt())
                     .unreadCount((int) unreadCount)
+                    .online(online)
                     .build());
         }
         
@@ -219,17 +230,20 @@ public class ConversationServiceImpl extends ServiceImpl<ConversationMapper, Con
         List<ConversationParticipant> participants = participantService.listByConversationId(conversationId);
         String title;
         String avatarUrl;
+        Boolean online = null;
         if (TYPE_SINGLE.equals(conversation.getConversationType())) {
             // 单聊详情同样强制使用对方用户信息
             title = null;
             avatarUrl = null;
-            Long otherId = findOtherParticipantId(participants, userId);
+            ConversationParticipant other = findOtherParticipant(participants, userId);
+            Long otherId = other != null ? other.getParticipantId() : null;
             if (otherId != null) {
                 UserProfile otherUser = userProfileService.getById(otherId);
                 if (otherUser != null) {
                     title = resolveDisplayName(otherUser);
                     avatarUrl = otherUser.getAvatarUrl();
                 }
+                online = webSocketSessionManager.isOnline(String.valueOf(otherId));
             }
         } else {
             title = conversation.getTitle();
@@ -258,23 +272,26 @@ public class ConversationServiceImpl extends ServiceImpl<ConversationMapper, Con
                 .lastMessage(lastMessage != null ? lastMessage.getContent() : null)
                 .lastMessageAt(lastMessage != null ? lastMessage.getCreateTime() : conversation.getLastMessageAt())
                 .unreadCount((int) unreadCount)
+                .online(online)
                 .build();
     }
     
     @Override
-    public List<MessageResponse> getMessages(Long userId, Long conversationId, Long lastMessageId, Integer limit) {
+    public MessagePageResponse getMessages(Long userId, Long conversationId, Long lastMessageId, Integer limit) {
         Optional<ConversationParticipant> participant = participantService
                 .findByConversationAndParticipant(conversationId, userId);
         if (participant.isEmpty()) {
             throw BizException.of("conv.access.denied");
         }
-        
-        List<Message> messages = messageService.getConversationMessages(conversationId, lastMessageId, limit);
+
+        int pageSize = limit == null ? 20 : Math.max(1, Math.min(limit, 100));
+        List<Message> messages = messageService.getConversationMessages(conversationId, lastMessageId, pageSize);
         if (lastMessageId == null && !messages.isEmpty()) {
             Message latest = messages.get(0);
             participantService.updateLastRead(conversationId, userId, latest.getId(), LocalDateTime.now());
         }
-        return messages.stream()
+
+        List<MessageResponse> items = messages.stream()
                 .map(message -> MessageResponse.builder()
                         .id(message.getId())
                         .conversationId(message.getConversationId())
@@ -282,9 +299,21 @@ public class ConversationServiceImpl extends ServiceImpl<ConversationMapper, Con
                         .senderType(message.getSenderType())
                         .messageType(message.getMessageType())
                         .content(message.getContent())
+                        .attachment(parseAttachment(message.getMessageType(), message.getContentMetadata()))
                         .createTime(message.getCreateTime())
                         .build())
                 .collect(Collectors.toList());
+
+        Long total = messageMapper.countByConversationId(conversationId);
+        Long nextLastMessageId = messages.isEmpty() ? null : messages.get(messages.size() - 1).getId();
+        boolean hasMore = nextLastMessageId != null && messageMapper.countOlderMessages(conversationId, nextLastMessageId) > 0;
+
+        return MessagePageResponse.builder()
+                .items(items)
+                .total(total)
+                .hasMore(hasMore)
+                .nextLastMessageId(nextLastMessageId)
+                .build();
     }
 
     @Override
@@ -295,13 +324,36 @@ public class ConversationServiceImpl extends ServiceImpl<ConversationMapper, Con
             throw BizException.of("conv.access.denied");
         }
 
+        String effectiveMessageType = request.getMessageType() != null ? request.getMessageType() : "TEXT";
+        boolean isText = effectiveMessageType == null || "TEXT".equalsIgnoreCase(effectiveMessageType);
+        String content = request.getContent();
+
+        if (isText) {
+            if (!StringUtils.hasText(content)) {
+                throw BizException.of("message.content.required");
+            }
+        } else {
+            if (request.getMetadata() == null) {
+                throw BizException.of("message.metadata.required");
+            }
+        }
+
+        String contentMetadataJson = null;
+        if (request.getMetadata() != null) {
+            try {
+                contentMetadataJson = objectMapper.writeValueAsString(request.getMetadata());
+            } catch (Exception e) {
+                throw BizException.of("message.metadata.required");
+            }
+        }
+
         Message message = Message.builder()
                 .conversationId(conversationId)
                 .senderId(userId)
                 .senderType("USER")
-                .messageType(request.getMessageType() != null ? request.getMessageType() : "TEXT")
-                .content(request.getContent())
-                .contentMetadata(request.getMetadata() != null ? request.getMetadata().toString() : null)
+                .messageType(effectiveMessageType)
+                .content(StringUtils.hasText(content) ? content : null)
+                .contentMetadata(contentMetadataJson)
                 .intentData(request.getIntentData())
                 .replyToMessageId(request.getReplyToMessageId() != null
                         ? Long.parseLong(request.getReplyToMessageId()) : null)
@@ -321,8 +373,38 @@ public class ConversationServiceImpl extends ServiceImpl<ConversationMapper, Con
                 .senderType(message.getSenderType())
                 .messageType(message.getMessageType())
                 .content(message.getContent())
+                .attachment(parseAttachment(message.getMessageType(), message.getContentMetadata()))
                 .createTime(createdAt)
                 .build();
+    }
+
+    private MessageAttachmentResponse parseAttachment(String messageType, String contentMetadata) {
+        if (contentMetadata == null || !StringUtils.hasText(contentMetadata)) return null;
+        String mt = messageType != null ? messageType.trim().toUpperCase() : "TEXT";
+        if ("TEXT".equals(mt)) return null;
+
+        try {
+            JsonNode node = objectMapper.readTree(contentMetadata);
+            if (node == null || node.isNull()) return null;
+
+            return MessageAttachmentResponse.builder()
+                    .fileName(textOrNull(node, "fileName"))
+                    .fileSize(textOrNull(node, "fileSize"))
+                    .fileType(textOrNull(node, "fileType"))
+                    .downloadUrl(textOrNull(node, "downloadUrl"))
+                    .build();
+        } catch (Exception e) {
+            log.warn("解析消息附件失败: messageType={}, contentMetadata={}", messageType, contentMetadata, e);
+            return null;
+        }
+    }
+
+    private String textOrNull(JsonNode node, String field) {
+        if (node == null || node.isNull()) return null;
+        JsonNode v = node.get(field);
+        if (v == null || v.isNull()) return null;
+        String s = v.asText();
+        return StringUtils.hasText(s) ? s : null;
     }
     
     @Override
@@ -336,13 +418,12 @@ public class ConversationServiceImpl extends ServiceImpl<ConversationMapper, Con
         updateById(conversation);
     }
     
-    private Long findOtherParticipantId(List<ConversationParticipant> participants, Long userId) {
+    private ConversationParticipant findOtherParticipant(List<ConversationParticipant> participants, Long userId) {
         if (participants == null) {
             return null;
         }
         return participants.stream()
                 .filter(p -> p.getParticipantId() != null && !p.getParticipantId().equals(userId))
-                .map(ConversationParticipant::getParticipantId)
                 .findFirst()
                 .orElse(null);
     }

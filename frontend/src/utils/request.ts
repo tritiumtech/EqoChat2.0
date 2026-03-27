@@ -119,7 +119,7 @@ class Request {
   }
   
   get<T>(url: string, params?: any) {
-    const queryString = params ? '?' + new URLSearchParams(params).toString() : ''
+    const queryString = params ? '?' + this.serializeParams(params) : ''
     return this.request<T>('GET', url + queryString)
   }
   
@@ -133,6 +133,31 @@ class Request {
   
   delete<T>(url: string) {
     return this.request<T>('DELETE', url)
+  }
+
+  /** 兼容各端的查询参数序列化（避免依赖 URLSearchParams） */
+  private serializeParams(params: any): string {
+    const parts: string[] = []
+    const append = (key: string, value: any) => {
+      if (value === undefined || value === null) return
+      parts.push(
+        encodeURIComponent(key) + '=' + encodeURIComponent(String(value))
+      )
+    }
+
+    Object.keys(params || {}).forEach((key) => {
+      const value = params[key]
+      if (Array.isArray(value)) {
+        value.forEach((v) => append(key, v))
+      } else if (typeof value === 'object') {
+        // 简单对象按 JSON 字符串处理
+        append(key, JSON.stringify(value))
+      } else {
+        append(key, value)
+      }
+    })
+
+    return parts.join('&')
   }
 }
 

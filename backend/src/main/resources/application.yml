@@ -2,6 +2,11 @@ spring:
   application:
     name: eqochat-backend
   
+  servlet:
+    multipart:
+      max-file-size: 60MB
+      max-request-size: 60MB
+  
   datasource:
     url: jdbc:mysql://${MYSQL_HOST:192.168.28.56}:${MYSQL_PORT:3306}/eqochat2?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
     username: ${MYSQL_USERNAME:root}
@@ -50,6 +55,13 @@ server:
 jwt:
   secret: ${JWT_SECRET:your-secret-key-here-change-in-production}
   expiration: 86400000 # 24 hours
+
+eqochat:
+  world:
+    upload-dir: ${EQOCHAT_WORLD_UPLOAD_DIR:./data/world-uploads}
+    max-image-bytes: 5242880
+    max-video-bytes: 52428800
+    share-url-template: ${EQOCHAT_WORLD_SHARE_URL_TEMPLATE:http://127.0.0.1:5173/#/pages/world/world?postId={postId}}
 
 logging:
   level:

@@ -38,7 +38,7 @@ const { t } = useI18n()
 
 const goToLogin = () => {
   if (userStore.isLoggedIn) {
-    uni.switchTab({ url: '/pages/chat/chat-list' })
+    uni.redirectTo({ url: '/pages/chat/chat-list' })
     return
   }
   uni.navigateTo({ url: '/pages/auth/login' })

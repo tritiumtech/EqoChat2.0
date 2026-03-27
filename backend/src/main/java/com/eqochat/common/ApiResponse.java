@@ -34,10 +34,15 @@ public class ApiResponse<T> {
     }
     
     public static <T> ApiResponse<T> error(Integer code, String message) {
+        String safe = (message == null || message.isBlank()) ? "error.system" : message;
+        boolean looksLikeMessageKey = safe.matches("[a-zA-Z0-9_.-]+");
+        String resolvedMessage = looksLikeMessageKey
+                ? I18nUtil.getOrDefault(safe, safe)
+                : safe;
         return ApiResponse.<T>builder()
                 .code(code)
-                .message(I18nUtil.getOrDefault(message, message))
-                .errorCode(message)
+                .message(resolvedMessage)
+                .errorCode(looksLikeMessageKey ? safe : null)
                 .timestamp(System.currentTimeMillis())
                 .build();
     }

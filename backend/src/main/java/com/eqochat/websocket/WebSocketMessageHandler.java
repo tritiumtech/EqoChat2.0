@@ -81,16 +81,35 @@ public class WebSocketMessageHandler {
                 webSocketSender.sendError(session, 403, "无权限发送消息", message.getId());
                 return;
             }
-            
+
+            String messageType = payload.getMessageType() != null ? payload.getMessageType() : "TEXT";
+            payload.setMessageType(messageType);
+            boolean isText = messageType == null || "TEXT".equalsIgnoreCase(messageType);
+            if (isText) {
+                if (payload.getContent() == null || payload.getContent().isBlank()) {
+                    webSocketSender.sendError(session, 400, "message.content.required", message.getId());
+                    return;
+                }
+            } else {
+                if (payload.getMetadata() == null) {
+                    webSocketSender.sendError(session, 400, "message.metadata.required", message.getId());
+                    return;
+                }
+            }
+
+            String contentMetadataJson = null;
+            if (payload.getMetadata() != null) {
+                contentMetadataJson = objectMapper.writeValueAsString(payload.getMetadata());
+            }
+
             // 保存消息到数据库
             Message msg = Message.builder()
                     .conversationId(conversationId)
                     .senderId(senderId)
                     .senderType("USER")
-                    .messageType(payload.getMessageType())
+                    .messageType(messageType)
                     .content(payload.getContent())
-                    .contentMetadata(payload.getMetadata() != null ? 
-                            payload.getMetadata().toString() : null)
+                    .contentMetadata(contentMetadataJson)
                     .intentData(payload.getIntentData())
                     .replyToMessageId(payload.getReplyToMessageId() != null ? 
                             Long.parseLong(payload.getReplyToMessageId()) : null)
