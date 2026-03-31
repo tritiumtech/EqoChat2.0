@@ -52,6 +52,13 @@
       </view>
 
       <template #bottom>
+        <view v-if="showTypingIndicator" class="typing-slot">
+          <TypingIndicator
+            :label="typingIndicatorLabel"
+            :avatar-color="typingIndicatorColor"
+            :avatar-text="typingIndicatorAvatarText"
+          />
+        </view>
         <view class="input-bar">
           <view v-if="attachments.length > 0" class="attach-chips">
             <view
@@ -80,6 +87,7 @@
                 :placeholder="t('placeholder.message')"
                 confirm-type="send"
                 cursor-spacing="24"
+              @input="onInputTyping"
                 @confirm="send"
               />
             </view>
@@ -141,13 +149,16 @@
 
 <script setup lang="ts">
 import { ref, nextTick, computed } from 'vue'
-import { onLoad, onShow, onHide } from '@dcloudio/uni-app'
+import { onLoad, onShow, onHide, onUnload } from '@dcloudio/uni-app'
 import { useI18n } from 'vue-i18n'
 import { useWebSocket } from '@/composables/useWebSocket'
 import { wsClient } from '@/utils/websocket'
 import { conversationApi, type MessageItem, type MessagePageResponse } from '@/api/modules/conversation'
+import { filesApi } from '@/api/modules/files'
 import { useUserStore } from '@/store/modules/user'
+import { useChatStore } from '@/store/modules/chat'
 import MessageBubble from '@/components/chat/MessageBubble.vue'
+import TypingIndicator from '@/components/chat/TypingIndicator.vue'
 import type { ChatMessagePayload } from '@/types/websocket'
 
 interface ChatMessage {
@@ -170,7 +181,8 @@ interface ChatMessage {
 }
 
 const userStore = useUserStore()
-const { t } = useI18n()
+const chatStore = useChatStore()
+const { t } = useI18n({ useScope: 'global' })
 
 const parseUserIdFromToken = (token: string | null | undefined): number | null => {
   if (!token) return null
@@ -223,6 +235,7 @@ const attachments = ref<Array<{
     fileName: string
     fileSize: string
     fileType: string
+    tempFilePath?: string
     downloadUrl?: string
   }
 }>>([])
@@ -235,9 +248,31 @@ const canSend = computed(() => {
 const loading = ref(false)
 const isPageVisible = ref(true)
 const pendingTimers = new Map<string, number>()
+const syncingReadMessageIds = new Set<string>()
 
 const showEmoji = ref(false)
 const showAttachMenu = ref(false)
+
+// typing 指示状态（服务端会广播他人的输入状态）
+const otherTypingUserId = ref<number | null>(null)
+const otherTypingClearTimer = ref<number | null>(null)
+
+// 本端 typing 状态（用于避免重复发送 CHAT_TYPING(true)）
+const isLocalTyping = ref(false)
+const localTypingStopTimer = ref<number | null>(null)
+
+const typingIndicatorLabel = computed(() => title.value || '对方')
+const typingIndicatorAvatarText = computed(() => {
+  if (!otherTypingUserId.value) return '…'
+  const s = String(otherTypingUserId.value)
+  return s.length > 0 ? s.slice(-1) : '…'
+})
+const typingIndicatorColor = computed(() => {
+  const id = otherTypingUserId.value || 0
+  const colors = ['#7c3aed', '#6366f1', '#8b5cf6', '#22c55e', '#3b82f6', '#f97316', '#ec4899']
+  return colors[Math.abs(id) % colors.length]
+})
+const showTypingIndicator = computed(() => otherTypingUserId.value != null)
 
 const EMOJIS = ['😀', '😂', '❤️', '👍', '🎉', '🔥', '💯', '✨', '🙏', '💪', '🎯', '🚀']
 
@@ -277,6 +312,7 @@ const toggleVoice = () => {
 const appendEmoji = (emoji: string) => {
   inputText.value += emoji
   showEmoji.value = false
+  onInputTyping()
 }
 
 const removeAttachment = (id: string) => {
@@ -381,6 +417,7 @@ const pickPhoto = () => {
             fileName,
             fileSize,
             fileType: 'image/*',
+            tempFilePath: filePath,
           },
         },
       ]
@@ -409,6 +446,7 @@ const pickCamera = () => {
             fileName,
             fileSize,
             fileType: 'image/*',
+            tempFilePath: filePath,
           },
         },
       ]
@@ -436,6 +474,7 @@ const pickFile = () => {
             fileName,
             fileSize,
             fileType,
+            tempFilePath: filePath,
           },
         },
       ]
@@ -452,10 +491,10 @@ const showComingSoon = () => {
   uni.showToast({ title: t('toast.coming_soon'), icon: 'none' })
 }
 
-const { isConnected, sendMessage, sendReadReceipt } = useWebSocket({
+const { isConnected, sendMessage, sendReadReceipt, sendTyping } = useWebSocket({
   autoConnect: true,
   onChatMessage: (payload, message) => {
-    if (payload.conversationId !== String(conversationId.value)) return
+    if (String(payload.conversationId) !== String(conversationId.value)) return
     const id = String(message.id)
     if (messageIdSet.has(id)) return
     const senderId = Number(message.senderId)
@@ -478,10 +517,79 @@ const { isConnected, sendMessage, sendReadReceipt } = useWebSocket({
     }
     scrollToBottom()
     if (isPageVisible.value && senderId !== currentUserId.value) {
-      sendReadReceipt(payload.conversationId, id)
+      syncReadStatus(payload.conversationId, id)
     }
-  }
+  },
+  onTyping: (payload) => {
+    if (!payload) return
+    if (String(payload.conversationId) !== String(conversationId.value)) return
+
+    const senderId = Number(payload.userId)
+    if (!Number.isFinite(senderId) || senderId <= 0) return
+    if (senderId === currentUserId.value) return
+
+    if (payload.isTyping) {
+      otherTypingUserId.value = senderId
+      if (otherTypingClearTimer.value) clearTimeout(otherTypingClearTimer.value)
+      otherTypingClearTimer.value = setTimeout(() => {
+        otherTypingUserId.value = null
+      }, 2500) as unknown as number
+    } else {
+      if (otherTypingUserId.value === senderId) otherTypingUserId.value = null
+    }
+  },
 })
+
+const sendTypingSafe = (isTyping: boolean) => {
+  if (!conversationId.value) return false
+  return sendTyping(String(conversationId.value), isTyping)
+}
+
+const stopLocalTyping = () => {
+  if (localTypingStopTimer.value) clearTimeout(localTypingStopTimer.value)
+  localTypingStopTimer.value = null
+  if (!isLocalTyping.value) return
+  isLocalTyping.value = false
+  sendTypingSafe(false)
+}
+
+const scheduleLocalTypingStop = () => {
+  if (localTypingStopTimer.value) clearTimeout(localTypingStopTimer.value)
+  localTypingStopTimer.value = setTimeout(() => {
+    isLocalTyping.value = false
+    sendTypingSafe(false)
+  }, 1200) as unknown as number
+}
+
+const onInputTyping = () => {
+  const hasText = String(inputText.value || '').trim().length > 0
+  if (!hasText) {
+    stopLocalTyping()
+    return
+  }
+  if (!isLocalTyping.value) {
+    isLocalTyping.value = true
+    sendTypingSafe(true)
+  }
+  scheduleLocalTypingStop()
+}
+
+const syncReadStatus = async (convId: string, msgId: string) => {
+  const key = `${convId}-${msgId}`
+  if (syncingReadMessageIds.has(key)) return
+  syncingReadMessageIds.add(key)
+  try {
+    if (isConnected.value) {
+      sendReadReceipt(convId, msgId)
+    }
+    await conversationApi.markRead(Number(convId), msgId)
+    chatStore.markConversationRead(Number(convId))
+  } catch {
+    // 已读同步失败不打断聊天流
+  } finally {
+    syncingReadMessageIds.delete(key)
+  }
+}
 
 const loadConversationMeta = async () => {
   if (!conversationId.value) return
@@ -513,7 +621,7 @@ const loadHistory = async () => {
     updateHistoryState(page, mapped)
     const latest = messages.value[0]
     if (isPageVisible.value && latest && latest.senderId !== currentUserId.value) {
-      sendReadReceipt(String(conversationId.value), latest.id)
+      syncReadStatus(String(conversationId.value), latest.id)
     }
     scrollToBottom()
   } catch (err: any) {
@@ -570,16 +678,34 @@ const send = async () => {
   const hasAttachment = attachments.value.length > 0
   if (!hasText && !hasAttachment) return
 
+  // 发送消息前，通知对方你已停止输入
+  stopLocalTyping()
+
   const pendingAttachment = attachments.value[0]
   const messageType = hasAttachment ? pendingAttachment.messageType : 'TEXT'
-  const metadata =
-    messageType !== 'TEXT' && pendingAttachment
-      ? {
-          fileName: pendingAttachment.attachment.fileName,
-          fileSize: pendingAttachment.attachment.fileSize,
-          fileType: pendingAttachment.attachment.fileType,
-        }
-      : undefined
+
+  let metadata: Record<string, unknown> | undefined = undefined
+  if (messageType !== 'TEXT' && pendingAttachment) {
+    const tempFilePath = pendingAttachment.attachment.tempFilePath
+    if (!tempFilePath) {
+      uni.showToast({ title: t('toast.load_failed'), icon: 'none' })
+      return
+    }
+
+    uni.showLoading({ title: t('common.loading'), mask: true })
+    try {
+      const downloadUrl = await filesApi.uploadChatFile(tempFilePath)
+      pendingAttachment.attachment.downloadUrl = downloadUrl
+      metadata = {
+        fileName: pendingAttachment.attachment.fileName,
+        fileSize: pendingAttachment.attachment.fileSize,
+        fileType: pendingAttachment.attachment.fileType,
+        downloadUrl,
+      }
+    } finally {
+      uni.hideLoading()
+    }
+  }
 
   const localId = `local-${Date.now()}`
   const localMessage: ChatMessage = {
@@ -758,6 +884,7 @@ const retrySend = (item: ChatMessage) => {
         fileName: item.attachment.fileName,
         fileSize: item.attachment.fileSize,
         fileType: item.attachment.fileType,
+        downloadUrl: item.attachment.downloadUrl,
       }
     : undefined
   const content = mt === 'TEXT' ? item.content || '' : ''
@@ -832,12 +959,18 @@ onShow(() => {
   } else {
     title.value = t('common.conversation')
   }
+  chatStore.setActiveConversation(conversationId.value || null)
   loadConversationMeta()
   loadHistory()
 })
 
 onHide(() => {
   isPageVisible.value = false
+  chatStore.setActiveConversation(null)
+})
+
+onUnload(() => {
+  chatStore.setActiveConversation(null)
 })
 
 const goBack = () => {
@@ -931,6 +1064,11 @@ const goBack = () => {
   border-top: 1rpx solid rgba(26, 23, 32, 0.08);
   box-shadow: 0 -6rpx 20rpx rgba(27, 21, 44, 0.06);
   box-sizing: border-box;
+}
+
+.typing-slot {
+  padding: 0 16rpx 0;
+  background: rgba(255, 255, 255, 0.95);
 }
 
 .input-wrap {

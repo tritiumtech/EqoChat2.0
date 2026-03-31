@@ -10,6 +10,50 @@
       <SearchBar v-model="searchQuery" :placeholder="t('page.chat.search_placeholder')" />
     </view>
 
+    <!-- #ifdef H5 -->
+    <view class="list-scroll native-scroll">
+      <view v-if="loading" class="state">{{ t('common.loading') }}</view>
+      <view v-else-if="filteredSorted.length === 0" class="state">
+        <EmptyState :title="t('common.empty_conversation')" icon="💬" />
+      </view>
+      <view
+        v-else
+        v-for="item in filteredSorted"
+        :key="item.id"
+        class="conv-wrap"
+        :class="{ pinned: isPinned(item.id) }"
+        @click="openConversation(item)"
+      >
+        <view class="conv-inner">
+          <view class="avatar-wrap">
+            <view class="avatar" :style="avatarStyle(item)">
+              <text class="avatar-letter">{{ isAgentConversation(item) ? '🤖' : '👤' }}</text>
+            </view>
+            <view v-if="isOnline(item)" class="online-dot" />
+          </view>
+          <view class="body">
+            <view class="row-top">
+              <view class="name-block">
+                <text class="name">{{ item.title || t('common.conversation') }}</text>
+                <text v-if="isAgentConversation(item)" class="badge-ai">{{ t('page.chat.agent_badge') }}</text>
+              </view>
+              <text class="time">{{ formatTimeShort(item) }}</text>
+            </view>
+            <view class="row-bottom">
+              <text class="preview">{{ item.lastMessage || t('page.chat.no_message') }}</text>
+              <view v-if="item.unreadCount && item.unreadCount > 0" class="unread">
+                <text>{{ item.unreadCount > 99 ? '99+' : item.unreadCount }}</text>
+              </view>
+            </view>
+          </view>
+          <button class="pin-btn" :class="{ on: isPinned(item.id) }" @click.stop="togglePin(item.id)">
+            <text class="pin-glyph">{{ isPinned(item.id) ? t('page.chat.pinned') : t('page.chat.pin') }}</text>
+          </button>
+        </view>
+      </view>
+    </view>
+    <!-- #endif -->
+    <!-- #ifndef H5 -->
     <scroll-view class="list-scroll" scroll-y>
       <view v-if="loading" class="state">{{ t('common.loading') }}</view>
       <view v-else-if="filteredSorted.length === 0" class="state">
@@ -51,6 +95,7 @@
         </view>
       </view>
     </scroll-view>
+    <!-- #endif -->
 
     <BottomNav />
   </view>
@@ -75,7 +120,7 @@ const searchQuery = ref('')
 const pinIds = ref<Set<number>>(new Set())
 const userStore = useUserStore()
 const chatStore = useChatStore()
-const { t } = useI18n()
+const { t } = useI18n({ useScope: 'global' })
 
 const loadPins = () => {
   try {
@@ -189,6 +234,7 @@ const openConversation = (item: ConversationSummary) => {
     return
   }
   const title = encodeURIComponent(item.title || t('common.conversation'))
+  chatStore.markConversationRead(conversationId)
   uni.navigateTo({
     url: `/pages/chat/chat-room?conversationId=${conversationId}&title=${title}`
   })
@@ -205,7 +251,7 @@ onShow(() => {
   }
   loadPins()
   uni.setNavigationBarTitle({ title: t('page.chat.title') })
-  fetchConversations()
+  void fetchConversations()
 })
 
 watch(searchQuery, () => {
@@ -214,6 +260,14 @@ watch(searchQuery, () => {
     fetchConversations()
   }, 220) as unknown as number
 })
+
+watch(
+  () => chatStore.conversations,
+  (list) => {
+    conversations.value = [...list]
+  },
+  { deep: true }
+)
 </script>
 
 <style scoped>
@@ -269,8 +323,14 @@ watch(searchQuery, () => {
 .list-scroll {
   flex: 1;
   height: 0;
-  padding: 12rpx 16rpx calc(32rpx + 96rpx + env(safe-area-inset-bottom));
+  padding: 12rpx 16rpx var(--page-pad-bottom-tabbar-loose);
   box-sizing: border-box;
+}
+
+.native-scroll {
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .conv-wrap {

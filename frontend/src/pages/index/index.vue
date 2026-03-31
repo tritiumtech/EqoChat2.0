@@ -34,7 +34,7 @@ import { useI18n } from 'vue-i18n'
 import { useUserStore } from '@/store/modules/user'
 
 const userStore = useUserStore()
-const { t } = useI18n()
+const { t } = useI18n({ useScope: 'global' })
 
 const goToLogin = () => {
   if (userStore.isLoggedIn) {

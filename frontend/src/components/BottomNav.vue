@@ -26,12 +26,13 @@ import { onShow } from '@dcloudio/uni-app'
 import { useI18n } from 'vue-i18n'
 import { useChatStore } from '@/store/modules/chat'
 
-type NavKey = 'chat' | 'world' | 'contacts' | 'me'
+type NavKey = 'chat' | 'world' | 'contacts' | 'me' | 'project'
 
-const { t } = useI18n()
+const { t } = useI18n({ useScope: 'global' })
 
 const items = computed<Array<{ key: NavKey; icon: string; label: string }>>(() => [
   { key: 'chat', icon: '💬', label: t('nav.chat') },
+  { key: 'project', icon: '📁', label: t('nav.project') },
   { key: 'world', icon: '🌐', label: t('nav.world') },
   { key: 'contacts', icon: '👥', label: t('nav.contacts') },
   { key: 'me', icon: '👤', label: t('nav.me') },
@@ -54,6 +55,7 @@ const activeKey = computed<NavKey>(() => {
   if (r.includes('/pages/world/') || r.includes('pages/world/')) return 'world'
   if (r.includes('/pages/contact/') || r.includes('pages/contact/')) return 'contacts'
   if (r.includes('/pages/profile/') || r.includes('pages/profile/')) return 'me'
+  if (r.includes('/pages/project/') || r.includes('pages/project/')) return 'project'
   return 'chat'
 })
 
@@ -62,6 +64,7 @@ const shouldHide = computed(() => {
   // 二级页面（详情/对话等）隐藏底部导航
   if (r.includes('/pages/chat/chat-room') || r.includes('pages/chat/chat-room')) return true
   if (r.includes('/pages/contact/contact-detail') || r.includes('pages/contact/contact-detail')) return true
+  if (r.includes('/pages/project/project-detail') || r.includes('pages/project/project-detail')) return true
   return false
 })
 
@@ -80,6 +83,7 @@ const handleTap = (key: NavKey) => {
     world: '/pages/world/world',
     contacts: '/pages/contact/contact-list',
     me: '/pages/profile/profile',
+    project: '/pages/project/project',
   }
   uni.redirectTo({ url: urlMap[key] })
 }
@@ -112,7 +116,7 @@ onShow(() => {
   display: flex;
   align-items: center;
   justify-content: space-around;
-  height: 96rpx;
+  height: var(--bottom-nav-inner-height);
 }
 
 .nav-item {
@@ -132,6 +136,8 @@ onShow(() => {
   display: flex;
   align-items: center;
   justify-content: center;
+  border-radius: 18rpx;
+  background: transparent;
 }
 
 .icon {
@@ -147,11 +153,15 @@ onShow(() => {
 }
 
 .nav-item.active .icon {
-  color: var(--c-primary);
+  color: var(--c-violet);
 }
 
 .nav-item.active .label {
-  color: var(--c-primary);
+  color: var(--c-violet);
+}
+
+.nav-item.active .icon-wrap {
+  background: rgba(124, 58, 237, 0.12);
 }
 
 .badge {

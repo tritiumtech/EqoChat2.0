@@ -34,7 +34,7 @@ import { authApi } from '@/api/modules/auth'
 import { useUserStore } from '@/store/modules/user'
 
 const userStore = useUserStore()
-const { t } = useI18n()
+const { t } = useI18n({ useScope: 'global' })
 
 const phone = ref('')
 const password = ref('')

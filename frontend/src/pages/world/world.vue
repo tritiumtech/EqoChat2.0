@@ -13,16 +13,30 @@
           </view>
         </view>
       </view>
+      <!-- #ifdef H5 -->
+      <view class="scroll-feed native-scroll">
+        <WorldPostCard
+          v-for="post in topicPosts"
+          :key="post.id"
+          :post="post"
+          @upvote="() => toggleUpvote(post)"
+          @reply="() => onReplyTap(post)"
+          @share="openShare(post)"
+        />
+      </view>
+      <!-- #endif -->
+      <!-- #ifndef H5 -->
       <scroll-view class="scroll-feed" scroll-y>
         <WorldPostCard
           v-for="post in topicPosts"
           :key="post.id"
           :post="post"
           @upvote="() => toggleUpvote(post)"
-          @reply="onReplyTap"
+          @reply="() => onReplyTap(post)"
           @share="openShare(post)"
         />
       </scroll-view>
+      <!-- #endif -->
     </template>
 
     <template v-else>
@@ -74,19 +88,49 @@
             </button>
           </view>
         </view>
-        <scroll-view class="scroll-feed" scroll-y>
+        <!-- #ifdef H5 -->
+        <view class="scroll-feed native-scroll">
+          <view v-if="sortedPosts.length === 0" class="feed-empty">
+            <text>{{ t('common.empty_conversation') }}</text>
+          </view>
           <WorldPostCard
             v-for="post in sortedPosts"
             :key="post.id"
             :post="post"
             @upvote="() => toggleUpvote(post)"
-            @reply="onReplyTap"
+            @reply="() => onReplyTap(post)"
             @share="openShare(post)"
           />
+          <view v-if="sortedPosts.length > 0" class="feed-end">
+            <text>没有更多内容了</text>
+          </view>
+        </view>
+        <!-- #endif -->
+        <!-- #ifndef H5 -->
+        <scroll-view class="scroll-feed" scroll-y>
+          <view v-if="sortedPosts.length === 0" class="feed-empty">
+            <text>{{ t('common.empty_conversation') }}</text>
+          </view>
+          <WorldPostCard
+            v-for="post in sortedPosts"
+            :key="post.id"
+            :post="post"
+            @upvote="() => toggleUpvote(post)"
+            @reply="() => onReplyTap(post)"
+            @share="openShare(post)"
+          />
+          <view v-if="sortedPosts.length > 0" class="feed-end">
+            <text>没有更多内容了</text>
+          </view>
         </scroll-view>
+        <!-- #endif -->
       </template>
 
-      <scroll-view v-else class="scroll-feed scroll-topics" scroll-y>
+      <!-- #ifdef H5 -->
+      <view v-else class="scroll-feed scroll-topics native-scroll">
+        <view v-if="topicList.length === 0" class="feed-empty">
+          <text>{{ t('common.empty_conversation') }}</text>
+        </view>
         <WorldTopicCard
           v-for="topic in topicList"
           :key="topic.id"
@@ -98,12 +142,38 @@
           @open="openTopic"
           @toggle-follow="toggleFollow"
         />
+        <view v-if="topicList.length > 0" class="feed-end">
+          <text>没有更多内容了</text>
+        </view>
+      </view>
+      <!-- #endif -->
+      <!-- #ifndef H5 -->
+      <scroll-view v-else class="scroll-feed scroll-topics" scroll-y>
+        <view v-if="topicList.length === 0" class="feed-empty">
+          <text>{{ t('common.empty_conversation') }}</text>
+        </view>
+        <WorldTopicCard
+          v-for="topic in topicList"
+          :key="topic.id"
+          :topic="topic"
+          :posts-label="t('page.world.posts')"
+          :followers-label="t('page.world.followers')"
+          :follow-text="t('page.world.follow')"
+          :followed-text="t('page.world.followed')"
+          @open="openTopic"
+          @toggle-follow="toggleFollow"
+        />
+        <view v-if="topicList.length > 0" class="feed-end">
+          <text>没有更多内容了</text>
+        </view>
       </scroll-view>
+      <!-- #endif -->
     </template>
 
     <WorldNewPostModal
       :visible="showNewPostModal"
       :content="newPostContent"
+      :friends="mentionFriends"
       :local-image-path="localImagePath"
       :local-video-path="localVideoPath"
       :video-error="videoError"
@@ -113,10 +183,23 @@
       :placeholder="t('page.world.new_post_placeholder')"
       @close="closeNewPost"
       @update:content="onNewPostContentChange"
+      @update:mentioned-ids="onMentionedIdsChange"
       @pick-image="pickImage"
       @pick-video="pickVideo"
       @clear-media="clearMedia"
       @submit="submitNewPost"
+    />
+
+    <WorldReplyModal
+      :visible="showReplyModal"
+      :post="replyTarget"
+      :content="replyContent"
+      :can-submit="canSubmitReply"
+      :posting="replyPosting"
+      :placeholder="t('placeholder.message')"
+      @close="closeReply"
+      @update:content="(v) => (replyContent = v)"
+      @submit="submitReply"
     />
 
     <WorldShareModal
@@ -138,14 +221,16 @@ import { computed, ref, watch } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { useI18n } from 'vue-i18n'
 import { worldApi, type WorldMediaType, type WorldPost, type WorldSort, type WorldTopic } from '@/api/modules/world'
+import { contactApi, type ContactItem } from '@/api/modules/contact'
 import { getApiErrorMessage } from '@/utils/request'
 import WorldPostCard from '@/components/world/WorldPostCard.vue'
 import WorldTopicCard from '@/components/world/WorldTopicCard.vue'
 import WorldNewPostModal from '@/components/world/WorldNewPostModal.vue'
+import WorldReplyModal from '@/components/world/WorldReplyModal.vue'
 import WorldShareModal from '@/components/world/WorldShareModal.vue'
 import BottomNav from '@/components/BottomNav.vue'
 
-const { t } = useI18n()
+const { t } = useI18n({ useScope: 'global' })
 
 type SortOption = WorldSort
 
@@ -161,10 +246,17 @@ const loading = ref(false)
 
 const showNewPostModal = ref(false)
 const newPostContent = ref('')
+const mentionFriends = ref<ContactItem[]>([])
+const mentionedUserIds = ref<number[]>([])
 const localImagePath = ref('')
 const localVideoPath = ref('')
 const videoError = ref('')
 const posting = ref(false)
+
+const showReplyModal = ref(false)
+const replyTarget = ref<WorldPost | null>(null)
+const replyContent = ref('')
+const replyPosting = ref(false)
 
 const showShareModal = ref(false)
 const shareTarget = ref<WorldPost | null>(null)
@@ -193,11 +285,42 @@ const canSubmitPost = computed(() => {
   return !!(text || localImagePath.value || localVideoPath.value)
 })
 
+const canSubmitReply = computed(() => {
+  return !!String(replyContent.value || '').trim()
+})
+
 const mediaTip = computed(() => {
   if (localVideoPath.value) return t('page.world.media_tip_video')
   if (localImagePath.value) return t('page.world.media_tip_image')
   return t('page.world.media_tip_text')
 })
+
+function normalizeMediaUrl(url?: string): string | undefined {
+  const value = String(url || '').trim()
+  if (!value || value === 'null' || value === 'undefined') return undefined
+  if (value === '-' || value === '--' || value === 'N/A' || value === 'n/a') return undefined
+  // 明显非 URL 的垃圾值，直接降级避免出现空媒体占位
+  if (!/^https?:\/\//i.test(value) && !value.startsWith('/api/') && !value.startsWith('/uploads/')) {
+    return undefined
+  }
+  return value
+}
+
+function normalizePost(post: WorldPost): WorldPost {
+  const imageUrl = normalizeMediaUrl(post.imageUrl)
+  const videoUrl = normalizeMediaUrl(post.videoUrl)
+  const rawType = String(post.mediaType || 'TEXT').toUpperCase()
+  const mediaType =
+    rawType === 'IMAGE' ? (imageUrl ? 'IMAGE' : 'TEXT')
+      : rawType === 'VIDEO' ? (videoUrl ? 'VIDEO' : 'TEXT')
+        : 'TEXT'
+  return {
+    ...post,
+    mediaType,
+    imageUrl,
+    videoUrl,
+  }
+}
 
 function openExternalUrl(url: string) {
   // #ifdef H5
@@ -236,6 +359,7 @@ function onSortDropdownSelect(value: SortOption) {
 function closeNewPost() {
   showNewPostModal.value = false
   newPostContent.value = ''
+  mentionedUserIds.value = []
   localImagePath.value = ''
   localVideoPath.value = ''
   videoError.value = ''
@@ -249,6 +373,10 @@ function clearMedia() {
 
 function onNewPostContentChange(value: string) {
   newPostContent.value = String(value || '')
+}
+
+function onMentionedIdsChange(value: number[]) {
+  mentionedUserIds.value = Array.isArray(value) ? value : []
 }
 
 function pickImage() {
@@ -309,10 +437,11 @@ async function submitNewPost() {
     const created = await worldApi.createPost({
       content: newPostContent.value.trim(),
       mediaType,
+      mentionedUserIds: mentionedUserIds.value,
       imageUrl,
       videoUrl,
     })
-    posts.value = [created, ...posts.value]
+    posts.value = [normalizePost(created), ...posts.value]
     closeNewPost()
     uni.showToast({ title: t('toast.post_published'), icon: 'success' })
   } catch (err: any) {
@@ -323,8 +452,38 @@ async function submitNewPost() {
   }
 }
 
-function onReplyTap() {
-  uni.showToast({ title: t('toast.coming_soon'), icon: 'none' })
+function onReplyTap(post: WorldPost) {
+  showReplyModal.value = true
+  replyTarget.value = post
+  replyContent.value = ''
+  replyPosting.value = false
+}
+
+function closeReply() {
+  showReplyModal.value = false
+  replyTarget.value = null
+  replyContent.value = ''
+  replyPosting.value = false
+}
+
+async function submitReply() {
+  if (!replyTarget.value || !canSubmitReply.value || replyPosting.value) return
+  replyPosting.value = true
+  try {
+    await worldApi.createReply(replyTarget.value.id, { content: replyContent.value.trim() })
+    // 刷新当前列表，确保 replyCount 即时一致
+    if (selectedTopic.value) {
+      await openTopic(selectedTopic.value)
+    } else {
+      await loadPosts()
+    }
+    uni.showToast({ title: t('toast.post_published'), icon: 'success' })
+  } catch (err: any) {
+    uni.showToast({ title: getApiErrorMessage(err, t('toast.create_failed')), icon: 'none' })
+  } finally {
+    replyPosting.value = false
+    closeReply()
+  }
 }
 
 async function openShare(post: WorldPost) {
@@ -410,7 +569,8 @@ function copyShareLink() {
 const loadPosts = async () => {
   loading.value = true
   try {
-    posts.value = await worldApi.listPosts({ sort: sortBy.value, limit: 30 })
+    const list = await worldApi.listPosts({ sort: sortBy.value, limit: 30 })
+    posts.value = list.map(normalizePost)
   } catch (err: any) {
     uni.showToast({ title: getApiErrorMessage(err, t('toast.load_failed')), icon: 'none' })
   } finally {
@@ -426,10 +586,19 @@ const loadTopics = async () => {
   }
 }
 
+const loadMentionFriends = async () => {
+  try {
+    mentionFriends.value = await contactApi.listContacts()
+  } catch {
+    mentionFriends.value = []
+  }
+}
+
 const openTopic = async (name: string) => {
   selectedTopic.value = name
   try {
-    topicPosts.value = await worldApi.listTopicPosts(name, { limit: 30 })
+    const list = await worldApi.listTopicPosts(name, { limit: 30 })
+    topicPosts.value = list.map(normalizePost)
   } catch (err: any) {
     uni.showToast({ title: getApiErrorMessage(err, t('toast.load_failed')), icon: 'none' })
     topicPosts.value = []
@@ -473,9 +642,11 @@ function onSearchTap() {
 
 onShow(() => {
   uni.setNavigationBarTitle({ title: t('page.world.title') })
+  loadMentionFriends()
   loadTopics()
   loadPosts()
 })
+
 
 watch(sortBy, () => {
   if (activeTab.value === 'posts') loadPosts()
@@ -599,7 +770,7 @@ watch(selectedTopic, (v) => {
   display: inline-flex;
   align-items: center;
   gap: 12rpx;
-  padding: 16rpx 24rpx;
+  padding: 6rpx 24rpx;
   border-radius: var(--radius-md);
   background: var(--c-surface);
   border: 1rpx solid var(--c-border);
@@ -637,7 +808,7 @@ watch(selectedTopic, (v) => {
   display: inline-flex;
   align-items: center;
   gap: 8rpx;
-  padding: 14rpx 22rpx;
+  padding: 6rpx 22rpx;
   border-radius: var(--radius-md);
   background: var(--c-primary);
   color: #fff;
@@ -663,12 +834,32 @@ watch(selectedTopic, (v) => {
   flex: 1;
   height: 0;
   padding: 24rpx;
-  padding-bottom: calc(24rpx + 96rpx + env(safe-area-inset-bottom));
+  padding-bottom: var(--page-pad-bottom-tabbar);
   box-sizing: border-box;
+}
+
+.native-scroll {
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .scroll-topics {
   padding-top: 16rpx;
+}
+
+.feed-empty {
+  text-align: center;
+  color: var(--c-muted);
+  font-size: 24rpx;
+  padding: 80rpx 0 24rpx;
+}
+
+.feed-end {
+  text-align: center;
+  color: var(--c-muted);
+  font-size: 22rpx;
+  padding: 8rpx 0 24rpx;
 }
 
 .topic-hash {

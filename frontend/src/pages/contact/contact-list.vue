@@ -45,6 +45,45 @@
     </view>
 
     <view class="list-zone">
+      <!-- #ifdef H5 -->
+      <view
+        class="main-scroll native-scroll"
+        :scroll-into-view="scrollIntoView"
+      >
+        <view v-if="loading" class="state">{{ t('common.loading') }}</view>
+        <view v-else-if="letters.length === 0" class="empty">
+          <text class="empty-title">{{ t('page.contact.empty_filter') }}</text>
+          <text class="empty-sub">{{ t('page.contact.empty_filter_hint') }}</text>
+        </view>
+        <block v-else>
+          <view v-for="letter in letters" :key="letter" :id="letterId(letter)" class="section">
+            <view class="letter-head">
+              <text class="letter-text">{{ letter }}</text>
+            </view>
+            <view
+              v-for="item in grouped[letter]"
+              :key="item.id"
+              class="contact-row"
+              @click="goDetail(item.id)"
+            >
+              <view class="avatar-wrap">
+                <view class="avatar" :style="avatarStyle(item)">
+                  <text class="avatar-letter">{{ (item.nickname || '?').slice(0, 1) }}</text>
+                </view>
+              </view>
+              <view class="info">
+                <text class="name">{{ item.nickname }}</text>
+                <text class="role">
+                  {{ item.tags?.length ? `#${item.tags[0]}` : `${t('page.contact.user_id')}: ${item.id}` }}
+                </text>
+              </view>
+            </view>
+          </view>
+        </block>
+        <view class="scroll-pad" />
+      </view>
+      <!-- #endif -->
+      <!-- #ifndef H5 -->
       <scroll-view
         class="main-scroll"
         scroll-y
@@ -83,6 +122,7 @@
         </block>
         <view class="scroll-pad" />
       </scroll-view>
+      <!-- #endif -->
 
       <view v-if="letters.length > 0" class="index-bar">
         <text
@@ -165,7 +205,7 @@ const showAddModal = ref(false)
 const addFormError = ref('')
 const addForm = reactive({ friendId: '', requestMessage: '' })
 const userStore = useUserStore()
-const { t } = useI18n()
+const { t } = useI18n({ useScope: 'global' })
 
 const searchQuery = ref('')
 const tagFilter = ref('all')
@@ -477,8 +517,14 @@ watch(searchQuery, () => {
   height: 100%;
   padding: 8rpx 24rpx 24rpx 20rpx;
   padding-right: 56rpx;
-  padding-bottom: calc(24rpx + 96rpx + env(safe-area-inset-bottom));
+  padding-bottom: var(--page-pad-bottom-tabbar);
   box-sizing: border-box;
+}
+
+.native-scroll {
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .section {

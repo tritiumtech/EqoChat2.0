@@ -45,5 +45,15 @@
   --space-3: 12rpx;
   --space-4: 16rpx;
   --space-5: 24rpx;
+
+  /*
+   * 自定义底部导航（components/BottomNav.vue）
+   * .nav-inner { height: 96rpx } + .bottom-nav { padding-bottom: env(safe-area-inset-bottom) }
+   * 主滚动区（scroll-view / page）底部需预留，否则内容会被 fixed tabbar 遮挡。
+   */
+  --bottom-nav-inner-height: 96rpx;
+  --page-pad-bottom-tabbar: calc(24rpx + var(--bottom-nav-inner-height) + env(safe-area-inset-bottom));
+  /* 聊天列表等需要略多底部留白时使用 */
+  --page-pad-bottom-tabbar-loose: calc(32rpx + var(--bottom-nav-inner-height) + env(safe-area-inset-bottom));
 }
 

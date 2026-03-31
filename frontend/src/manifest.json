@@ -51,7 +51,7 @@
     "enable": false
   },
   "vueVersion": "3",
-  "locale": "zh-CN",
+  "locale": "zh-Hans",
   "h5": {
     "title": "EqoChat"
   }

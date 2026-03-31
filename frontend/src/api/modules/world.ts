@@ -41,8 +41,13 @@ export interface WorldTopic {
 export interface CreateWorldPostPayload {
   content: string
   mediaType: WorldMediaType
+  mentionedUserIds?: number[]
   imageUrl?: string
   videoUrl?: string
+}
+
+export interface CreateWorldPostReplyPayload {
+  content: string
 }
 
 function uploadWorldFile(filePath: string): Promise<string> {
@@ -97,6 +102,10 @@ export const worldApi = {
     return request.post<WorldPost>('/api/v1/world/posts', data)
   },
 
+  createReply(postId: string | number, data: CreateWorldPostReplyPayload) {
+    return request.post<{ replyCount: number }>(`/api/v1/world/posts/${postId}/replies`, data)
+  },
+
   getShareLink(postId: string | number) {
     return request.get<{ url: string }>(`/api/v1/world/posts/${postId}/share-link`)
   },
@@ -111,6 +120,10 @@ export const worldApi = {
 
   listTopicPosts(topicName: string, params?: { cursorId?: number | string; limit?: number }) {
     return request.get<WorldPost[]>(`/api/v1/world/topics/${encodeURIComponent(topicName)}/posts`, params)
+  },
+
+  listMentionedMe(params?: { cursorId?: number | string; limit?: number }) {
+    return request.get<WorldPost[]>('/api/v1/world/mentions', params)
   },
 
   toggleUpvote(postId: string | number) {

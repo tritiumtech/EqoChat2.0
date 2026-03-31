@@ -22,8 +22,8 @@
           <view class="progress-fill" :style="{ width: levelInfo.pct + '%' }" />
         </view>
         <view class="progress-feet">
-          <text>Lv.{{ levelInfo.level }}</text>
-          <text>Lv.{{ levelInfo.nextLevel }}</text>
+          <text>{{ t('page.profile.level_abbr', { n: levelInfo.level }) }}</text>
+          <text>{{ t('page.profile.level_abbr', { n: levelInfo.nextLevel }) }}</text>
         </view>
       </view>
     </view>
@@ -42,6 +42,14 @@
         <view class="menu-body">
           <text class="menu-title">{{ t('page.profile.menu_notifications') }}</text>
           <text class="menu-desc">{{ unreadCount > 0 ? t('page.profile.unread_count', { n: unreadCount }) : t('page.profile.menu_notifications_desc') }}</text>
+        </view>
+        <text class="chev">›</text>
+      </button>
+      <button class="menu-row" @click="openMyAgents">
+        <view class="menu-icon">🤖</view>
+        <view class="menu-body">
+          <text class="menu-title">{{ t('page.profile.menu_my_agents') }}</text>
+          <text class="menu-desc">{{ t('page.profile.menu_my_agents_desc') }}</text>
         </view>
         <text class="chev">›</text>
       </button>
@@ -66,46 +74,86 @@
     <button class="btn-logout" @click="logout">{{ t('common.logout') }}</button>
     <view class="foot-pad" />
 
-    <view v-if="showNotifications" class="sheet-mask" @click="showNotifications = false">
-      <view class="sheet" @click.stop>
-        <view class="sheet-head">
-          <text class="sheet-title">{{ t('page.profile.menu_notifications') }}</text>
-          <text class="sheet-close" @click="showNotifications = false">✕</text>
-        </view>
-        <scroll-view class="sheet-body" scroll-y>
-          <view v-if="notifications.length === 0" class="sheet-empty">{{ t('common.empty_conversation') }}</view>
-          <view v-for="n in notifications" :key="n.id" class="notice" :class="{ unread: !n.read }" @click="markNotificationRead(n.id)">
-            <text class="notice-title">{{ n.title }}</text>
-            <text class="notice-content">{{ n.content || '-' }}</text>
-          </view>
-        </scroll-view>
-      </view>
-    </view>
-
-    <view v-if="showSettings" class="sheet-mask" @click="showSettings = false">
-      <view class="sheet" @click.stop>
-        <view class="sheet-head">
-          <text class="sheet-title">{{ t('page.profile.menu_settings') }}</text>
-          <text class="sheet-close" @click="showSettings = false">✕</text>
-        </view>
-        <view class="sheet-settings">
-          <text class="setting-label">{{ t('page.profile.language') }}</text>
-          <view class="setting-lang-row">
-            <button
-              class="setting-lang-btn"
-              :class="{ active: locale.value === 'zh-CN' }"
-              @click="changeLocale('zh-CN')"
-            >{{ t('page.profile.zh') }}</button>
-            <button
-              class="setting-lang-btn"
-              :class="{ active: locale.value === 'en-US' }"
-              @click="changeLocale('en-US')"
-            >{{ t('page.profile.en') }}</button>
-          </view>
-        </view>
-      </view>
-    </view>
   </scroll-view>
+
+  <view v-if="showNotifications" class="sheet-mask" @click="showNotifications = false">
+    <view class="sheet" @click.stop>
+      <view class="sheet-head">
+        <text class="sheet-title">{{ t('page.profile.menu_notifications') }}</text>
+        <text class="sheet-close" @click="showNotifications = false">✕</text>
+      </view>
+      <view class="notice-filter-row">
+        <view class="notice-filter-btn" :class="{ active: notificationFilter === 'all' }" @click="notificationFilter = 'all'">{{ t('page.contact.filter_all') }}</view>
+        <view class="notice-filter-btn" :class="{ active: notificationFilter === 'mention' }" @click="notificationFilter = 'mention'">{{ t('page.profile.notif_filter_mention') }}</view>
+      </view>
+      <scroll-view class="sheet-body" scroll-y>
+        <view v-if="filteredNotifications.length === 0" class="sheet-empty">{{ t('common.empty_conversation') }}</view>
+        <view v-for="n in filteredNotifications" :key="n.id" class="notice" :class="{ unread: !n.read }" @click="markNotificationRead(n.id)">
+          <text class="notice-title">{{ n.title }}</text>
+          <text class="notice-content">{{ n.content || t('common.dash') }}</text>
+        </view>
+      </scroll-view>
+    </view>
+  </view>
+
+  <view v-if="showSettings" class="sheet-mask" @click="showSettings = false">
+    <view class="sheet" @click.stop>
+      <view class="sheet-head">
+        <text class="sheet-title">{{ t('page.profile.menu_settings') }}</text>
+        <text class="sheet-close" @click="showSettings = false">✕</text>
+      </view>
+      <view class="sheet-settings">
+        <text class="setting-label">{{ t('page.profile.language') }}</text>
+        <view class="setting-lang-row">
+          <button
+            class="setting-lang-btn"
+            :class="{ active: locale === 'zh-Hans' }"
+            @click="changeLocale('zh-Hans')"
+          >{{ t('page.profile.zh') }}</button>
+          <button
+            class="setting-lang-btn"
+            :class="{ active: locale === 'en' }"
+            @click="changeLocale('en')"
+          >{{ t('page.profile.en') }}</button>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view v-if="showMyAgents" class="sheet-mask" @click="closeMyAgents">
+    <view class="sheet" @click.stop>
+      <view class="sheet-head">
+        <text class="sheet-title">{{ t('page.profile.my_agents.title') }}</text>
+        <text class="sheet-close" @click="closeMyAgents">✕</text>
+      </view>
+
+      <scroll-view class="sheet-body" scroll-y>
+        <view v-if="myAgentsLoading" class="sheet-empty">{{ t('page.profile.my_agents.loading') }}</view>
+        <view v-else-if="myAgents.length === 0" class="sheet-empty">{{ t('page.profile.my_agents.empty') }}</view>
+
+        <view v-for="a in myAgents" :key="a.id" class="agent-row">
+          <view class="agent-avatar">
+            <text class="agent-avatar-text">{{ (a.name || '').slice(0, 1) || '?' }}</text>
+          </view>
+          <view class="agent-main">
+            <text class="agent-name">{{ a.name }}</text>
+            <text class="agent-desc">{{ a.description || '—' }}</text>
+
+            <view class="agent-cap-row">
+              <text v-for="cap in (a.capabilities || []).slice(0, 4)" :key="cap" class="cap-chip">
+                {{ cap }}
+              </text>
+            </view>
+
+            <view class="agent-bottom">
+              <text class="agent-credit">{{ t('page.profile.my_agents.credit_score_label') }}{{ a.creditScore ?? 0 }}</text>
+              <text v-if="a.walletEnabled" class="wallet-ok">{{ t('page.profile.my_agents.wallet_enabled') }}</text>
+            </view>
+          </view>
+        </view>
+      </scroll-view>
+    </view>
+  </view>
 
   <BottomNav />
 </template>
@@ -116,18 +164,27 @@ import { onShow } from '@dcloudio/uni-app'
 import { useI18n } from 'vue-i18n'
 import { userApi, type UserInfo } from '@/api/modules/user'
 import { useUserStore } from '@/store/modules/user'
-import { setLocale } from '@/i18n'
+import { setLocale } from '../../locale/i18n'
 import { notificationApi, type NotificationItem } from '@/api/modules/notification'
 import { getApiErrorMessage } from '@/utils/request'
+import { agentApi, type MyAgentItem } from '@/api/modules/agent'
 import BottomNav from '@/components/BottomNav.vue'
 
 const userStore = useUserStore()
 const userInfo = ref<UserInfo | null>(userStore.userInfo || null)
-const { t, locale } = useI18n()
+const { t, locale } = useI18n({ useScope: 'global' })
 const notifications = ref<NotificationItem[]>([])
+const notificationFilter = ref<'all' | 'mention'>('all')
 const showNotifications = ref(false)
 const showSettings = ref(false)
+const showMyAgents = ref(false)
+const myAgents = ref<MyAgentItem[]>([])
+const myAgentsLoading = ref(false)
 const unreadCount = computed(() => notifications.value.filter((x) => !x.read).length)
+const filteredNotifications = computed(() => {
+  if (notificationFilter.value === 'all') return notifications.value
+  return notifications.value.filter((x) => x.type === 'MESSAGE_MENTION')
+})
 
 const LEVELS = [
   { level: 1, nameKey: 'page.profile.level_1', min: 0 },
@@ -209,6 +266,7 @@ const loadNotifications = async () => {
 
 const openNotifications = async () => {
   showNotifications.value = true
+  notificationFilter.value = 'all'
   if (notifications.value.length === 0) {
     await loadNotifications()
   }
@@ -216,6 +274,29 @@ const openNotifications = async () => {
 
 const openSettings = () => {
   showSettings.value = true
+}
+
+const loadMyAgents = async () => {
+  try {
+    myAgentsLoading.value = true
+    myAgents.value = await agentApi.getMyAgents()
+  } catch (err: any) {
+    uni.showToast({ title: err?.message || t('toast.load_failed'), icon: 'none' })
+    myAgents.value = []
+  } finally {
+    myAgentsLoading.value = false
+  }
+}
+
+const openMyAgents = async () => {
+  showMyAgents.value = true
+  if (myAgents.value.length === 0) {
+    await loadMyAgents()
+  }
+}
+
+const closeMyAgents = () => {
+  showMyAgents.value = false
 }
 
 const markNotificationRead = async (id: number) => {
@@ -234,7 +315,7 @@ const logout = () => {
   uni.reLaunch({ url: '/pages/auth/login' })
 }
 
-const changeLocale = (value: 'zh-CN' | 'en-US') => {
+const changeLocale = (value: 'zh-Hans' | 'en') => {
   if (locale.value === value) return
   setLocale(value)
   if (userInfo.value) {
@@ -252,6 +333,7 @@ onShow(() => {
   loadNotifications()
   uni.setNavigationBarTitle({ title: t('page.profile.title') })
 })
+
 </script>
 
 <style scoped>
@@ -261,7 +343,7 @@ onShow(() => {
   height: 100vh;
   background: linear-gradient(165deg, var(--c-bg) 0%, var(--c-bg-2) 100%);
   box-sizing: border-box;
-  padding-bottom: calc(96rpx + env(safe-area-inset-bottom));
+  padding-bottom: var(--page-pad-bottom-tabbar);
 }
 
 .profile-head {
@@ -452,7 +534,8 @@ onShow(() => {
 }
 
 .foot-pad {
-  height: 48rpx;
+  /* 底部留白已由 .page padding-bottom 统一处理 */
+  height: 0;
 }
 
 .sheet-mask {
@@ -461,7 +544,7 @@ onShow(() => {
   background: rgba(0, 0, 0, 0.35);
   display: flex;
   align-items: flex-end;
-  z-index: 20;
+  z-index: 999;
 }
 
 .sheet {
@@ -471,6 +554,7 @@ onShow(() => {
   max-height: 85vh;
   display: flex;
   flex-direction: column;
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
 .sheet-head {
@@ -495,6 +579,26 @@ onShow(() => {
   padding: 16rpx 24rpx 24rpx;
   height: 50vh;
   box-sizing: border-box;
+}
+
+.notice-filter-row {
+  display: flex;
+  gap: 12rpx;
+  padding: 14rpx 24rpx 0;
+}
+
+.notice-filter-btn {
+  padding: 8rpx 18rpx;
+  border-radius: var(--radius-pill);
+  background: rgba(0, 0, 0, 0.05);
+  color: var(--c-muted);
+  font-size: 22rpx;
+}
+
+.notice-filter-btn.active {
+  background: rgba(255, 122, 89, 0.12);
+  color: var(--c-primary);
+  font-weight: 600;
 }
 
 .sheet-settings {
@@ -538,6 +642,103 @@ onShow(() => {
   text-align: center;
   color: var(--c-muted);
   margin-top: 60rpx;
+}
+
+.agent-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 16rpx;
+  padding: 18rpx;
+  border: 1rpx solid var(--c-border);
+  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.9);
+  margin-bottom: 12rpx;
+}
+
+.agent-avatar {
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: var(--radius-lg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #7c3aedf0, #6366f1e0);
+  box-shadow: 0 10rpx 18rpx rgba(3, 2, 19, 0.08);
+  flex-shrink: 0;
+}
+
+.agent-avatar-text {
+  color: #fff;
+  font-size: 28rpx;
+  font-weight: 800;
+}
+
+.agent-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.agent-name {
+  display: block;
+  font-size: 28rpx;
+  font-weight: 800;
+  color: var(--c-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.agent-desc {
+  display: block;
+  margin-top: 8rpx;
+  font-size: 22rpx;
+  color: var(--c-muted);
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.agent-cap-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10rpx;
+  margin-top: 10rpx;
+}
+
+.cap-chip {
+  padding: 6rpx 12rpx;
+  border-radius: var(--radius-pill);
+  border: 1rpx solid rgba(91, 103, 241, 0.2);
+  background: rgba(91, 103, 241, 0.08);
+  color: var(--c-primary);
+  font-size: 20rpx;
+  font-weight: 700;
+}
+
+.agent-bottom {
+  margin-top: 12rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10rpx;
+}
+
+.agent-credit {
+  font-size: 22rpx;
+  color: var(--c-muted);
+}
+
+.wallet-ok {
+  font-size: 20rpx;
+  font-weight: 800;
+  color: #059669;
+  background: rgba(16, 185, 129, 0.12);
+  border: 1rpx solid rgba(16, 185, 129, 0.22);
+  border-radius: var(--radius-pill);
+  padding: 6rpx 12rpx;
+  white-space: nowrap;
 }
 
 .notice {

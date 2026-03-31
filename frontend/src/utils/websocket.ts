@@ -47,6 +47,7 @@ class WebSocketClient {
   
   // 回调函数
   private callbacks: WebSocketCallbacks = {}
+  private callbackSubscribers: Map<string, WebSocketCallbacks> = new Map()
   
   // 配置
   private config: WebSocketConfig = DEFAULT_CONFIG
@@ -70,6 +71,22 @@ class WebSocketClient {
     } catch (e) {
       console.warn('解析token失败:', e)
     }
+  }
+
+  /**
+   * 订阅WebSocket事件
+   */
+  addListener(callbacks: WebSocketCallbacks): string {
+    const id = `listener_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+    this.callbackSubscribers.set(id, callbacks)
+    return id
+  }
+
+  /**
+   * 取消订阅WebSocket事件
+   */
+  removeListener(listenerId: string): void {
+    this.callbackSubscribers.delete(listenerId)
   }
 
   /**
@@ -128,11 +145,14 @@ class WebSocketClient {
       if (this.callbacks.onOpen) {
         this.callbacks.onOpen()
       }
+      this.callbackSubscribers.forEach((cb) => {
+        cb.onOpen?.()
+      })
     })
 
     // 监听消息
     this.ws.onMessage((res) => {
-      this.handleMessage(res.data as string)
+      this.handleMessage(res.data)
     })
 
     // 监听关闭
@@ -250,15 +270,29 @@ class WebSocketClient {
   /**
    * 处理收到的消息
    */
-  private handleMessage(data: string): void {
+  private handleMessage(data: string | ArrayBuffer | Record<string, unknown>): void {
     try {
-      const message = JSON.parse(data) as BaseMessage
+      let message: BaseMessage
+      if (typeof data === 'string') {
+        message = JSON.parse(data) as BaseMessage
+      } else if (data instanceof ArrayBuffer) {
+        const text = String.fromCharCode.apply(null, Array.from(new Uint8Array(data)))
+        message = JSON.parse(text) as BaseMessage
+      } else if (typeof data === 'object' && data !== null) {
+        // 某些端会直接给对象，避免 JSON.parse 导致消息丢失
+        message = data as BaseMessage
+      } else {
+        throw new Error('unsupported websocket payload')
+      }
       console.log('收到WebSocket消息:', message.type, message)
 
       // 通用消息回调
       if (this.callbacks.onMessage) {
         this.callbacks.onMessage(message)
       }
+      this.callbackSubscribers.forEach((cb) => {
+        cb.onMessage?.(message)
+      })
 
       // 根据消息类型分发
       switch (message.type) {
@@ -266,18 +300,27 @@ class WebSocketClient {
           if (this.callbacks.onChatMessage) {
             this.callbacks.onChatMessage(message.payload as ChatMessagePayload, message)
           }
+          this.callbackSubscribers.forEach((cb) => {
+            cb.onChatMessage?.(message.payload as ChatMessagePayload, message)
+          })
           break
 
         case MessageType.CHAT_TYPING:
           if (this.callbacks.onTyping) {
             this.callbacks.onTyping(message.payload as TypingPayload, message)
           }
+          this.callbackSubscribers.forEach((cb) => {
+            cb.onTyping?.(message.payload as TypingPayload, message)
+          })
           break
 
         case MessageType.CHAT_READ:
           if (this.callbacks.onReadReceipt) {
             this.callbacks.onReadReceipt(message.payload as ReadReceiptPayload, message)
           }
+          this.callbackSubscribers.forEach((cb) => {
+            cb.onReadReceipt?.(message.payload as ReadReceiptPayload, message)
+          })
           break
 
         case MessageType.PRESENCE_ONLINE:
@@ -285,18 +328,27 @@ class WebSocketClient {
           if (this.callbacks.onPresence) {
             this.callbacks.onPresence(message.payload as PresencePayload, message)
           }
+          this.callbackSubscribers.forEach((cb) => {
+            cb.onPresence?.(message.payload as PresencePayload, message)
+          })
           break
 
         case MessageType.NOTIFICATION:
           if (this.callbacks.onNotification) {
             this.callbacks.onNotification(message.payload, message)
           }
+          this.callbackSubscribers.forEach((cb) => {
+            cb.onNotification?.(message.payload, message)
+          })
           break
 
         case MessageType.AGENT_RESPONSE:
           if (this.callbacks.onAgentResponse) {
             this.callbacks.onAgentResponse(message.payload, message)
           }
+          this.callbackSubscribers.forEach((cb) => {
+            cb.onAgentResponse?.(message.payload, message)
+          })
           break
 
         case MessageType.CONNECT_ACK:
@@ -304,6 +356,9 @@ class WebSocketClient {
           if (this.callbacks.onConnectAck) {
             this.callbacks.onConnectAck(message.payload as ConnectAckPayload, message)
           }
+          this.callbackSubscribers.forEach((cb) => {
+            cb.onConnectAck?.(message.payload as ConnectAckPayload, message)
+          })
           break
 
         case MessageType.PONG:
@@ -315,6 +370,9 @@ class WebSocketClient {
           if (this.callbacks.onError) {
             this.callbacks.onError(new Error((message.payload as ErrorPayload).message))
           }
+          this.callbackSubscribers.forEach((cb) => {
+            cb.onError?.(new Error((message.payload as ErrorPayload).message))
+          })
           break
 
         default:
@@ -336,6 +394,9 @@ class WebSocketClient {
     if (this.callbacks.onClose) {
       this.callbacks.onClose()
     }
+    this.callbackSubscribers.forEach((cb) => {
+      cb.onClose?.()
+    })
 
     this.scheduleReconnect()
   }
@@ -349,6 +410,9 @@ class WebSocketClient {
     if (this.callbacks.onError) {
       this.callbacks.onError(err)
     }
+    this.callbackSubscribers.forEach((cb) => {
+      cb.onError?.(err)
+    })
 
     this.scheduleReconnect()
   }
@@ -379,6 +443,10 @@ class WebSocketClient {
    * 计划重连
    */
   private scheduleReconnect(): void {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer)
+      this.reconnectTimer = null
+    }
     if (this.reconnectCount >= this.config.maxReconnectTimes) {
       console.error('WebSocket重连次数已达上限')
       return
@@ -415,6 +483,7 @@ class WebSocketClient {
 
     this.isConnected = false
     this.isConnecting = false
+    this.connectionId = ''
   }
 
   /**

@@ -1,0 +1,153 @@
+<template>
+  <view v-if="open" class="drawer-mask" @click="onClose">
+    <view class="drawer" @click.stop>
+      <view class="drawer-head">
+        <view class="drawer-head-left">
+          <view class="drawer-icon">▦</view>
+          <view class="drawer-titles">
+            <text class="drawer-title">{{ t('page.project.drawer.title') }}</text>
+            <text class="drawer-sub">{{ t('page.project.drawer.subtitle') }}</text>
+          </view>
+        </view>
+        <text class="sheet-close" @click="onClose">✕</text>
+      </view>
+
+      <view class="drawer-tabs">
+        <button
+          class="tab-btn"
+          :class="{ active: sidebarTab === 'tasks' }"
+          @click="onChangeTab('tasks')"
+        >{{ t('page.project.tabs.tasks') }}</button>
+        <button
+          class="tab-btn"
+          :class="{ active: sidebarTab === 'payments' }"
+          @click="onChangeTab('payments')"
+        >{{ t('page.project.tabs.payments') }}</button>
+        <button
+          class="tab-btn"
+          :class="{ active: sidebarTab === 'files' }"
+          @click="onChangeTab('files')"
+        >{{ t('page.project.tabs.files') }}</button>
+      </view>
+
+      <scroll-view class="drawer-body" scroll-y>
+        <view v-if="sidebarTab === 'tasks'">
+          <view v-if="sidebarTasks.length === 0" class="sheet-empty">{{ t('page.project.empty_tasks') }}</view>
+          <view v-for="task in sidebarTasks" :key="task.id" class="task-card">
+            <view class="task-icon-wrap" :class="taskIconClass(task.status)">
+              <text class="task-icon">{{ taskIconGlyph(task.status) }}</text>
+            </view>
+            <view class="task-main">
+              <view class="task-title-row">
+                <text class="task-title">{{ task.title }}</text>
+                <view class="priority-pill" :class="priorityPillClass(task.priority)">
+                  <text class="priority-text">{{ taskPriorityLabel(task.priority) }}</text>
+                </view>
+              </view>
+              <view class="task-meta-row">
+                <text class="task-meta-item">{{ task.assignee }}</text>
+                <text class="task-meta-sep">·</text>
+                <text class="task-meta-item">{{ task.isAgent ? t('page.project.member_type_ai') : t('page.project.member_type_human') }}</text>
+                <text class="task-meta-sep">·</text>
+                <text class="task-meta-date">{{ task.deadline || '-' }}</text>
+              </view>
+            </view>
+          </view>
+        </view>
+
+        <view v-else-if="sidebarTab === 'payments'">
+          <view v-if="sidebarPayments.length === 0" class="sheet-empty">{{ t('page.project.empty_payments') }}</view>
+          <view v-for="payment in sidebarPayments" :key="payment.id" class="payment-card">
+            <view class="payment-icon-wrap">
+              <text class="payment-icon">$</text>
+            </view>
+            <view class="payment-main">
+              <text class="payment-title">{{ payment.recipient }}</text>
+              <view class="payment-amount-row">
+                <text class="payment-amount">{{ formatMoney(payment.amount) }}</text>
+                <view class="payment-pill" :class="paymentPillClass(payment.status)">
+                  <text class="payment-pill-text">{{ paymentStatusLabel(payment.status) }}</text>
+                </view>
+              </view>
+              <text class="payment-meta">
+                {{ payment.isAgent ? t('page.project.member_type_ai') : t('page.project.member_type_human') }} · {{ payment.date || '' }}
+              </text>
+            </view>
+          </view>
+        </view>
+
+        <view v-else>
+          <view v-if="sidebarFiles.length === 0" class="sheet-empty">{{ t('page.project.empty_files') }}</view>
+          <view v-for="file in sidebarFiles" :key="file.id" class="file-card">
+            <view class="file-icon-wrap">
+              <text class="file-icon">📄</text>
+            </view>
+            <view class="file-main">
+              <text class="file-name">{{ file.name }}</text>
+              <text class="file-sub">
+                {{ file.type }} · {{ file.size || '-' }}
+              </text>
+              <text class="file-meta">
+                {{ file.isAgent ? t('page.project.member_type_ai') : t('page.project.member_type_human') }} · {{ file.date || '' }}
+              </text>
+              <button v-if="file.downloadUrl" class="link-btn" @click="openProjectFile(file.downloadUrl)">
+                {{ t('page.project.download_open') }}
+              </button>
+            </view>
+          </view>
+        </view>
+      </scroll-view>
+    </view>
+  </view>
+</template>
+
+<script setup lang="ts">
+import { toRefs } from 'vue'
+import { useI18n } from 'vue-i18n'
+import type { ProjectFile, ProjectPayment, ProjectTask } from '@/api/modules/project'
+
+defineOptions({
+  options: {
+    styleIsolation: 'shared',
+  },
+})
+
+type SidebarTab = 'tasks' | 'payments' | 'files'
+
+type Props = {
+  open: boolean
+  sidebarTab: SidebarTab
+  sidebarTasks: ProjectTask[]
+  sidebarPayments: ProjectPayment[]
+  sidebarFiles: ProjectFile[]
+  onClose: () => void
+  onChangeTab: (tab: SidebarTab) => void
+  taskIconClass: (status: any) => string
+  taskIconGlyph: (status: any) => string
+  priorityPillClass: (priority: any) => string
+  taskPriorityLabel: (priority: any) => string
+  paymentPillClass: (status: any) => string
+  paymentStatusLabel: (status: any) => string
+  formatMoney: (amount: number) => string
+  openProjectFile: (downloadUrl?: string) => void
+}
+
+const props = defineProps<Props>()
+const { t } = useI18n({ useScope: 'global' })
+
+const { open, sidebarTab, sidebarTasks, sidebarPayments, sidebarFiles } = toRefs(props)
+
+const onClose = props.onClose
+const onChangeTab = props.onChangeTab
+const taskIconClass = props.taskIconClass
+const taskIconGlyph = props.taskIconGlyph
+const priorityPillClass = props.priorityPillClass
+const taskPriorityLabel = props.taskPriorityLabel
+const paymentPillClass = props.paymentPillClass
+const paymentStatusLabel = props.paymentStatusLabel
+const formatMoney = props.formatMoney
+const openProjectFile = props.openProjectFile
+</script>
+
+<style scoped src="../project.styles.css"></style>
+

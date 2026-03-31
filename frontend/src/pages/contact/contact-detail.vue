@@ -27,8 +27,48 @@
             <text class="stat-label">{{ t('page.world.posts') }}</text>
           </view>
           <view class="stat-card">
-            <text class="stat-value">{{ contact.id % 9 + 91 }}</text>
+            <text class="stat-value">{{ creditProfile?.creditScore ?? 0 }}</text>
             <text class="stat-label">{{ t('common.credit') }}</text>
+          </view>
+        </view>
+
+        <view class="credit-details-card">
+          <view class="credit-details-head">
+            <text class="credit-details-title">Credit Profile Details</text>
+            <button class="credit-details-toggle" @click="showCreditDetails = !showCreditDetails">
+              {{ showCreditDetails ? '收起' : '展开' }}
+            </button>
+          </view>
+
+          <view v-if="showCreditDetails" class="credit-details-body">
+            <view class="credit-row">
+              <text class="credit-key">Projects</text>
+              <text class="credit-val">{{ creditProfile?.projectsCompleted ?? 0 }}</text>
+            </view>
+            <view class="credit-row">
+              <text class="credit-key">Success Rate</text>
+              <text class="credit-val">{{ creditProfile?.successRate ?? 0 }}%</text>
+            </view>
+            <view class="credit-row">
+              <text class="credit-key">Verified Disputes</text>
+              <text class="credit-val">{{ creditProfile?.disputeCount ?? 0 }}</text>
+            </view>
+
+            <view v-if="creditProfile?.disputes?.length" class="credit-list">
+              <view v-for="d in creditProfile.disputes" :key="d.id" class="credit-item">
+                <text class="credit-item-title">{{ d.projectName || 'Project' }}</text>
+                <text class="credit-item-sub">{{ d.reason || '' }}</text>
+                <text class="credit-item-meta">{{ d.verdict }} · {{ d.date }}</text>
+              </view>
+            </view>
+
+            <view v-if="creditProfile?.reviews?.length" class="credit-list">
+              <view v-for="r in creditProfile.reviews.slice(0, 3)" :key="r.id" class="credit-item">
+                <text class="credit-item-title">★{{ r.rating }} · {{ r.projectName || 'Project' }}</text>
+                <text class="credit-item-sub">{{ r.comment || '' }}</text>
+                <text class="credit-item-meta">from {{ r.from }} · {{ r.date }}</text>
+              </view>
+            </view>
           </view>
         </view>
       </view>
@@ -83,6 +123,7 @@ import { onLoad, onShow } from '@dcloudio/uni-app'
 import { useI18n } from 'vue-i18n'
 import { contactApi, type ContactItem } from '@/api/modules/contact'
 import { conversationApi } from '@/api/modules/conversation'
+import { creditApi, type CreditProfile, type CreditSubjectType } from '@/api/modules/credits'
 import { useUserStore } from '@/store/modules/user'
 import BottomNav from '@/components/BottomNav.vue'
 
@@ -90,15 +131,20 @@ const contact = ref<ContactItem | null>(null)
 const loading = ref(false)
 const friendId = ref(0)
 const userStore = useUserStore()
-const { t } = useI18n()
+const { t } = useI18n({ useScope: 'global' })
 const newTag = ref('')
 const topicTags = ref<string[]>([])
 const avatarStyle = ref<Record<string, string>>({})
+
+const creditProfile = ref<CreditProfile | null>(null)
+const showCreditDetails = ref(false)
 
 const isAgentLike = computed(() => {
   const n = (contact.value?.nickname || '').toLowerCase()
   return n.includes('agent') || n.includes('ai')
 })
+
+const subjectType = computed<CreditSubjectType>(() => (isAgentLike.value ? 'AGENT' : 'USER'))
 
 const profileHint = computed(() => {
   const count = topicTags.value.length
@@ -113,6 +159,15 @@ const buildAvatarStyle = (seed: string) => {
   for (let i = 0; i < seed.length; i++) h = seed.charCodeAt(i) + ((h << 5) - h)
   const c = palette[Math.abs(h) % palette.length]!
   return { background: `linear-gradient(135deg, ${c}f0, ${c}c8)` }
+}
+
+const loadCreditProfile = async () => {
+  if (!contact.value) return
+  try {
+    creditProfile.value = await creditApi.getSubjectCreditProfile(contact.value.id, subjectType.value)
+  } catch {
+    creditProfile.value = null
+  }
 }
 
 const loadContact = async () => {
@@ -131,6 +186,7 @@ const loadContact = async () => {
     }
     avatarStyle.value = buildAvatarStyle(contact.value.nickname || String(contact.value.id))
     topicTags.value = contact.value.tags || []
+    await loadCreditProfile()
   } catch (err: any) {
     uni.showToast({ title: err?.message || t('toast.load_failed'), icon: 'none' })
   } finally {
@@ -198,6 +254,7 @@ onShow(() => {
   }
   uni.setNavigationBarTitle({ title: t('page.contact.detail') })
 })
+
 </script>
 
 <style scoped>
@@ -207,7 +264,7 @@ onShow(() => {
   min-height: 100vh;
   background: linear-gradient(165deg, var(--c-bg) 0%, var(--c-bg-2) 100%);
   padding: 24rpx;
-  padding-bottom: calc(24rpx + 96rpx + env(safe-area-inset-bottom));
+  padding-bottom: var(--page-pad-bottom-tabbar);
   box-sizing: border-box;
 }
 
@@ -308,6 +365,97 @@ onShow(() => {
   margin-top: 6rpx;
   color: var(--c-muted);
   display: block;
+}
+
+.credit-details-card {
+  margin-top: 14rpx;
+  background: rgba(255, 255, 255, 0.82);
+  border: 1rpx solid var(--c-border);
+  border-radius: var(--radius-lg);
+  padding: 20rpx;
+  margin-bottom: 20rpx;
+}
+
+.credit-details-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12rpx;
+}
+
+.credit-details-title {
+  font-size: 28rpx;
+  font-weight: 800;
+  color: var(--c-ink);
+}
+
+.credit-details-toggle {
+  height: 56rpx;
+  line-height: 56rpx;
+  padding: 0 18rpx;
+  border-radius: var(--radius-md);
+  border: 1rpx solid rgba(91, 103, 241, 0.25);
+  background: rgba(91, 103, 241, 0.08);
+  color: var(--c-primary);
+  font-size: 22rpx;
+  font-weight: 700;
+}
+
+.credit-details-body {
+  margin-top: 14rpx;
+}
+
+.credit-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10rpx 0;
+  border-bottom: 1rpx dashed rgba(0, 0, 0, 0.06);
+}
+
+.credit-row:last-child {
+  border-bottom: none;
+}
+
+.credit-key {
+  font-size: 22rpx;
+  color: var(--c-muted);
+}
+
+.credit-val {
+  font-size: 24rpx;
+  font-weight: 800;
+  color: var(--c-ink);
+}
+
+.credit-list {
+  margin-top: 14rpx;
+}
+
+.credit-item {
+  padding: 12rpx 0;
+}
+
+.credit-item-title {
+  display: block;
+  font-size: 22rpx;
+  font-weight: 800;
+  color: var(--c-ink);
+}
+
+.credit-item-sub {
+  display: block;
+  margin-top: 6rpx;
+  font-size: 20rpx;
+  color: var(--c-muted);
+  line-height: 1.45;
+}
+
+.credit-item-meta {
+  display: block;
+  margin-top: 8rpx;
+  font-size: 18rpx;
+  color: rgba(26, 23, 32, 0.55);
 }
 
 .topics-card {

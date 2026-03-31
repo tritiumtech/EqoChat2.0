@@ -3,7 +3,7 @@ import { defineUniPages } from '@uni-helper/vite-plugin-uni-pages'
 export default defineUniPages({
   globalStyle: {
     navigationBarTextStyle: 'black',
-    navigationBarTitleText: 'EqoChat',
+    navigationBarTitleText: '%pages.global.title%',
     navigationBarBackgroundColor: '#F8F8F8',
     backgroundColor: '#F8F8F8',
   },
@@ -11,7 +11,7 @@ export default defineUniPages({
     {
       path: 'pages/chat/chat-list',
       style: {
-        navigationBarTitleText: '聊天',
+        navigationBarTitleText: '%pages.chat.title%',
       },
     },
     {
@@ -24,37 +24,43 @@ export default defineUniPages({
     {
       path: 'pages/contact/contact-list',
       style: {
-        navigationBarTitleText: '联系人',
+        navigationBarTitleText: '%pages.contact.title%',
       },
     },
     {
       path: 'pages/contact/contact-detail',
       style: {
-        navigationBarTitleText: '好友详情',
+        navigationBarTitleText: '%pages.contact.detail.title%',
       },
     },
     {
       path: 'pages/world/world',
       style: {
-        navigationBarTitleText: '世界',
+        navigationBarTitleText: '%pages.world.title%',
       },
     },
     {
       path: 'pages/profile/profile',
       style: {
-        navigationBarTitleText: '我的',
+        navigationBarTitleText: '%pages.profile.title%',
       },
     },
     {
       path: 'pages/auth/login',
       style: {
-        navigationBarTitleText: '登录',
+        navigationBarTitleText: '%pages.login.title%',
       },
     },
     {
       path: 'pages/auth/register',
       style: {
-        navigationBarTitleText: '注册',
+        navigationBarTitleText: '%pages.register.title%',
+      },
+    },
+    {
+      path: 'pages/project/project',
+      style: {
+        navigationBarTitleText: '%pages.project.title%',
       },
     },
   ],

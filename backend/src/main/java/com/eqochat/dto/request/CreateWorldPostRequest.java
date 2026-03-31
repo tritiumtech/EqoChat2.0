@@ -3,6 +3,8 @@ package com.eqochat.dto.request;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
 
+import java.util.List;
+
 @Data
 public class CreateWorldPostRequest {
 
@@ -20,4 +22,7 @@ public class CreateWorldPostRequest {
 
     @Size(max = 1024)
     private String videoUrl;
+
+    @Size(max = 50)
+    private List<Long> mentionedUserIds;
 }

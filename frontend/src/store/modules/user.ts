@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
+import { wsClient } from '@/utils/websocket'
 
 export const useUserStore = defineStore('user', () => {
   const token = ref<string | null>(uni.getStorageSync('token') || null)
@@ -23,6 +24,7 @@ export const useUserStore = defineStore('user', () => {
     uni.removeStorageSync('token')
     uni.removeStorageSync('userInfo')
     ;(globalThis as any).__EQOCHAT_TOKEN__ = null
+    wsClient.close()
   }
 
   return {

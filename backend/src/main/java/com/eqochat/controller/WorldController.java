@@ -3,6 +3,7 @@ package com.eqochat.controller;
 import com.eqochat.common.ApiResponse;
 import com.eqochat.common.UserContext;
 import com.eqochat.dto.request.CreateWorldPostRequest;
+import com.eqochat.dto.request.CreateWorldPostReplyRequest;
 import com.eqochat.dto.response.WorldPostResponse;
 import com.eqochat.dto.response.WorldShareLinkResponse;
 import com.eqochat.dto.response.WorldTopicResponse;
@@ -62,6 +63,12 @@ public class WorldController {
         return ApiResponse.success(worldService.listTopicPosts(UserContext.requireCurrentUser(), name, cursorId, limit));
     }
 
+    @GetMapping("/mentions")
+    public ApiResponse<List<WorldPostResponse>> listMentionedMe(@RequestParam(required = false) Long cursorId,
+                                                                @RequestParam(required = false) Integer limit) {
+        return ApiResponse.success(worldService.listMentionedMe(UserContext.requireCurrentUser(), cursorId, limit));
+    }
+
     @PostMapping("/posts/{postId}/upvote")
     public ApiResponse<Map<String, Object>> toggleUpvote(@PathVariable Long postId) {
         boolean upvoted = worldService.toggleUpvote(UserContext.requireCurrentUser(), postId);
@@ -72,6 +79,13 @@ public class WorldController {
     public ApiResponse<Map<String, Object>> toggleFollow(@PathVariable String name) {
         boolean following = worldService.toggleTopicFollow(UserContext.requireCurrentUser(), name);
         return ApiResponse.success(Map.of("following", following));
+    }
+
+    @PostMapping("/posts/{postId}/replies")
+    public ApiResponse<Map<String, Object>> createReply(@PathVariable Long postId,
+                                                         @Valid @RequestBody CreateWorldPostReplyRequest request) {
+        int replyCount = worldService.createReply(UserContext.requireCurrentUser(), postId, request);
+        return ApiResponse.success(Map.of("replyCount", replyCount));
     }
 
     @PostMapping(value = "/uploads", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)

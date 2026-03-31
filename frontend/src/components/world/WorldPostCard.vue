@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { WorldPost } from '@/api/modules/world'
 
 const props = defineProps<{
@@ -37,6 +37,36 @@ function gradientStyle(hex: string) {
 }
 
 const mediaType = () => String(props.post.mediaType || 'TEXT').toUpperCase()
+
+function isValidMediaUrl(url?: string): boolean {
+  const value = String(url || '').trim()
+  if (!value || value === 'null' || value === 'undefined' || value === '-' || value === '--') return false
+  return /^https?:\/\//i.test(value) || value.startsWith('/api/') || value.startsWith('/uploads/')
+}
+
+const showImage = computed(() => mediaType() === 'IMAGE' && isValidMediaUrl(props.post.imageUrl))
+const showVideo = computed(() => mediaType() === 'VIDEO' && isValidMediaUrl(props.post.videoUrl))
+const imageLoadFailed = ref(false)
+const videoLoadFailed = ref(false)
+const canShowImage = computed(() => showImage.value && !imageLoadFailed.value)
+const canShowVideo = computed(() => showVideo.value && !videoLoadFailed.value)
+
+watch(
+  () => [props.post.id, props.post.mediaType, props.post.imageUrl, props.post.videoUrl],
+  () => {
+    imageLoadFailed.value = false
+    videoLoadFailed.value = false
+  },
+  { immediate: true },
+)
+
+function handleImageError() {
+  imageLoadFailed.value = true
+}
+
+function handleVideoError() {
+  videoLoadFailed.value = true
+}
 
 type ContentSeg = { type: 'text' | 'mention' | 'topic'; value: string }
 
@@ -87,18 +117,17 @@ const contentParts = computed<ContentSeg[]>(() => {
       </view>
     </view>
 
-    <view v-if="mediaType() === 'IMAGE' && post.imageUrl" class="post-media">
-      <image class="post-media-image" :src="post.imageUrl" mode="widthFix" />
+    <view v-if="canShowImage" class="post-media">
+      <image class="post-media-image" :src="post.imageUrl" mode="widthFix" @error="handleImageError" />
     </view>
-    <view v-else-if="mediaType() === 'VIDEO' && post.videoUrl" class="post-media">
-      <video class="post-media-video" :src="post.videoUrl" controls object-fit="contain" />
+    <view v-else-if="canShowVideo" class="post-media">
+      <video class="post-media-video" :src="post.videoUrl" controls object-fit="contain" @error="handleVideoError" />
     </view>
 
     <view class="post-content">
       <block v-for="(seg, i) in contentParts" :key="i">
         <text v-if="seg.type === 'text'" class="seg-plain">{{ seg.value }}</text>
-        <text v-else-if="seg.type === 'mention'" class="seg-mention">{{ seg.value }}</text>
-        <text v-else class="seg-topic">{{ seg.value }}</text>
+        <text v-else class="seg-highlight">{{ seg.value }}</text>
       </block>
     </view>
     <view v-if="post.topics?.length" class="post-topics">
@@ -107,15 +136,20 @@ const contentParts = computed<ContentSeg[]>(() => {
 
     <view class="post-actions">
       <view class="action-item" :class="{ 'is-upvoted': post.upvoted }" @click="emit('upvote')">
-        <text class="action-icon">↑</text>
+        <u-icon
+          class="action-icon"
+          :name="post.upvoted ? 'thumb-up-fill' : 'thumb-up'"
+          :size="22"
+          :color="post.upvoted ? 'var(--c-secondary)' : 'var(--c-muted)'"
+        />
         <text class="action-num">{{ post.upvotes }}</text>
       </view>
       <view class="action-item" @click="emit('reply')">
-        <text class="action-icon">💬</text>
+        <u-icon class="action-icon" name="chat" :size="22" color="var(--c-muted)" />
         <text class="action-num">{{ post.replies }}</text>
       </view>
       <view class="action-item action-share" @click="emit('share')">
-        <text class="action-icon">↗</text>
+        <u-icon class="action-icon" name="share" :size="22" color="var(--c-muted)" />
       </view>
     </view>
   </view>
@@ -239,13 +273,8 @@ const contentParts = computed<ContentSeg[]>(() => {
   color: var(--c-ink);
 }
 
-.seg-mention {
-  font-size: 26rpx;
-  color: var(--c-primary);
-  font-weight: 600;
-}
-
-.seg-topic {
+/* @提及 与 #话题 正文内统一使用与话题标签一致的紫色高亮 */
+.seg-highlight {
   font-size: 26rpx;
   color: var(--c-violet);
   font-weight: 600;
@@ -271,7 +300,7 @@ const contentParts = computed<ContentSeg[]>(() => {
 .post-actions {
   display: flex;
   align-items: center;
-  gap: 32rpx;
+  gap: 24rpx;
   padding-top: 8rpx;
 }
 
@@ -279,26 +308,23 @@ const contentParts = computed<ContentSeg[]>(() => {
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: 8rpx;
+  gap: 6rpx;
 }
 
 .action-icon {
-  font-size: 28rpx;
-  color: var(--c-muted);
   line-height: 1;
 }
 
 .action-num {
-  font-size: 22rpx;
+  font-size: 20rpx;
   font-weight: 600;
   color: var(--c-muted);
 }
 
 .action-share .action-icon {
-  font-size: 30rpx;
+  font-size: 26rpx;
 }
 
-.action-item.is-upvoted .action-icon,
 .action-item.is-upvoted .action-num {
   color: var(--c-secondary);
 }

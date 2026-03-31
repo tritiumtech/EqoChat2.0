@@ -6,7 +6,7 @@ export default defineManifestConfig({
   description: 'EqoChat uni-app',
   versionName: '1.0.0',
   versionCode: '100',
-  locale: 'zh-CN',
+  locale: 'zh-Hans',
   'app-plus': {
     usingComponents: true,
   },

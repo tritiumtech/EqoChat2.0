@@ -1,0 +1,40 @@
+---
+description: 前端页面与文案的国际化（vue-i18n）约定
+globs: frontend/src/**/*.{vue,ts}
+alwaysApply: false
+---
+
+# 前端国际化（i18n）
+
+## 适用范围
+
+- 所有面向用户的可见文案：模板中的标题、按钮、占位、筛选标签、空状态、Toast 等。
+- 例外：纯图标/emoji、品牌名、技术字段名（如 API 类型）、日志 `console` 可保持英文。
+
+## 实现方式
+
+- 使用 `vue-i18n`：在 `<script setup>` 中 `const { t } = useI18n()`，模板与脚本里用 `t('key')` 或 `t('key', { n })`。
+- 文案集中维护在 `frontend/src/i18n/index.ts` 的 `messages['zh-CN']` 与 `messages['en-US']` 中，**同一 key 两套语言必须同时补齐**。
+- Key 命名：`common.*`（通用）、`page.<页面名>.*`（页面级）、`toast.*`、`nav.*`、`action.*` 等，与现有结构保持一致。
+
+## 禁止
+
+- 在模板中直接写中文或英文用户可见句子（除非该 key 已存在且通过 `t()` 引用）。
+- 仅改中文不改英文（或反之），会导致切换语言后缺文案或 fallback 异常。
+
+## 新增文案流程
+
+1. 在 `zh-CN` 与 `en-US` 下增加相同路径的 key。
+2. 若与现有页面语义一致，优先复用已有 key（例如 `page.contact.filter_all` 表示「全部」）。
+3. 插值使用 `{n}`、`{name}` 等与 `t()` 第二个参数一致。
+
+## 示例
+
+```vue
+<text>{{ t('page.profile.title') }}</text>
+<text>{{ t('page.profile.level_abbr', { n: level }) }}</text>
+```
+
+```ts
+uni.showToast({ title: t('toast.load_failed'), icon: 'none' })
+```

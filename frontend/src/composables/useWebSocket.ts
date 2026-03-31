@@ -24,10 +24,12 @@ export interface UseWebSocketReturn {
 
 export interface UseWebSocketOptions extends WebSocketCallbacks {
   autoConnect?: boolean
+  disconnectOnUnmount?: boolean
 }
 
 export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketReturn {
   const userStore = useUserStore()
+  let listenerId: string | null = null
   
   // 状态
   const isConnected = ref(false)
@@ -48,7 +50,8 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
     isConnecting.value = true
     error.value = null
 
-    wsClient.init(userStore.token, {
+    wsClient.init(userStore.token)
+    const listeners: WebSocketCallbacks = {
       onOpen: () => {
         console.log('WebSocket连接成功')
         isConnected.value = true
@@ -125,9 +128,21 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
           options.onConnectAck(payload)
         }
       }
-    })
+    }
 
-    wsClient.connect()
+    if (listenerId) {
+      wsClient.removeListener(listenerId)
+      listenerId = null
+    }
+    listenerId = wsClient.addListener(listeners)
+    const status = wsClient.getConnectionStatus()
+    isConnected.value = status.isConnected
+    isConnecting.value = status.isConnecting
+    reconnectCount.value = status.reconnectCount
+    connectionId.value = status.connectionId || null
+    if (!status.isConnected && !status.isConnecting) {
+      wsClient.connect()
+    }
   }
 
   /**
@@ -185,7 +200,13 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
 
   // 组件卸载时断开连接
   onUnmounted(() => {
-    disconnect()
+    if (listenerId) {
+      wsClient.removeListener(listenerId)
+      listenerId = null
+    }
+    if (options.disconnectOnUnmount) {
+      disconnect()
+    }
   })
 
   return {

@@ -1,7 +1,16 @@
 <script setup lang="ts">
+import { computed, nextTick, ref, watch } from 'vue'
+
+type MentionFriend = {
+  id: number
+  nickname: string
+  avatarUrl?: string
+}
+
 const props = defineProps<{
   visible: boolean
   content: string
+  friends: MentionFriend[]
   localImagePath: string
   localVideoPath: string
   videoError: string
@@ -14,6 +23,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'close'): void
   (e: 'update:content', value: string): void
+  (e: 'update:mentionedIds', value: number[]): void
   (e: 'pick-image'): void
   (e: 'pick-video'): void
   (e: 'clear-media'): void
@@ -27,9 +37,203 @@ function resolveInputValue(payload: any): string {
   return ''
 }
 
-function handleContentInput(payload: any) {
-  emit('update:content', resolveInputValue(payload))
+function resolveCursor(payload: any): number {
+  if (typeof payload?.detail?.cursor === 'number') return payload.detail.cursor
+  if (typeof payload?.cursor === 'number') return payload.cursor
+  return -1
 }
+
+const cursorPos = ref(-1)
+const localContent = ref('')
+const inputFocused = ref(false)
+const keepPanelOpen = ref(false)
+const inputCursor = computed(() => (cursorPos.value >= 0 ? cursorPos.value : undefined))
+
+watch(
+  () => props.content,
+  (v) => {
+    const next = String(v || '')
+    if (next !== localContent.value) {
+      localContent.value = next
+    }
+  },
+  { immediate: true },
+)
+
+watch(
+  () => props.visible,
+  (visible) => {
+    if (visible) return
+    inputFocused.value = false
+    keepPanelOpen.value = false
+    cursorPos.value = -1
+  },
+)
+
+function normalizeDeleteMention(prev: string, next: string, cursor: number): string {
+  if (!prev) return next
+  // 兼容不同平台 cursor 回传：优先使用 next 长度作为回退
+  const safeCursor = cursor >= 0 ? cursor : next.length
+  // 仅在回删场景（长度减少 1）下触发 token 删除
+  if (prev.length !== next.length + 1) return next
+  if (cursor < 0) return next
+  const mentionRe = /@[A-Za-z0-9_\u4E00-\u9FFF-]+/g
+  let m: RegExpExecArray | null
+  while ((m = mentionRe.exec(prev)) !== null) {
+    const start = m.index
+    const end = start + m[0].length
+    // 微博/Twitter 习惯：回删发生在 mention 内或 mention 尾部，整段删除（并吞掉后置空格）
+    if ((safeCursor >= start && safeCursor < end) || safeCursor === end) {
+      const tailHasSpace = prev.charAt(end) === ' '
+      return `${prev.slice(0, start)}${prev.slice(tailHasSpace ? end + 1 : end)}`
+    }
+  }
+  return next
+}
+
+function handleContentInput(payload: any) {
+  const nextRaw = resolveInputValue(payload)
+  const nextCursor = resolveCursor(payload)
+  const prev = localContent.value || ''
+  const next = normalizeDeleteMention(prev, nextRaw, nextCursor)
+  localContent.value = next
+  if (nextCursor >= 0) {
+    cursorPos.value = nextCursor
+  }
+  emit('update:content', next)
+}
+
+const mentionState = computed(() => {
+  const content = localContent.value || ''
+  const cursor = cursorPos.value >= 0 ? cursorPos.value : content.length
+  const left = content.slice(0, cursor)
+  const m = left.match(/(?:^|\s)@([^\s@#]*)$/)
+  if (!m) return { active: false, keyword: '', start: -1, end: -1 }
+  const keyword = (m[1] || '').trim().toLowerCase()
+  const start = left.lastIndexOf('@')
+  return { active: true, keyword, start, end: cursor }
+})
+
+const mentionCandidates = computed(() => {
+  if (!mentionState.value.active) return []
+  const keyword = mentionState.value.keyword
+  const all = props.friends || []
+  if (!keyword) return all.slice(0, 8)
+  return all
+    .filter((f) => (f.nickname || '').toLowerCase().includes(keyword))
+    .slice(0, 8)
+})
+
+function handleInputFocus(payload: any) {
+  inputFocused.value = true
+  const cursor = resolveCursor(payload)
+  if (cursor >= 0) {
+    cursorPos.value = cursor
+  }
+}
+
+function handleInputBlur() {
+  inputFocused.value = false
+  setTimeout(() => {
+    keepPanelOpen.value = false
+  }, 260)
+}
+
+function findMentionRange(content: string, cursor: number): { start: number; end: number } | null {
+  const safeCursor = cursor >= 0 ? cursor : content.length
+  const left = content.slice(0, safeCursor)
+  const matched = left.match(/(?:^|\s)@([^\s@#]*)$/)
+  if (!matched) return null
+  const start = left.lastIndexOf('@')
+  if (start < 0) return null
+  return { start, end: safeCursor }
+}
+
+function preparePickMention() {
+  keepPanelOpen.value = true
+}
+
+function selectMention(friend: MentionFriend) {
+  preparePickMention()
+  insertMention(friend)
+}
+
+function insertMention(friend: MentionFriend) {
+  const content = localContent.value || ''
+  const state = mentionState.value
+  const range = state.active && state.start >= 0
+    ? { start: state.start, end: state.end }
+    : findMentionRange(content, cursorPos.value)
+  if (!range) return
+
+  const nickname = String(friend.nickname || '').trim()
+  if (!nickname) return
+
+  const beforeRaw = content.slice(0, range.start)
+  const afterRaw = content.slice(range.end)
+  const before = beforeRaw.length > 0 && !/\s$/.test(beforeRaw) ? `${beforeRaw} ` : beforeRaw
+  const after = afterRaw.replace(/^\s+/, '')
+  const mentionToken = `@${nickname}`
+  const inserted = `${before}${mentionToken}${after ? ` ${after}` : ' '}`
+  const nextCursor = before.length + mentionToken.length + 1
+
+  localContent.value = inserted
+  cursorPos.value = nextCursor
+  emit('update:content', inserted)
+  keepPanelOpen.value = false
+  nextTick(() => {
+    inputFocused.value = true
+  })
+}
+
+function collectMentionedIds(content: string, friends: MentionFriend[]): number[] {
+  if (!content) return []
+  if (!friends?.length) return []
+  const nameToId = new Map<string, number>()
+  friends.forEach((f) => {
+    if (!f?.nickname) return
+    nameToId.set(f.nickname, f.id)
+  })
+  const out: number[] = []
+  const seen = new Set<number>()
+  const re = /@([A-Za-z0-9_\u4E00-\u9FFF-]+)/g
+  let m: RegExpExecArray | null
+  while ((m = re.exec(content)) !== null) {
+    const id = nameToId.get(m[1] || '')
+    if (!id || seen.has(id)) continue
+    seen.add(id)
+    out.push(id)
+  }
+  return out
+}
+
+watch(
+  () => [localContent.value, props.friends] as const,
+  ([content, friends]) => {
+    emit('update:mentionedIds', collectMentionedIds(content || '', friends || []))
+  },
+  { immediate: true, deep: true },
+)
+
+/** 与 WorldPostCard 一致：@ 与 #话题 均按话题色高亮 */
+const contentPreviewParts = computed(() => {
+  const content = localContent.value || ''
+  const re = /(@[A-Za-z0-9_\u4E00-\u9FFF-]+|#[A-Za-z0-9_\u4E00-\u9FFF-]+)/g
+  const out: Array<{ text: string; highlight: boolean }> = []
+  let last = 0
+  let m: RegExpExecArray | null
+  while ((m = re.exec(content)) !== null) {
+    if (m.index > last) out.push({ text: content.slice(last, m.index), highlight: false })
+    out.push({ text: m[0], highlight: true })
+    last = m.index + m[0].length
+  }
+  if (last < content.length) out.push({ text: content.slice(last), highlight: false })
+  return out
+})
+
+const showMentionPanel = computed(() => {
+  return mentionState.value.active && mentionCandidates.value.length > 0 && (inputFocused.value || keepPanelOpen.value)
+})
 </script>
 
 <template>
@@ -49,16 +253,40 @@ function handleContentInput(payload: any) {
         </view>
       </view>
       <view class="modal-body">
-        <u-textarea
-          :value="props.content"
+        <textarea
+          :value="localContent"
           class="post-textarea"
           :placeholder="props.placeholder"
-          height="100"
           :maxlength="8000"
-          border="surround"
+          :cursor="inputCursor"
+          :focus="inputFocused"
+          @focus="handleInputFocus"
+          @blur="handleInputBlur"
           @input="handleContentInput"
-          @change="handleContentInput"
         />
+        <view v-if="localContent" class="mention-preview">
+          <text
+            v-for="(part, idx) in contentPreviewParts"
+            :key="idx"
+            :class="part.highlight ? 'preview-highlight' : 'preview-plain'"
+          >{{ part.text }}</text>
+        </view>
+        <view v-if="showMentionPanel" class="mention-panel">
+          <view
+            v-for="f in mentionCandidates"
+            :key="f.id"
+            class="mention-item"
+            @touchstart.stop="preparePickMention"
+            @mousedown.stop="preparePickMention"
+            @touchend.stop.prevent="selectMention(f)"
+            @tap.stop.prevent="selectMention(f)"
+            @click.stop.prevent="selectMention(f)"
+          >
+            <image v-if="f.avatarUrl" class="mention-avatar-img" :src="f.avatarUrl" mode="aspectFill" />
+            <view v-else class="mention-avatar">{{ (f.nickname || '?').slice(0, 1) }}</view>
+            <text class="mention-name">@{{ f.nickname }}</text>
+          </view>
+        </view>
         <text class="modal-label">{{ $t('page.world.add_media') }}</text>
         <view class="media-picker-grid">
           <u-button class="media-pick-card" :class="{ active: props.localImagePath }" shape="circle" color="#ffffff" @click="emit('pick-image')">
@@ -104,10 +332,89 @@ function handleContentInput(payload: any) {
 .modal-close-icon { width: 56rpx; height: 56rpx; border-radius: 14rpx; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.04); border: 1rpx solid rgba(0, 0, 0, 0.06); flex-shrink: 0; margin-left: auto; }
 .modal-body { flex: 1; padding: 16rpx 20rpx 20rpx; box-sizing: border-box; display: flex; flex-direction: column; }
 .modal-foot { padding: 16rpx 20rpx calc(20rpx + env(safe-area-inset-bottom)); border-top: 1rpx solid var(--c-border); }
-.post-textarea { width: 100%; }
+.post-textarea {
+  width: 100%;
+  min-height: 220rpx;
+  padding: 20rpx;
+  box-sizing: border-box;
+  border-radius: 14rpx;
+  border: 1rpx solid var(--c-border);
+  background: #fff;
+  color: var(--c-ink);
+  font-size: 28rpx;
+  line-height: 1.5;
+}
+.mention-preview {
+  margin-top: 8rpx;
+  padding: 10rpx 12rpx;
+  border-radius: 12rpx;
+  background: rgba(124, 58, 237, 0.07);
+  border: 1rpx solid rgba(124, 58, 237, 0.2);
+  line-height: 1.5;
+}
+.preview-plain {
+  color: var(--c-muted);
+  font-size: 22rpx;
+}
+.preview-highlight {
+  color: var(--c-violet);
+  font-size: 22rpx;
+  font-weight: 600;
+}
+.mention-panel {
+  position: relative;
+  z-index: 99;
+  margin-top: 10rpx;
+  border: 1rpx solid var(--c-border);
+  background: #fff;
+  border-radius: 14rpx;
+  max-height: 260rpx;
+  overflow: hidden;
+  pointer-events: auto;
+}
+.mention-item {
+  width: 100%;
+  box-sizing: border-box;
+  background: #fff;
+  border-radius: 0;
+  text-align: left;
+  position: relative;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  padding: 12rpx 14rpx;
+  border-bottom: 1rpx solid rgba(0, 0, 0, 0.05);
+}
+.mention-item:active {
+  background: rgba(59, 91, 253, 0.08);
+}
+.mention-item:last-child {
+  border-bottom: none;
+}
+.mention-avatar,
+.mention-avatar-img {
+  width: 40rpx;
+  height: 40rpx;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.mention-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(3, 2, 19, 0.1);
+  color: var(--c-primary);
+  font-size: 20rpx;
+  font-weight: 700;
+}
+.mention-name {
+  font-size: 24rpx;
+  color: var(--c-ink);
+}
 .modal-label { display: block; margin-top: 12rpx; margin-bottom: 10rpx; font-size: 22rpx; color: var(--c-muted); font-weight: 600; }
 .media-picker-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10rpx; }
-.media-pick-card { border-radius: 16rpx; border: 1rpx solid rgba(0,0,0,0.1); background: var(--c-surface); min-height: 96rpx; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8rpx; padding: 8rpx; }
+.media-pick-card { border-radius: 16rpx; border: 1rpx solid rgba(0,0,0,0.1); background: var(--c-surface); min-height: 96rpx; display: flex;  align-items: center; justify-content: center; gap: 8rpx; padding: 8rpx; }
 .media-pick-card.active { border-color: var(--c-secondary); background: rgba(91, 103, 241, 0.08); }
 .media-pick-icon { width: 44rpx; height: 44rpx; border-radius: 50%; background: rgba(91, 103, 241, 0.14); display: flex; align-items: center; justify-content: center; font-size: 22rpx; }
 .media-pick-title { font-size: 22rpx; color: var(--c-ink); font-weight: 600; }

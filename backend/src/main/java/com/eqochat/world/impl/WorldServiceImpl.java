@@ -3,18 +3,25 @@ package com.eqochat.world.impl;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.eqochat.common.BizException;
 import com.eqochat.config.WorldModuleProperties;
+import com.eqochat.domain.entity.Notification;
 import com.eqochat.domain.entity.UserProfile;
 import com.eqochat.domain.entity.WorldPost;
+import com.eqochat.domain.entity.WorldPostReply;
+import com.eqochat.domain.entity.WorldPostMention;
 import com.eqochat.domain.entity.WorldPostTopic;
 import com.eqochat.domain.entity.WorldPostUpvote;
 import com.eqochat.domain.entity.WorldTopic;
 import com.eqochat.domain.entity.WorldTopicFollow;
 import com.eqochat.dto.request.CreateWorldPostRequest;
+import com.eqochat.dto.request.CreateWorldPostReplyRequest;
 import com.eqochat.dto.response.WorldPostResponse;
 import com.eqochat.dto.response.WorldShareLinkResponse;
 import com.eqochat.dto.response.WorldTopicResponse;
+import com.eqochat.mapper.NotificationMapper;
 import com.eqochat.mapper.UserProfileMapper;
+import com.eqochat.mapper.WorldPostMentionMapper;
 import com.eqochat.mapper.WorldPostMapper;
+import com.eqochat.mapper.WorldPostReplyMapper;
 import com.eqochat.mapper.WorldPostTopicMapper;
 import com.eqochat.mapper.WorldPostUpvoteMapper;
 import com.eqochat.mapper.WorldTopicFollowMapper;
@@ -45,11 +52,14 @@ public class WorldServiceImpl implements WorldService {
     private static final Pattern TOPIC_PATTERN = Pattern.compile("#([\\p{L}\\p{N}_-]+)");
 
     private final WorldPostMapper worldPostMapper;
+    private final WorldPostMentionMapper worldPostMentionMapper;
     private final WorldTopicMapper worldTopicMapper;
     private final WorldPostTopicMapper worldPostTopicMapper;
     private final WorldPostUpvoteMapper worldPostUpvoteMapper;
     private final WorldTopicFollowMapper worldTopicFollowMapper;
+    private final WorldPostReplyMapper worldPostReplyMapper;
     private final UserProfileMapper userProfileMapper;
+    private final NotificationMapper notificationMapper;
     private final WorldModuleProperties worldModuleProperties;
 
     @Override
@@ -96,6 +106,13 @@ public class WorldServiceImpl implements WorldService {
         if (post.getId() == null) {
             throw BizException.of("error.system");
         }
+        Set<Long> mentionUserIds = sanitizeMentionUserIds(authorId, request.getMentionedUserIds());
+        for (Long mentionedUserId : mentionUserIds) {
+            worldPostMentionMapper.insert(WorldPostMention.builder()
+                    .postId(post.getId())
+                    .mentionedUserId(mentionedUserId)
+                    .build());
+        }
         Set<String> topics = extractTopics(content);
         for (String topicName : topics) {
             WorldTopic topic = worldTopicMapper.selectByName(topicName);
@@ -115,8 +132,65 @@ public class WorldServiceImpl implements WorldService {
                     .setSql("post_count = post_count + 1")
                     .eq(WorldTopic::getId, topic.getId()));
         }
+        if (!mentionUserIds.isEmpty()) {
+            String title = "You were mentioned in a post";
+            String shortContent = content;
+            if (shortContent.length() > 120) {
+                shortContent = shortContent.substring(0, 120) + "...";
+            }
+            for (Long mentionedUserId : mentionUserIds) {
+                notificationMapper.insert(Notification.builder()
+                        .recipientId(mentionedUserId)
+                        .recipientType(Notification.RecipientType.USER)
+                        .notificationType(Notification.NotificationType.MESSAGE_MENTION)
+                        .title(title)
+                        .content(shortContent)
+                        .data("{\"postId\":" + post.getId() + "}")
+                        .senderId(authorId)
+                        .senderType(Notification.SenderType.USER)
+                        .isRead(false)
+                        .priority(Notification.Priority.NORMAL)
+                        .build());
+            }
+        }
         UserProfile profile = userProfileMapper.selectById(authorId);
         return toNewPostResponse(post, profile, List.copyOf(topics));
+    }
+
+    @Override
+    @Transactional
+    public int createReply(Long authorId, Long postId, CreateWorldPostReplyRequest request) {
+        if (authorId == null) {
+            throw BizException.of("auth.user.not_found");
+        }
+        if (postId == null) {
+            throw BizException.of("world.post.required");
+        }
+
+        WorldPost post = worldPostMapper.selectById(postId);
+        if (post == null || (post.getDelToken() != null && post.getDelToken() != 0L)) {
+            throw BizException.of("world.post.not_found");
+        }
+
+        String content = request != null && request.getContent() != null ? request.getContent().trim() : "";
+        if (!StringUtils.hasText(content)) {
+            throw BizException.of("world.post.body_required");
+        }
+
+        WorldPostReply reply = WorldPostReply.builder()
+                .postId(postId)
+                .authorId(authorId)
+                .content(content)
+                .build();
+        worldPostReplyMapper.insert(reply);
+
+        // reply_count 冗余在 world_post 上，保证前端 feed 展示即时一致
+        worldPostMapper.update(null, new LambdaUpdateWrapper<WorldPost>()
+                .setSql("reply_count = reply_count + 1")
+                .eq(WorldPost::getId, postId));
+
+        WorldPost updated = worldPostMapper.selectById(postId);
+        return updated != null && updated.getReplyCount() != null ? updated.getReplyCount() : 0;
     }
 
     @Override
@@ -158,6 +232,21 @@ public class WorldServiceImpl implements WorldService {
         int size = sanitizeLimit(limit, DEFAULT_LIMIT);
         List<WorldPostMapper.WorldPostRow> rows =
                 worldPostMapper.selectTopicPosts(viewerId, topicName.trim(), cursorId, size);
+        if (rows.isEmpty()) return List.of();
+
+        Map<Long, List<String>> topicsByPostId = rows.stream()
+                .map(WorldPostMapper.WorldPostRow::getId)
+                .collect(Collectors.toMap(id -> id, worldPostMapper::selectTopicNamesByPostId));
+
+        return rows.stream()
+                .map(r -> toPostResponse(r, topicsByPostId.getOrDefault(r.getId(), List.of())))
+                .toList();
+    }
+
+    @Override
+    public List<WorldPostResponse> listMentionedMe(Long viewerId, Long cursorId, Integer limit) {
+        int size = sanitizeLimit(limit, DEFAULT_LIMIT);
+        List<WorldPostMapper.WorldPostRow> rows = worldPostMapper.selectMentionFeed(viewerId, cursorId, size);
         if (rows.isEmpty()) return List.of();
 
         Map<Long, List<String>> topicsByPostId = rows.stream()
@@ -316,6 +405,25 @@ public class WorldServiceImpl implements WorldService {
             out.add(m.group(1).toLowerCase(Locale.ROOT));
         }
         return out;
+    }
+
+    private Set<Long> sanitizeMentionUserIds(Long authorId, List<Long> mentionedUserIds) {
+        if (mentionedUserIds == null || mentionedUserIds.isEmpty()) {
+            return Set.of();
+        }
+        Set<Long> dedup = mentionedUserIds.stream()
+                .filter(id -> id != null && id > 0 && !id.equals(authorId))
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        if (dedup.isEmpty()) {
+            return Set.of();
+        }
+        Set<Long> exists = userProfileMapper.selectBatchIds(dedup).stream()
+                .map(UserProfile::getId)
+                .collect(Collectors.toSet());
+        if (exists.isEmpty()) {
+            return Set.of();
+        }
+        return dedup.stream().filter(exists::contains).collect(Collectors.toCollection(LinkedHashSet::new));
     }
 
     private static String normalizeMediaType(String raw, String imageUrl, String videoUrl) {

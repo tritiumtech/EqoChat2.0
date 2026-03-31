@@ -43,7 +43,7 @@ const props = defineProps<{
   downloadUrl?: string
 }>()
 
-const { t } = useI18n()
+const { t } = useI18n({ useScope: 'global' })
 const fileTypeLower = computed(() => (props.fileType || '').toLowerCase())
 
 const iconGradientStyle = computed(() => {
@@ -66,8 +66,31 @@ const handleNoDownload = () => {
 
 const handleDownload = () => {
   if (!props.downloadUrl) return
-  // uni-app 在各端对外链行为不同：优先使用 openDocument / downloadFile（保持后续可替换）
-  uni.showToast({ title: t('toast.download_coming_soon'), icon: 'none' })
+
+  // #ifdef H5
+  if (typeof window !== 'undefined' && window.open) {
+    window.open(props.downloadUrl, '_blank')
+  }
+  // #endif
+
+  // #ifndef H5
+  uni.downloadFile({
+    url: props.downloadUrl,
+    success: (res) => {
+      if (res.statusCode === 200 && res.tempFilePath) {
+        uni.openDocument({
+          filePath: res.tempFilePath,
+          fileType: props.fileType,
+        })
+        return
+      }
+      uni.showToast({ title: t('toast.load_failed'), icon: 'none' })
+    },
+    fail: () => {
+      uni.showToast({ title: t('toast.load_failed'), icon: 'none' })
+    },
+  })
+  // #endif
 }
 </script>
 

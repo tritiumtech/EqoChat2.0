@@ -42,7 +42,8 @@ class Request {
     data?: any
   ): Promise<T> {
     const token = uni.getStorageSync('token')
-    const locale = uni.getStorageSync('locale') || 'zh-CN'
+    // Accept-Language 直接使用 uni 官方 locale（zh-Hans / en）更一致
+    const locale = uni.getStorageSync('locale') || 'zh-Hans'
     
     const normalizeError = (payload: any): ApiError => {
       if (!payload || typeof payload !== 'object') {

@@ -17,12 +17,14 @@ const emit = defineEmits<{
 }>()
 
 const channels = computed(() => [
-  { key: 'twitter', labelKey: 'page.world.twitter', cls: 'tw', icon: '𝕏' },
-  { key: 'linkedin', labelKey: 'page.world.linkedin', cls: 'in', icon: 'in' },
-  { key: 'facebook', labelKey: 'page.world.facebook', cls: 'fb', icon: 'f' },
-  { key: 'whatsapp', labelKey: 'page.world.whatsapp', cls: 'wa', icon: 'W' },
-  { key: 'telegram', labelKey: 'page.world.telegram', cls: 'tg', icon: '✈' },
-  { key: 'email', labelKey: 'page.world.email', cls: 'mail', icon: '@' },
+  // 优先使用 uview-plus 内置 u-icon，保证图标风格统一
+  { key: 'twitter', labelKey: 'page.world.twitter', cls: 'tw', iconName: 'twitter' },
+  { key: 'linkedin', labelKey: 'page.world.linkedin', cls: 'in', iconText: 'in' },
+  { key: 'facebook', labelKey: 'page.world.facebook', cls: 'fb', iconName: 'facebook' },
+  // whatsapp / telegram 在内置图标库中没有精准品牌图标，这里用通用电话/分享图标占位统一风格
+  { key: 'whatsapp', labelKey: 'page.world.whatsapp', cls: 'wa', iconName: 'phone-fill' },
+  { key: 'telegram', labelKey: 'page.world.telegram', cls: 'tg', iconName: 'share' },
+  { key: 'email', labelKey: 'page.world.email', cls: 'mail', iconName: 'email-fill' },
 ])
 
 function isHttpUrlAvatar(avatar: string) {
@@ -73,7 +75,15 @@ function avatarStyle(avatar: string) {
         <u-grid :col="3" :border="false" class="share-grid">
           <u-grid-item v-for="item in channels" :key="item.key" @click="emit('channel', item.key)">
             <view class="share-cell">
-              <view class="share-emoji" :class="item.cls">{{ item.icon }}</view>
+              <view class="share-emoji" :class="item.cls">
+                <u-icon
+                  v-if="item.iconName"
+                  :name="item.iconName"
+                  :size="24"
+                  color="#ffffff"
+                />
+                <text v-else class="share-icon-text">{{ item.iconText }}</text>
+              </view>
               <text class="share-label">{{ $t(item.labelKey) }}</text>
             </view>
           </u-grid-item>
@@ -120,7 +130,7 @@ function avatarStyle(avatar: string) {
 .modal-label { display: block; margin-top: 12rpx; margin-bottom: 10rpx; font-size: 22rpx; color: var(--c-muted); font-weight: 600; }
 .share-grid { margin: 0 -8rpx; }
 .share-cell { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 8rpx; padding: 10rpx 2rpx; border-radius: 16rpx; border: 1rpx solid rgba(0,0,0,0.08); background: rgba(255,255,255,0.95); font-size: 20rpx; box-sizing: border-box; }
-.share-emoji { width: 56rpx; height: 56rpx; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 24rpx; font-weight: 700; color: #fff; }
+.share-emoji { width: 52rpx; height: 52rpx; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 22rpx; font-weight: 700; color: #fff; }
 .share-emoji.tw { background: #1da1f2; }
 .share-emoji.in { background: #0a66c2; font-size: 22rpx; }
 .share-emoji.fb { background: #1877f2; }
@@ -128,6 +138,7 @@ function avatarStyle(avatar: string) {
 .share-emoji.tg { background: #0088cc; }
 .share-emoji.mail { background: var(--c-primary); }
 .share-label { color: var(--c-ink); text-align: center; font-size: 20rpx; line-height: 1.2; }
+.share-icon-text { font-size: 20rpx; font-weight: 700; color: #fff; }
 .copy-btn { width: 100%; margin-top: 12rpx; border: 1rpx solid rgba(0,0,0,0.1); background: rgba(3,2,19,0.05); font-size: 24rpx; color: var(--c-ink); font-weight: 600; }
 .share-note { margin-top: 4rpx; }
 </style>
