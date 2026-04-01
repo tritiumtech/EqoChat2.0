@@ -2,79 +2,152 @@
   <view class="page">
     <view v-if="loading" class="state">{{ t('common.loading') }}</view>
     <view v-else-if="!contact" class="state">{{ t('toast.load_failed') }}</view>
-    <template v-else>
-      <view class="profile-card">
-        <view class="profile-top">
-          <view class="avatar" :style="avatarStyle">
-            <text class="avatar-letter">{{ contact.nickname?.slice(0, 1) || '?' }}</text>
+    <view v-else class="page-inner">
+      <view class="sheet-head">
+        <text class="sheet-title">{{ t('page.contact.profile_sheet_title') }}</text>
+        <button class="sheet-chat" @click="startChat">
+          <text class="sheet-chat-text">{{ t('page.contact.chat_short') }}</text>
+        </button>
+      </view>
+
+      <view class="profile-block">
+        <view class="profile-header">
+          <view class="avatar-wrap">
+            <image
+              v-if="contact.avatarUrl"
+              class="avatar-img"
+              :src="contact.avatarUrl"
+              mode="aspectFill"
+            />
+            <view v-else class="avatar" :style="avatarStyle">
+              <text class="avatar-letter">{{ avatarLetter }}</text>
+            </view>
+            <view v-if="isOnline" class="online-dot" />
           </view>
           <view class="profile-main">
             <view class="name-row">
               <text class="name">{{ contact.nickname }}</text>
-              <text v-if="isAgentLike" class="agent-badge">{{ t('page.world.ai_agent') }}</text>
+              <text v-if="isAgent" class="agent-badge">{{ t('page.world.ai_agent') }}</text>
             </view>
-            <text class="meta">{{ t('page.contact.user_id') }}: {{ contact.id }}</text>
-            <text class="sub">{{ profileHint }}</text>
+            <text v-if="contact.bio" class="bio">{{ contact.bio }}</text>
+            <text class="meta-line">{{ t('page.contact.user_id') }}: {{ contact.id }}</text>
+            <text class="meta-line">{{ t('page.contact.world_posts_line', { n: contact.worldPostCount ?? 0 }) }}</text>
+            <view class="tags-row">
+              <text v-for="tag in topicTags" :key="tag" class="tag-chip">#{{ tag }}</text>
+            </view>
           </view>
         </view>
-        <view class="stats-grid">
-          <view class="stat-card">
-            <text class="stat-value">{{ topicTags.length }}</text>
-            <text class="stat-label">{{ t('page.contact.topics_title') }}</text>
-          </view>
-          <view class="stat-card">
-            <text class="stat-value">{{ contact.id % 5 + 1 }}</text>
-            <text class="stat-label">{{ t('page.world.posts') }}</text>
-          </view>
-          <view class="stat-card">
-            <text class="stat-value">{{ creditProfile?.creditScore ?? 0 }}</text>
-            <text class="stat-label">{{ t('common.credit') }}</text>
-          </view>
-        </view>
+      </view>
 
-        <view class="credit-details-card">
-          <view class="credit-details-head">
-            <text class="credit-details-title">Credit Profile Details</text>
-            <button class="credit-details-toggle" @click="showCreditDetails = !showCreditDetails">
-              {{ showCreditDetails ? '收起' : '展开' }}
+      <view v-if="capabilities.length > 0" class="card cap-card">
+        <text class="section-title">{{ t('page.contact.capabilities_title') }}</text>
+        <view class="cap-wrap">
+          <text v-for="(c, i) in capabilities" :key="i" class="cap-pill">{{ c }}</text>
+        </view>
+      </view>
+
+      <view v-if="showCreditBlock" class="card credit-shell">
+        <text class="section-title">{{ t('page.contact.credit_section_title') }}</text>
+        <view class="credit-gradient">
+          <view class="credit-summary-row">
+            <view class="credit-left">
+              <view class="score-ring">
+                <text class="score-num">{{ creditProfile?.creditScore ?? 0 }}</text>
+              </view>
+              <view>
+                <text class="score-label">{{ t('page.contact.credit_score_label') }}</text>
+                <text class="tier-text">{{ creditTierLabel }}</text>
+              </view>
+            </view>
+            <button class="credit-details-btn" @click="showCreditDetails = !showCreditDetails">
+              <text>{{ showCreditDetails ? t('action.hide') : t('action.details') }}</text>
+              <text class="chev">{{ showCreditDetails ? '▲' : '▼' }}</text>
             </button>
           </view>
 
-          <view v-if="showCreditDetails" class="credit-details-body">
-            <view class="credit-row">
-              <text class="credit-key">Projects</text>
-              <text class="credit-val">{{ creditProfile?.projectsCompleted ?? 0 }}</text>
+          <view class="quick-stats">
+            <view class="qs-cell">
+              <text class="qs-val">{{ creditProfile?.projectsCompleted ?? 0 }}</text>
+              <text class="qs-label">{{ t('page.contact.credit_stat_projects') }}</text>
             </view>
-            <view class="credit-row">
-              <text class="credit-key">Success Rate</text>
-              <text class="credit-val">{{ creditProfile?.successRate ?? 0 }}%</text>
+            <view class="qs-cell">
+              <text class="qs-val">{{ creditProfile?.successRate ?? 0 }}%</text>
+              <text class="qs-label">{{ t('page.contact.credit_stat_success') }}</text>
             </view>
-            <view class="credit-row">
-              <text class="credit-key">Verified Disputes</text>
-              <text class="credit-val">{{ creditProfile?.disputeCount ?? 0 }}</text>
+            <view class="qs-cell">
+              <view class="qs-val-row">
+                <text class="qs-val">{{ creditProfile?.disputeCount ?? 0 }}</text>
+                <text class="qs-icon ok" v-if="(creditProfile?.disputeCount ?? 0) === 0">✓</text>
+                <text class="qs-icon warn" v-else>!</text>
+              </view>
+              <text class="qs-label">{{ t('page.contact.credit_stat_disputes') }}</text>
+            </view>
+          </view>
+
+          <view v-if="showCreditDetails" class="credit-expand">
+            <view class="factor-row">
+              <view class="factor-icon ok">✓</view>
+              <view class="factor-body">
+                <text class="factor-title">{{ t('page.contact.credit_factor_success_title') }}</text>
+                <text class="factor-desc">{{ t('page.contact.credit_factor_success_desc', { rate: creditProfile?.successRate ?? 0 }) }}</text>
+              </view>
+            </view>
+            <view class="factor-row">
+              <view class="factor-icon pri">★</view>
+              <view class="factor-body">
+                <text class="factor-title">{{ t('page.contact.credit_factor_projects_title') }}</text>
+                <text class="factor-desc">{{ t('page.contact.credit_factor_projects_desc', { n: creditProfile?.projectsCompleted ?? 0 }) }}</text>
+              </view>
+            </view>
+            <view v-if="(creditProfile?.disputeCount ?? 0) > 0" class="factor-row">
+              <view class="factor-icon warn">!</view>
+              <view class="factor-body">
+                <text class="factor-title">{{ t('page.contact.credit_factor_disputes_title') }}</text>
+                <text class="factor-desc">{{ t('page.contact.credit_factor_disputes_desc', { n: creditProfile?.disputeCount ?? 0 }) }}</text>
+              </view>
             </view>
 
-            <view v-if="creditProfile?.disputes?.length" class="credit-list">
+            <view v-if="creditProfile?.disputes?.length" class="credit-list-block">
+              <text class="list-block-title">{{ t('page.contact.credit_disputes_list_title') }}</text>
               <view v-for="d in creditProfile.disputes" :key="d.id" class="credit-item">
-                <text class="credit-item-title">{{ d.projectName || 'Project' }}</text>
+                <text class="credit-item-title">{{ d.projectName || t('page.contact.credit_project_fallback') }}</text>
                 <text class="credit-item-sub">{{ d.reason || '' }}</text>
                 <text class="credit-item-meta">{{ d.verdict }} · {{ d.date }}</text>
               </view>
             </view>
 
-            <view v-if="creditProfile?.reviews?.length" class="credit-list">
-              <view v-for="r in creditProfile.reviews.slice(0, 3)" :key="r.id" class="credit-item">
-                <text class="credit-item-title">★{{ r.rating }} · {{ r.projectName || 'Project' }}</text>
+            <view v-if="creditProfile?.reviews?.length" class="credit-list-block">
+              <text class="list-block-title">{{ t('page.contact.credit_reviews_list_title') }}</text>
+              <view v-for="r in creditProfile.reviews.slice(0, 6)" :key="r.id" class="credit-item">
+                <text class="credit-item-title">★{{ r.rating }} · {{ r.projectName || t('page.contact.credit_project_fallback') }}</text>
                 <text class="credit-item-sub">{{ r.comment || '' }}</text>
-                <text class="credit-item-meta">from {{ r.from }} · {{ r.date }}</text>
+                <text class="credit-item-meta">{{ t('page.contact.credit_review_from', { from: r.from, date: r.date }) }}</text>
               </view>
             </view>
           </view>
         </view>
       </view>
 
-      <view class="topics-card">
-        <text class="topics-title">{{ t('page.contact.topics_title') }}</text>
+      <view class="card activity-card">
+        <text class="section-title">{{ t('page.contact.recent_activity_title') }}</text>
+        <view v-if="activityLoading" class="activity-loading">{{ t('page.contact.recent_activity_loading') }}</view>
+        <template v-else-if="recentPosts.length > 0">
+          <view v-for="post in recentPosts" :key="post.id" class="activity-item">
+            <text class="activity-content">{{ post.content }}</text>
+            <view class="activity-footer">
+              <text class="activity-time">{{ post.timestamp }}</text>
+              <view class="activity-stats">
+                <text class="activity-stat">{{ t('page.contact.recent_activity_upvotes', { n: post.upvotes }) }}</text>
+                <text class="activity-stat">{{ t('page.contact.recent_activity_replies', { n: post.replies }) }}</text>
+              </view>
+            </view>
+          </view>
+        </template>
+        <text v-else class="activity-empty">{{ t('page.contact.recent_activity_empty') }}</text>
+      </view>
+
+      <view class="card topics-card">
+        <text class="section-title">{{ t('page.contact.topics_title') }}</text>
         <view v-if="topicTags.length > 0" class="topics-list">
           <text v-for="tag in topicTags" :key="tag" class="topic-chip" @click="removeTag(tag)">#{{ tag }} ×</text>
         </view>
@@ -91,29 +164,8 @@
         </view>
       </view>
 
-      <view class="timeline-card">
-        <text class="timeline-title">{{ t('page.profile.menu_notifications') }}</text>
-        <view class="timeline-item">
-          <view class="timeline-dot" />
-          <view class="timeline-main">
-            <text class="timeline-text">{{ t('page.contact.detail_recent_topic') }}</text>
-            <text class="timeline-time">{{ t('page.contact.timeline_recent_topic_time') }}</text>
-          </view>
-        </view>
-        <view class="timeline-item">
-          <view class="timeline-dot soft" />
-          <view class="timeline-main">
-            <text class="timeline-text">{{ t('page.contact.detail_recent_message') }}</text>
-            <text class="timeline-time">{{ t('page.contact.timeline_recent_message_time') }}</text>
-          </view>
-        </view>
-      </view>
-
-      <view class="actions">
-        <button class="btn-chat" @click="startChat">{{ t('action.start_chat') }}</button>
-      </view>
-    </template>
-    <BottomNav />
+      <view class="bottom-spacer" />
+    </view>
   </view>
 </template>
 
@@ -121,13 +173,13 @@
 import { computed, ref } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import { useI18n } from 'vue-i18n'
-import { contactApi, type ContactItem } from '@/api/modules/contact'
+import { contactApi, type ContactDetail } from '@/api/modules/contact'
 import { conversationApi } from '@/api/modules/conversation'
 import { creditApi, type CreditProfile, type CreditSubjectType } from '@/api/modules/credits'
+import { worldApi, type WorldPost } from '@/api/modules/world'
 import { useUserStore } from '@/store/modules/user'
-import BottomNav from '@/components/BottomNav.vue'
 
-const contact = ref<ContactItem | null>(null)
+const contact = ref<ContactDetail | null>(null)
 const loading = ref(false)
 const friendId = ref(0)
 const userStore = useUserStore()
@@ -139,26 +191,35 @@ const avatarStyle = ref<Record<string, string>>({})
 const creditProfile = ref<CreditProfile | null>(null)
 const showCreditDetails = ref(false)
 
-const isAgentLike = computed(() => {
-  const n = (contact.value?.nickname || '').toLowerCase()
-  return n.includes('agent') || n.includes('ai')
+const recentPosts = ref<WorldPost[]>([])
+const activityLoading = ref(false)
+
+const isAgent = computed(() => contact.value?.friendType === 'AGENT')
+
+const isOnline = computed(() => (contact.value?.status || '').toUpperCase() === 'ACTIVE')
+
+const capabilities = computed(() => contact.value?.capabilities ?? [])
+
+const subjectType = computed<CreditSubjectType>(() => (isAgent.value ? 'AGENT' : 'USER'))
+
+const showCreditBlock = computed(() => (creditProfile.value?.creditScore ?? 0) > 0)
+
+const creditTierLabel = computed(() => {
+  const s = creditProfile.value?.creditScore ?? 0
+  if (s >= 800) return t('page.contact.credit_tier_excellent')
+  if (s >= 700) return t('page.contact.credit_tier_good')
+  if (s >= 600) return t('page.contact.credit_tier_fair')
+  return t('page.contact.credit_tier_poor')
 })
 
-const subjectType = computed<CreditSubjectType>(() => (isAgentLike.value ? 'AGENT' : 'USER'))
-
-const profileHint = computed(() => {
-  const count = topicTags.value.length
-  return count > 0
-    ? t('page.contact.detail_topic_count', { n: count })
-    : t('page.contact.detail_no_topic')
-})
+const avatarLetter = computed(() => contact.value?.nickname?.slice(0, 1) || '?')
 
 const buildAvatarStyle = (seed: string) => {
   const palette = ['#14B8A6', '#3B82F6', '#8B5CF6', '#EC4899', '#F59E0B', '#10B981', '#6366F1', '#EF4444']
   let h = 0
   for (let i = 0; i < seed.length; i++) h = seed.charCodeAt(i) + ((h << 5) - h)
   const c = palette[Math.abs(h) % palette.length]!
-  return { background: `linear-gradient(135deg, ${c}f0, ${c}c8)` }
+  return { background: `linear-gradient(135deg, ${c}f0, ${c}e0)` }
 }
 
 const loadCreditProfile = async () => {
@@ -167,6 +228,18 @@ const loadCreditProfile = async () => {
     creditProfile.value = await creditApi.getSubjectCreditProfile(contact.value.id, subjectType.value)
   } catch {
     creditProfile.value = null
+  }
+}
+
+const loadRecentPosts = async () => {
+  if (!contact.value) return
+  activityLoading.value = true
+  try {
+    recentPosts.value = await worldApi.listPostsByAuthor(contact.value.id, { limit: 10 })
+  } catch {
+    recentPosts.value = []
+  } finally {
+    activityLoading.value = false
   }
 }
 
@@ -179,16 +252,13 @@ const loadContact = async () => {
   }
   loading.value = true
   try {
-    const list = await contactApi.listContacts()
-    contact.value = list.find((c) => c.id === id) || null
-    if (!contact.value) {
-      contact.value = { id, nickname: t('page.contact.default_user_name', { id }), avatarUrl: undefined, status: undefined }
-    }
+    contact.value = await contactApi.getContactDetail(id)
     avatarStyle.value = buildAvatarStyle(contact.value.nickname || String(contact.value.id))
     topicTags.value = contact.value.tags || []
-    await loadCreditProfile()
+    await Promise.all([loadCreditProfile(), loadRecentPosts()])
   } catch (err: any) {
     uni.showToast({ title: err?.message || t('toast.load_failed'), icon: 'none' })
+    contact.value = null
   } finally {
     loading.value = false
   }
@@ -199,6 +269,7 @@ const persistTags = async (nextTags: string[]) => {
   if (!id) return
   const saved = await contactApi.updateContactTags(id, nextTags)
   topicTags.value = saved || []
+  if (contact.value) contact.value = { ...contact.value, tags: topicTags.value }
 }
 
 const addTag = async () => {
@@ -254,7 +325,6 @@ onShow(() => {
   }
   uni.setNavigationBarTitle({ title: t('page.contact.detail') })
 })
-
 </script>
 
 <style scoped>
@@ -263,39 +333,97 @@ onShow(() => {
 .page {
   min-height: 100vh;
   background: linear-gradient(165deg, var(--c-bg) 0%, var(--c-bg-2) 100%);
-  padding: 24rpx;
   padding-bottom: var(--page-pad-bottom-tabbar);
   box-sizing: border-box;
 }
 
-.profile-card {
-  background: rgba(255, 255, 255, 0.78);
-  border: 1rpx solid rgba(0, 0, 0, 0.08);
+.page-inner {
+  padding: 0 24rpx 24rpx;
+  box-sizing: border-box;
+}
+
+.sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10rpx 0 20rpx;
+  border-bottom: 1rpx solid rgba(0, 0, 0, 0.06);
+}
+
+.sheet-title {
+  font-size: 34rpx;
+  font-weight: 700;
+  color: var(--c-ink);
+}
+
+.sheet-chat {
+  margin: 0;
+  padding: 0 28rpx;
+  height: 64rpx;
+  line-height: 64rpx;
+  border-radius: var(--radius-md);
+  background: linear-gradient(135deg, var(--c-primary) 0%, var(--c-primary-deep) 100%);
+  color: #fff;
+  font-size: 24rpx;
+  font-weight: 600;
+  border: none;
+  box-shadow: 0 8rpx 16rpx rgba(3, 2, 19, 0.12);
+}
+
+.sheet-chat-text {
+  color: #fff;
+}
+
+.profile-block {
+  padding: 28rpx 0;
+}
+
+.profile-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 24rpx;
+}
+
+.avatar-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.avatar-img {
+  width: 160rpx;
+  height: 160rpx;
   border-radius: var(--radius-xl);
-  padding: 24rpx;
+  display: block;
   box-shadow: var(--c-shadow-soft);
-  margin-bottom: 20rpx;
 }
 
 .avatar {
-  width: 112rpx;
-  height: 112rpx;
-  border-radius: var(--radius-lg);
+  width: 160rpx;
+  height: 160rpx;
+  border-radius: var(--radius-xl);
   display: flex;
   align-items: center;
   justify-content: center;
+  box-shadow: var(--c-shadow-soft);
+  overflow: hidden;
+  position: relative;
 }
 
 .avatar-letter {
-  font-size: 44rpx;
+  font-size: 56rpx;
   font-weight: 800;
   color: #fff;
 }
 
-.profile-top {
-  display: flex;
-  align-items: center;
-  gap: 20rpx;
+.online-dot {
+  position: absolute;
+  right: -4rpx;
+  bottom: -4rpx;
+  width: 28rpx;
+  height: 28rpx;
+  border-radius: 999rpx;
+  background: #10b981;
+  border: 4rpx solid var(--c-bg);
 }
 
 .profile-main {
@@ -307,10 +435,11 @@ onShow(() => {
   display: flex;
   align-items: center;
   gap: 10rpx;
+  flex-wrap: wrap;
 }
 
 .name {
-  font-size: 34rpx;
+  font-size: 36rpx;
   font-weight: 700;
   color: var(--c-ink);
 }
@@ -324,116 +453,273 @@ onShow(() => {
   background: rgba(124, 58, 237, 0.08);
 }
 
-.meta {
-  margin-top: 6rpx;
-  font-size: 24rpx;
+.bio {
+  margin-top: 8rpx;
+  font-size: 26rpx;
+  color: var(--c-muted);
+  display: block;
+  line-height: 1.45;
+}
+
+.meta-line {
+  margin-top: 8rpx;
+  font-size: 22rpx;
   color: var(--c-muted);
   display: block;
 }
 
-.sub {
-  margin-top: 6rpx;
-  font-size: 24rpx;
+.tags-row {
+  margin-top: 16rpx;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10rpx;
+}
+
+.tag-chip {
+  padding: 6rpx 14rpx;
+  border-radius: var(--radius-md);
+  font-size: 22rpx;
+  color: var(--c-ink);
+  background: rgba(3, 2, 19, 0.05);
+  border: 1rpx solid var(--c-border);
+}
+
+.card {
+  background: rgba(255, 255, 255, 0.78);
+  border: 1rpx solid rgba(0, 0, 0, 0.08);
+  border-radius: var(--radius-xl);
+  padding: 24rpx;
+  margin-bottom: 20rpx;
+  box-shadow: var(--c-shadow-soft);
+}
+
+.section-title {
+  font-size: 26rpx;
+  font-weight: 700;
+  color: var(--c-ink);
+  display: block;
+  margin-bottom: 16rpx;
+}
+
+.cap-card .cap-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+}
+
+.cap-pill {
+  padding: 10rpx 20rpx;
+  border-radius: var(--radius-md);
+  font-size: 22rpx;
+  font-weight: 600;
+  color: var(--c-primary);
+  background: rgba(91, 103, 241, 0.1);
+  border: 1rpx solid rgba(91, 103, 241, 0.25);
+}
+
+.credit-shell .section-title {
+  margin-bottom: 0;
+}
+
+.credit-gradient {
+  margin-top: 16rpx;
+  border-radius: var(--radius-lg);
+  border: 1rpx solid var(--c-border);
+  background: linear-gradient(165deg, rgba(255, 255, 255, 0.95) 0%, rgba(248, 250, 252, 0.9) 100%);
+  padding: 24rpx;
+}
+
+.credit-summary-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  margin-bottom: 24rpx;
+}
+
+.credit-left {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+  min-width: 0;
+}
+
+.score-ring {
+  width: 112rpx;
+  height: 112rpx;
+  border-radius: var(--radius-lg);
+  background: linear-gradient(145deg, rgba(16, 185, 129, 0.22), rgba(16, 185, 129, 0.08));
+  border: 1rpx solid rgba(16, 185, 129, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.score-num {
+  font-size: 40rpx;
+  font-weight: 800;
+  color: #059669;
+}
+
+.score-label {
+  font-size: 22rpx;
   color: var(--c-muted);
   display: block;
 }
 
-.stats-grid {
-  margin-top: 18rpx;
+.tier-text {
+  font-size: 28rpx;
+  font-weight: 700;
+  color: var(--c-ink);
+  display: block;
+  margin-top: 4rpx;
+}
+
+.credit-details-btn {
+  margin: 0;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 6rpx;
+  padding: 0 20rpx;
+  height: 56rpx;
+  line-height: 56rpx;
+  border-radius: var(--radius-md);
+  background: rgba(3, 2, 19, 0.05);
+  border: none;
+  font-size: 22rpx;
+  font-weight: 600;
+  color: var(--c-ink);
+}
+
+.chev {
+  font-size: 20rpx;
+  opacity: 0.7;
+}
+
+.quick-stats {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 12rpx;
+  margin-bottom: 8rpx;
 }
 
-.stat-card {
-  border-radius: var(--radius-lg);
-  border: 1rpx solid var(--c-border);
-  background: rgba(255, 255, 255, 0.7);
-  padding: 16rpx 10rpx;
+.qs-cell {
   text-align: center;
 }
 
-.stat-value {
-  font-size: 28rpx;
-  font-weight: 700;
-  color: var(--c-ink);
-  display: block;
+.qs-val-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6rpx;
 }
 
-.stat-label {
-  font-size: 20rpx;
+.qs-val {
+  font-size: 32rpx;
+  font-weight: 800;
+  color: var(--c-ink);
+}
+
+.qs-icon {
+  font-size: 26rpx;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.qs-icon.ok {
+  color: #10b981;
+}
+
+.qs-icon.warn {
+  color: #f59e0b;
+}
+
+.qs-label {
+  font-size: 18rpx;
   margin-top: 6rpx;
   color: var(--c-muted);
   display: block;
 }
 
-.credit-details-card {
-  margin-top: 14rpx;
-  background: rgba(255, 255, 255, 0.82);
-  border: 1rpx solid var(--c-border);
-  border-radius: var(--radius-lg);
-  padding: 20rpx;
+.credit-expand {
+  padding-top: 20rpx;
+  border-top: 1rpx solid rgba(0, 0, 0, 0.06);
+}
+
+.factor-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 16rpx;
   margin-bottom: 20rpx;
 }
 
-.credit-details-head {
+.factor-icon {
+  width: 56rpx;
+  height: 56rpx;
+  border-radius: var(--radius-md);
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12rpx;
+  justify-content: center;
+  font-size: 26rpx;
+  flex-shrink: 0;
 }
 
-.credit-details-title {
-  font-size: 28rpx;
-  font-weight: 800;
-  color: var(--c-ink);
+.factor-icon.ok {
+  background: rgba(16, 185, 129, 0.12);
+  color: #059669;
 }
 
-.credit-details-toggle {
-  height: 56rpx;
-  line-height: 56rpx;
-  padding: 0 18rpx;
-  border-radius: var(--radius-md);
-  border: 1rpx solid rgba(91, 103, 241, 0.25);
-  background: rgba(91, 103, 241, 0.08);
+.factor-icon.pri {
+  background: rgba(91, 103, 241, 0.12);
   color: var(--c-primary);
+}
+
+.factor-icon.warn {
+  background: rgba(245, 158, 11, 0.12);
+  color: #d97706;
+}
+
+.factor-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.factor-title {
+  font-size: 24rpx;
+  font-weight: 700;
+  color: var(--c-ink);
+  display: block;
+}
+
+.factor-desc {
+  font-size: 20rpx;
+  color: var(--c-muted);
+  margin-top: 6rpx;
+  line-height: 1.45;
+  display: block;
+}
+
+.credit-list-block {
+  margin-top: 8rpx;
+}
+
+.list-block-title {
   font-size: 22rpx;
   font-weight: 700;
-}
-
-.credit-details-body {
-  margin-top: 14rpx;
-}
-
-.credit-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10rpx 0;
-  border-bottom: 1rpx dashed rgba(0, 0, 0, 0.06);
-}
-
-.credit-row:last-child {
-  border-bottom: none;
-}
-
-.credit-key {
-  font-size: 22rpx;
-  color: var(--c-muted);
-}
-
-.credit-val {
-  font-size: 24rpx;
-  font-weight: 800;
   color: var(--c-ink);
-}
-
-.credit-list {
-  margin-top: 14rpx;
+  display: block;
+  margin-bottom: 12rpx;
 }
 
 .credit-item {
   padding: 12rpx 0;
+  border-bottom: 1rpx dashed rgba(0, 0, 0, 0.06);
+}
+
+.credit-item:last-child {
+  border-bottom: none;
 }
 
 .credit-item-title {
@@ -458,19 +744,73 @@ onShow(() => {
   color: rgba(26, 23, 32, 0.55);
 }
 
-.topics-card {
-  background: rgba(255, 255, 255, 0.82);
-  border-radius: var(--radius-lg);
-  border: 1rpx solid var(--c-border);
-  padding: 24rpx;
-  margin-bottom: 20rpx;
+.activity-card .section-title {
+  margin-bottom: 16rpx;
 }
 
-.topics-title {
-  font-size: 28rpx;
-  font-weight: 700;
+.activity-loading {
+  font-size: 24rpx;
+  color: var(--c-muted);
+  padding: 12rpx 0;
+}
+
+.activity-empty {
+  font-size: 24rpx;
+  color: var(--c-muted);
+  padding: 8rpx 0 4rpx;
+}
+
+.activity-item {
+  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.55);
+  border: 1rpx solid var(--c-border);
+  padding: 20rpx;
+  margin-bottom: 16rpx;
+  box-shadow: 0 4rpx 12rpx rgba(3, 2, 19, 0.04);
+}
+
+.activity-item:last-child {
+  margin-bottom: 0;
+}
+
+.activity-content {
+  font-size: 26rpx;
   color: var(--c-ink);
+  line-height: 1.55;
   display: block;
+}
+
+.activity-footer {
+  margin-top: 14rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+}
+
+.activity-time {
+  font-size: 20rpx;
+  color: var(--c-muted);
+}
+
+.activity-stats {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+  flex-shrink: 0;
+}
+
+.activity-stat {
+  font-size: 20rpx;
+  color: var(--c-muted);
+  font-weight: 600;
+}
+
+.topics-card .topics-list {
+  margin-top: 8rpx;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
 }
 
 .topics-empty {
@@ -478,13 +818,6 @@ onShow(() => {
   font-size: 24rpx;
   color: var(--c-muted);
   display: block;
-}
-
-.topics-list {
-  margin-top: 16rpx;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12rpx;
 }
 
 .topic-chip {
@@ -526,74 +859,8 @@ onShow(() => {
   box-shadow: 0 8rpx 16rpx rgba(3, 2, 19, 0.16);
 }
 
-.timeline-card {
-  background: rgba(255, 255, 255, 0.82);
-  border-radius: var(--radius-lg);
-  border: 1rpx solid var(--c-border);
-  padding: 24rpx;
-  margin-bottom: 20rpx;
-}
-
-.timeline-title {
-  font-size: 28rpx;
-  font-weight: 700;
-  color: var(--c-ink);
-  display: block;
-  margin-bottom: 14rpx;
-}
-
-.timeline-item {
-  display: flex;
-  align-items: flex-start;
-  gap: 12rpx;
-  padding: 12rpx 0;
-}
-
-.timeline-dot {
-  width: 14rpx;
-  height: 14rpx;
-  border-radius: 999rpx;
-  background: var(--c-primary);
-  margin-top: 8rpx;
-}
-
-.timeline-dot.soft {
-  opacity: 0.45;
-}
-
-.timeline-main {
-  flex: 1;
-  min-width: 0;
-}
-
-.timeline-text {
-  font-size: 24rpx;
-  color: var(--c-ink);
-  display: block;
-}
-
-.timeline-time {
-  font-size: 20rpx;
-  margin-top: 6rpx;
-  color: var(--c-muted);
-  display: block;
-}
-
-.actions {
-  padding: 0 8rpx;
-}
-
-.btn-chat {
-  width: 100%;
-  height: 96rpx;
-  line-height: 96rpx;
-  border-radius: var(--radius-lg);
-  background: linear-gradient(135deg, var(--c-primary) 0%, var(--c-primary-deep) 100%);
-  color: #fff;
-  font-size: 32rpx;
-  font-weight: 700;
-  border: 1rpx solid rgba(3, 2, 19, 0.22);
-  box-shadow: 0 10rpx 20rpx rgba(3, 2, 19, 0.18);
+.bottom-spacer {
+  height: 24rpx;
 }
 
 .state {

@@ -150,9 +150,17 @@ class WebSocketClient {
       })
     })
 
-    // 监听消息
+    // 监听消息（H5 部分环境下 data 可能为 Blob，需先转文本再 JSON.parse）
     this.ws.onMessage((res) => {
-      this.handleMessage(res.data)
+      const raw = res.data as string | ArrayBuffer | Record<string, unknown> | Blob
+      if (typeof Blob !== 'undefined' && raw instanceof Blob) {
+        raw
+          .text()
+          .then((text) => this.handleMessage(text))
+          .catch((e) => console.error('WebSocket Blob 解析失败:', e))
+        return
+      }
+      this.handleMessage(raw as string | ArrayBuffer | Record<string, unknown>)
     })
 
     // 监听关闭
@@ -348,6 +356,15 @@ class WebSocketClient {
           }
           this.callbackSubscribers.forEach((cb) => {
             cb.onAgentResponse?.(message.payload, message)
+          })
+          break
+
+        case MessageType.SESSION_KICKED:
+          if (this.callbacks.onSessionKicked) {
+            this.callbacks.onSessionKicked(message.payload as SessionKickedPayload, message)
+          }
+          this.callbackSubscribers.forEach((cb) => {
+            cb.onSessionKicked?.(message.payload as SessionKickedPayload, message)
           })
           break
 

@@ -1,20 +1,28 @@
 package com.eqochat.service.impl;
 
 import com.eqochat.common.BizException;
+import com.eqochat.domain.entity.AgentProfile;
 import com.eqochat.domain.entity.UserContactTag;
 import com.eqochat.domain.entity.UserFriend;
 import com.eqochat.domain.entity.UserProfile;
+import com.eqochat.dto.response.ContactDetailResponse;
 import com.eqochat.dto.response.ContactResponse;
+import com.eqochat.mapper.AgentProfileMapper;
 import com.eqochat.mapper.UserContactTagMapper;
 import com.eqochat.mapper.UserFriendMapper;
+import com.eqochat.mapper.WorldPostMapper;
 import com.eqochat.service.ContactService;
 import com.eqochat.service.UserProfileService;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -28,6 +36,9 @@ public class ContactServiceImpl implements ContactService {
     private final UserFriendMapper userFriendMapper;
     private final UserContactTagMapper userContactTagMapper;
     private final UserProfileService userProfileService;
+    private final WorldPostMapper worldPostMapper;
+    private final AgentProfileMapper agentProfileMapper;
+    private final ObjectMapper objectMapper;
     
     @Override
     public List<ContactResponse> listContacts(Long userId) {
@@ -53,6 +64,77 @@ public class ContactServiceImpl implements ContactService {
                         .tags(tagsByFriendId.getOrDefault(profile.getId(), List.of()))
                         .build())
                 .collect(Collectors.toList());
+    }
+
+    @Override
+    public ContactDetailResponse getContactDetail(Long userId, Long contactId) {
+        if (contactId == null) {
+            throw BizException.of("contact.user.not_found");
+        }
+        if (!userFriendMapper.areFriends(userId, contactId)) {
+            throw BizException.of("contact.not_friend");
+        }
+        UserFriend uf = userFriendMapper.findByUserAndFriend(userId, contactId)
+                .orElseThrow(() -> BizException.of("contact.not_friend"));
+
+        UserProfile up = userProfileService.getById(contactId);
+        AgentProfile ap = agentProfileMapper.selectById(contactId);
+
+        String nickname;
+        String avatarUrl;
+        String bio;
+        String statusStr;
+
+        if (up != null) {
+            nickname = up.getNickname();
+            avatarUrl = up.getAvatarUrl();
+            bio = up.getBio();
+            statusStr = up.getStatus() != null ? up.getStatus().name() : null;
+        } else if (ap != null) {
+            nickname = ap.getName();
+            avatarUrl = ap.getAvatarUrl();
+            bio = ap.getDescription();
+            statusStr = ap.getStatus() != null ? ap.getStatus().name() : null;
+        } else {
+            throw BizException.of("contact.user.not_found");
+        }
+
+        List<String> tags = userContactTagMapper.selectActiveTagNames(userId, contactId);
+        int worldPostCount = (int) Math.min(Integer.MAX_VALUE, worldPostMapper.countByAuthorId(contactId));
+
+        List<String> capabilities = List.of();
+        if (uf.getFriendType() == UserFriend.FriendType.AGENT && ap != null) {
+            capabilities = parseCapabilityTags(ap.getCapabilityTags());
+        }
+
+        return ContactDetailResponse.builder()
+                .id(contactId)
+                .nickname(nickname)
+                .avatarUrl(avatarUrl)
+                .status(statusStr)
+                .tags(tags != null ? tags : List.of())
+                .bio(bio)
+                .worldPostCount(worldPostCount)
+                .friendType(uf.getFriendType().name())
+                .capabilities(capabilities)
+                .build();
+    }
+
+    private List<String> parseCapabilityTags(String raw) {
+        if (!StringUtils.hasText(raw)) {
+            return List.of();
+        }
+        String t = raw.trim();
+        try {
+            List<String> list = objectMapper.readValue(t, new TypeReference<List<String>>() {
+            });
+            return list.stream().filter(StringUtils::hasText).map(String::trim).toList();
+        } catch (Exception ignored) {
+            return Arrays.stream(t.split("[,，;；]"))
+                    .map(String::trim)
+                    .filter(StringUtils::hasText)
+                    .toList();
+        }
     }
     
     @Override

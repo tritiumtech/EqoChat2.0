@@ -2,9 +2,7 @@ package com.eqochat.controller;
 
 import com.eqochat.common.ApiResponse;
 import com.eqochat.common.UserContext;
-import com.eqochat.dto.request.LoginRequest;
-import com.eqochat.dto.request.RegisterRequest;
-import com.eqochat.dto.request.VerifyCodeRequest;
+import com.eqochat.dto.request.*;
 import com.eqochat.dto.response.LoginResponse;
 import com.eqochat.dto.response.UserInfoResponse;
 import com.eqochat.service.AuthService;
@@ -33,6 +31,16 @@ public class AuthController {
         authService.sendVerifyCode(request.getPhone());
         return ApiResponse.success();
     }
+
+    /**
+     * 发送邮箱验证码
+     */
+    @PostMapping("/verify-code/email")
+    public ApiResponse<Void> sendEmailVerifyCode(@RequestBody @Valid EmailVerifyCodeRequest request) {
+        log.info("发送邮箱验证码: email={}", request.getEmail());
+        authService.sendEmailVerifyCode(request.getEmail());
+        return ApiResponse.success();
+    }
     
     /**
      * 用户注册
@@ -43,6 +51,16 @@ public class AuthController {
         LoginResponse response = authService.register(request);
         return ApiResponse.success(response);
     }
+
+    /**
+     * 邮箱注册
+     */
+    @PostMapping("/register/email")
+    public ApiResponse<LoginResponse> emailRegister(@RequestBody @Valid EmailRegisterRequest request) {
+        log.info("用户注册: email={}", request.getEmail());
+        LoginResponse response = authService.emailRegister(request);
+        return ApiResponse.success(response);
+    }
     
     /**
      * 用户登录
@@ -51,6 +69,16 @@ public class AuthController {
     public ApiResponse<LoginResponse> login(@RequestBody @Valid LoginRequest request) {
         log.info("用户登录: phone={}", request.getPhone());
         LoginResponse response = authService.login(request);
+        return ApiResponse.success(response);
+    }
+
+    /**
+     * 邮箱登录
+     */
+    @PostMapping("/login/email")
+    public ApiResponse<LoginResponse> emailLogin(@RequestBody @Valid EmailLoginRequest request) {
+        log.info("用户登录: email={}", request.getEmail());
+        LoginResponse response = authService.emailLogin(request);
         return ApiResponse.success(response);
     }
     

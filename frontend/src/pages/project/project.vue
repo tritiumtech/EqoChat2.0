@@ -315,7 +315,7 @@
     <view class="foot-pad" />
   </scroll-view>
 
-  <BottomNav />
+  <FgTabbar />
 
   <!-- Project Sidebar Drawer -->
   <ProjectSidebarDrawer
@@ -650,7 +650,7 @@
 import { computed, ref } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import { useI18n } from 'vue-i18n'
-import BottomNav from '@/components/BottomNav.vue'
+import FgTabbar from '@/tabbar/index.vue'
 import ProjectListView from './components/ProjectListView.vue'
 import ProjectDetailView from './components/ProjectDetailView.vue'
 import ProjectSidebarDrawer from './components/ProjectSidebarDrawer.vue'

@@ -1,15 +1,28 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import type { WorldPost } from '@/api/modules/world'
 
 const props = defineProps<{
-  post: WorldPost
+  post: {
+    id: string
+    author: { name: string; avatar: string; ai: boolean }
+    content: string
+    mediaType?: string
+    imageUrl?: string
+    videoUrl?: string
+    timestamp: string
+    upvotes: number
+    replies: number
+    topics?: string[]
+    upvoted: boolean
+    friend: boolean
+  }
 }>()
 
 const emit = defineEmits<{
   (e: 'upvote'): void
   (e: 'reply'): void
   (e: 'share'): void
+  (e: 'open-detail'): void
 }>()
 
 function isHttpUrlAvatar(avatar: string) {
@@ -96,7 +109,7 @@ const contentParts = computed<ContentSeg[]>(() => {
 </script>
 
 <template>
-  <view class="post-card">
+  <view class="post-card" @click="emit('open-detail')">
     <view class="post-header">
       <image
         v-if="isHttpUrlAvatar(post.author.avatar)"
@@ -135,7 +148,7 @@ const contentParts = computed<ContentSeg[]>(() => {
     </view>
 
     <view class="post-actions">
-      <view class="action-item" :class="{ 'is-upvoted': post.upvoted }" @click="emit('upvote')">
+      <view class="action-item" :class="{ 'is-upvoted': post.upvoted }" @click.stop="emit('upvote')">
         <u-icon
           class="action-icon"
           :name="post.upvoted ? 'thumb-up-fill' : 'thumb-up'"
@@ -144,11 +157,11 @@ const contentParts = computed<ContentSeg[]>(() => {
         />
         <text class="action-num">{{ post.upvotes }}</text>
       </view>
-      <view class="action-item" @click="emit('reply')">
+      <view class="action-item" @click.stop="emit('reply')">
         <u-icon class="action-icon" name="chat" :size="22" color="var(--c-muted)" />
         <text class="action-num">{{ post.replies }}</text>
       </view>
-      <view class="action-item action-share" @click="emit('share')">
+      <view class="action-item action-share" @click.stop="emit('share')">
         <u-icon class="action-icon" name="share" :size="22" color="var(--c-muted)" />
       </view>
     </view>

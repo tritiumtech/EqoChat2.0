@@ -1,3 +1,6 @@
+import { useUserStore } from '@/store/modules/user'
+import { shouldForceReloginPayload } from '@/utils/api-error'
+
 const BASE_URL =
   import.meta.env.VITE_API_BASE_URL === undefined || import.meta.env.VITE_API_BASE_URL === ''
     ? (import.meta.env.DEV ? 'http://localhost:8080' : 'http://localhost:8080')
@@ -18,9 +21,21 @@ type ApiError = {
   timestamp?: number
 }
 
+export { shouldForceReloginPayload }
+
+export function forceLogoutAndGoLogin() {
+  try {
+    useUserStore().logout()
+  } catch {
+    uni.removeStorageSync('token')
+    uni.removeStorageSync('userInfo')
+  }
+  uni.reLaunch({ url: '/pages/auth/login' })
+}
+
 class Request {
   private baseURL: string
-  
+
   constructor(options: { baseURL: string }) {
     this.baseURL = options.baseURL
   }
@@ -35,40 +50,55 @@ class Request {
       cleanUrl.startsWith('/api/v1/health')
     )
   }
-  
+
+  private resolveToken(): string {
+    try {
+      useUserStore().syncFromStorage()
+    } catch {
+      // Pinia 未就绪时仅读 storage
+    }
+    const raw = uni.getStorageSync('token')
+    return raw ? String(raw) : ''
+  }
+
   private async request<T>(
     method: 'GET' | 'POST' | 'PUT' | 'DELETE',
     url: string,
     data?: any
   ): Promise<T> {
-    const token = uni.getStorageSync('token')
-    // Accept-Language 直接使用 uni 官方 locale（zh-Hans / en）更一致
+    const token = this.resolveToken()
     const locale = uni.getStorageSync('locale') || 'zh-Hans'
-    
+
     const normalizeError = (payload: any): ApiError => {
       if (!payload || typeof payload !== 'object') {
         return { message: String(payload || '请求失败') }
       }
-      const rawData = typeof payload.data === 'string' ? (() => {
-        try { return JSON.parse(payload.data) } catch { return null }
-      })() : payload.data
+      const rawData =
+        typeof payload.data === 'string'
+          ? (() => {
+              try {
+                return JSON.parse(payload.data)
+              } catch {
+                return null
+              }
+            })()
+          : payload.data
       const source = rawData && typeof rawData === 'object' ? rawData : payload
-      const message = source.message || source.msg || source.error || payload.message || payload.msg || '请求失败'
+      const message =
+        source.message || source.msg || source.error || payload.message || payload.msg || '请求失败'
       return {
         code: payload.code ?? source.code,
         message: typeof message === 'string' ? message : '请求失败',
         errorCode: payload.errorCode ?? source.errorCode,
-        timestamp: payload.timestamp ?? source.timestamp
+        timestamp: payload.timestamp ?? source.timestamp,
       }
     }
 
     return new Promise((resolve, reject) => {
       if (!token && !this.isPublicPath(url)) {
-        uni.reLaunch({ url: '/pages/auth/login' })
-        reject({ message: '未登录' })
+        reject({ message: '未登录', errorCode: 'auth.required' })
         return
       }
-
       uni.request({
         url: `${this.baseURL}${url}`,
         method,
@@ -76,19 +106,43 @@ class Request {
         header: {
           'Content-Type': 'application/json',
           'Accept-Language': locale,
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         success: (res) => {
+          try {
+            const headers = (res as any).header || (res as any).headers || {}
+            const authHeader: string | undefined =
+              headers['Authorization'] ||
+              headers['authorization'] ||
+              headers['AUTHORIZATION']
+            if (authHeader && typeof authHeader === 'string') {
+              const parts = authHeader.trim().split(/\s+/)
+              const rawToken = parts.length > 1 ? parts[1] : parts[0]
+              if (rawToken) {
+                uni.setStorageSync('token', rawToken)
+                try {
+                  useUserStore().setToken(rawToken)
+                } catch {
+                  // ignore
+                }
+              }
+            }
+          } catch {
+            // 忽略续期异常，不影响正常请求流程
+          }
+          // SecurityConfig：未认证时 HttpStatusEntryPoint(UNAUTHORIZED)，通常无 ApiResponse 包装
           if (res.statusCode === 401) {
-            uni.removeStorageSync('token')
-            uni.removeStorageSync('userInfo')
-            uni.reLaunch({ url: '/pages/auth/login' })
-            reject({ message: '未登录' })
+            forceLogoutAndGoLogin()
+            reject({ message: '未登录', errorCode: 'auth.unauthorized' })
             return
           }
           let payload = res.data
           if (typeof payload === 'string') {
-            try { payload = JSON.parse(payload) } catch { /* ignore */ }
+            try {
+              payload = JSON.parse(payload)
+            } catch {
+              /* ignore */
+            }
           }
           if (res.statusCode >= 200 && res.statusCode < 300) {
             const typedPayload = payload as ApiResponse<T> | T
@@ -102,7 +156,11 @@ class Request {
               if (apiPayload.code === 200) {
                 resolve(apiPayload.data as T)
               } else {
-                reject(normalizeError(apiPayload))
+                const err = normalizeError(apiPayload)
+                if (shouldForceReloginPayload(apiPayload)) {
+                  forceLogoutAndGoLogin()
+                }
+                reject(err)
               }
             } else {
               resolve(typedPayload as T)
@@ -114,36 +172,33 @@ class Request {
         fail: (err: any) => {
           const msg = err?.message || err?.msg || err?.errMsg || '网络请求失败'
           reject({ message: typeof msg === 'string' ? msg : '网络请求失败' })
-        }
+        },
       })
     })
   }
-  
+
   get<T>(url: string, params?: any) {
     const queryString = params ? '?' + this.serializeParams(params) : ''
     return this.request<T>('GET', url + queryString)
   }
-  
+
   post<T>(url: string, data?: any) {
     return this.request<T>('POST', url, data)
   }
-  
+
   put<T>(url: string, data?: any) {
     return this.request<T>('PUT', url, data)
   }
-  
+
   delete<T>(url: string) {
     return this.request<T>('DELETE', url)
   }
 
-  /** 兼容各端的查询参数序列化（避免依赖 URLSearchParams） */
   private serializeParams(params: any): string {
     const parts: string[] = []
     const append = (key: string, value: any) => {
       if (value === undefined || value === null) return
-      parts.push(
-        encodeURIComponent(key) + '=' + encodeURIComponent(String(value))
-      )
+      parts.push(encodeURIComponent(key) + '=' + encodeURIComponent(String(value)))
     }
 
     Object.keys(params || {}).forEach((key) => {
@@ -151,7 +206,6 @@ class Request {
       if (Array.isArray(value)) {
         value.forEach((v) => append(key, v))
       } else if (typeof value === 'object') {
-        // 简单对象按 JSON 字符串处理
         append(key, JSON.stringify(value))
       } else {
         append(key, value)
@@ -162,12 +216,11 @@ class Request {
   }
 }
 
-/** 从 API 错误对象中提取用户可见的提示文案 */
 export function getApiErrorMessage(err: any, fallback = '请求失败'): string {
   if (err == null) return fallback
   if (typeof err === 'string') return err || fallback
   const msg = err.message ?? err.msg ?? err.errMsg ?? err.data?.message ?? err.data?.msg
-  return (typeof msg === 'string' && msg.trim()) ? msg : fallback
+  return typeof msg === 'string' && msg.trim() ? msg : fallback
 }
 
 export default new Request({ baseURL: BASE_URL })

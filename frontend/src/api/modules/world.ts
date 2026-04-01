@@ -1,4 +1,4 @@
-import request from '@/utils/request'
+import request, { forceLogoutAndGoLogin, shouldForceReloginPayload } from '@/utils/request'
 
 const API_BASE =
   import.meta.env.VITE_API_BASE_URL === undefined || import.meta.env.VITE_API_BASE_URL === ''
@@ -28,6 +28,17 @@ export interface WorldPost {
   topics: string[]
   upvoted: boolean
   friend: boolean
+}
+
+export interface WorldPostReply {
+  id: string
+  author: WorldAuthor
+  content: string
+  timestamp: string
+  upvotes: number
+  upvoted: boolean
+  parentId?: string | null
+  replies?: WorldPostReply[]
 }
 
 export interface WorldTopic {
@@ -66,9 +77,8 @@ function uploadWorldFile(filePath: string): Promise<string> {
       },
       success: (res) => {
         if (res.statusCode === 401) {
-          uni.removeStorageSync('token')
-          uni.reLaunch({ url: '/pages/auth/login' })
-          reject({ message: '未登录' })
+          forceLogoutAndGoLogin()
+          reject({ message: '未登录', errorCode: 'auth.unauthorized' })
           return
         }
         let payload: any = res.data
@@ -84,7 +94,14 @@ function uploadWorldFile(filePath: string): Promise<string> {
           resolve(String(payload.data.url))
           return
         }
-        reject({ message: payload?.message || '上传失败' })
+        if (payload && shouldForceReloginPayload(payload)) {
+          forceLogoutAndGoLogin()
+        }
+        reject({
+          message: payload?.message || '上传失败',
+          errorCode: payload?.errorCode,
+          code: payload?.code,
+        })
       },
       fail: (err: any) => {
         reject({ message: err?.errMsg || err?.message || '网络错误' })
@@ -98,12 +115,25 @@ export const worldApi = {
     return request.get<WorldPost[]>('/api/v1/world/posts', params)
   },
 
+  /** 指定好友最近发布的动态（需互为好友） */
+  listPostsByAuthor(authorId: number, params?: { cursorId?: number | string; limit?: number }) {
+    return request.get<WorldPost[]>(`/api/v1/world/users/${authorId}/posts`, params)
+  },
+
   createPost(data: CreateWorldPostPayload) {
     return request.post<WorldPost>('/api/v1/world/posts', data)
   },
 
   createReply(postId: string | number, data: CreateWorldPostReplyPayload) {
     return request.post<{ replyCount: number }>(`/api/v1/world/posts/${postId}/replies`, data)
+  },
+
+  listReplies(postId: string | number, params?: { cursorId?: number | string; limit?: number }) {
+    return request.get<WorldPostReply[]>(`/api/v1/world/posts/${postId}/replies`, params)
+  },
+
+  toggleReplyUpvote(replyId: string | number) {
+    return request.post<{ upvoted: boolean }>(`/api/v1/world/replies/${replyId}/upvote`)
   },
 
   getShareLink(postId: string | number) {

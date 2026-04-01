@@ -1,8 +1,10 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
+import { t } from '@/utils/i18n'
 import type { ConversationSummary } from '@/api/modules/conversation'
-import type { BaseMessage, ChatMessagePayload } from '@/types/websocket'
+import type { BaseMessage, ChatMessagePayload, SessionKickedPayload } from '@/types/websocket'
 import { wsClient } from '@/utils/websocket'
+import { useUserStore } from './user'
 
 export const useChatStore = defineStore('chat', () => {
   const conversations = ref<ConversationSummary[]>([])
@@ -11,6 +13,7 @@ export const useChatStore = defineStore('chat', () => {
   const currentUserId = ref<number | null>(null)
   const isRealtimeConnected = ref(false)
   const wsListenerId = ref<string | null>(null)
+  const isSessionKicked = ref(false)
 
   const totalUnread = computed(() => {
     return conversations.value.reduce((sum, conv) => sum + (conv.unreadCount || 0), 0)
@@ -82,8 +85,35 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  /**
+   * 处理被踢下线
+   */
+  const handleSessionKicked = (payload: SessionKickedPayload) => {
+    isSessionKicked.value = true
+    stopRealtime()
+
+    // 清除用户登录状态
+    const userStore = useUserStore()
+    userStore.logout()
+
+    // 显示提示并跳转到登录页
+    uni.showModal({
+      title: t('common.notice', '登录提示'),
+      content: payload.reason || t('auth.session_kicked', '您的账号已在其他设备登录'),
+      showCancel: false,
+      confirmText: t('auth.relogin', '重新登录'),
+      success: () => {
+        isSessionKicked.value = false
+        uni.reLaunch({ url: '/pages/auth/login' })
+      },
+    })
+  }
+
   const startRealtime = (token: string) => {
     if (!token) return
+    // 如果被踢下线，不再自动重连
+    if (isSessionKicked.value) return
+
     wsClient.init(token)
     if (!wsListenerId.value) {
       wsListenerId.value = wsClient.addListener({
@@ -98,6 +128,9 @@ export const useChatStore = defineStore('chat', () => {
         },
         onChatMessage: (payload, message) => {
           handleIncomingMessage(payload, message)
+        },
+        onSessionKicked: (payload) => {
+          handleSessionKicked(payload)
         },
       })
     }
@@ -122,6 +155,7 @@ export const useChatStore = defineStore('chat', () => {
     totalUnread,
     activeConversationId,
     isRealtimeConnected,
+    isSessionKicked,
     setConversations,
     updateUnreadCount,
     setCurrentUserId,
@@ -129,6 +163,7 @@ export const useChatStore = defineStore('chat', () => {
     markConversationRead,
     startRealtime,
     stopRealtime,
+    handleSessionKicked,
   }
 })
 

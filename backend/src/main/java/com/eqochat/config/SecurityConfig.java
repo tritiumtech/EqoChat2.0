@@ -40,6 +40,7 @@ public class SecurityConfig {
                                 "/api/v1/auth/login",
                                 "/api/v1/auth/register",
                                 "/api/v1/auth/verify-code",
+                                "/api/v1/auth/verify-code/email",
                                 "/api/v1/auth/refresh",
                                 "/actuator/**",
                                 "/api/v1/health"
@@ -69,6 +70,8 @@ public class SecurityConfig {
         configuration.addAllowedMethod("*");
         configuration.setAllowCredentials(true);
         configuration.setMaxAge(3600L);
+        // 允许前端读取 Authorization 等自定义响应头，配合 JWT 自动续期
+        configuration.addExposedHeader(org.springframework.http.HttpHeaders.AUTHORIZATION);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);

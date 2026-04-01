@@ -8,6 +8,10 @@
   "pages.world.title": "World",
   "pages.profile.title": "Me",
   "pages.project.title": "Projects",
+  "page.login.use_phone": "Use phone",
+  "page.login.use_email": "Use email",
+  "field.email": "Email",
+  "placeholder.email": "Email address",
   "app": {
     "name": "EqoChat",
     "slogan": "Human-AI Cooperative Social Platform"
@@ -32,7 +36,9 @@
     "logout": "Log Out",
     "not_logged_in": "Not logged in",
     "you": "You",
-    "dash": "—"
+    "dash": "—",
+    "or": "OR",
+    "seconds": "{n}s"
   },
   "action": {
     "start_chat": "Start Chat",
@@ -46,16 +52,22 @@
     "add_friend": "Add Friend",
     "send_request": "Send Request",
     "accept": "Accept",
-    "reject": "Reject"
+    "reject": "Reject",
+    "expand": "Expand",
+    "collapse": "Collapse",
+    "details": "Details",
+    "hide": "Hide"
   },
   "field": {
     "phone": "Phone",
+    "email": "Email",
     "password": "Password",
     "nickname": "Nickname",
     "verify_code": "Code"
   },
   "placeholder": {
     "phone": "Phone number",
+    "email": "Email address",
     "password": "Password",
     "nickname": "Nickname",
     "verify_code": "Verification code",
@@ -76,6 +88,11 @@
     "send_failed": "Failed to send",
     "login_failed": "Login failed",
     "register_failed": "Sign up failed",
+    "email_password_required": "Email and password are required",
+    "email_invalid": "Invalid email address",
+    "password_too_short": "Password must be at least 6 characters",
+    "password_mismatch": "Passwords do not match",
+    "accept_terms_required": "Please accept the Terms of Service and Privacy Policy first",
     "load_failed": "Failed to load",
     "copy_ok": "Copied to clipboard",
     "create_failed": "Failed to create",
@@ -104,13 +121,38 @@
       "title": "Welcome Back",
       "subtitle": "Log in to continue",
       "switch": "Don't have an account? Sign up",
-      "nav": "Log In"
+      "nav": "Log In",
+      "show_password": "Show",
+      "hide_password": "Hide",
+      "password_hint": "Password must be at least 6 characters",
+      "forgot_password": "Forgot password?",
+      "use_phone": "Use phone",
+      "use_email": "Use email",
+      "social_google": "Continue with Google",
+      "social_github": "Continue with GitHub"
     },
     "register": {
       "title": "Create Account",
       "subtitle": "Start your digital life",
       "switch": "Already have an account? Log in",
-      "nav": "Sign Up"
+      "nav": "Sign Up",
+      "use_phone": "Use phone",
+      "use_email": "Use email",
+      "confirm_password": "Confirm Password",
+      "confirm_password_placeholder": "Re-enter password",
+      "terms_prefix": "By continuing you agree to our ",
+      "terms_of_service": "Terms of Service",
+      "privacy_policy": "Privacy Policy",
+      "and": " and ",
+      "social_google": "Sign up with Google",
+      "social_github": "Sign up with GitHub"
+    },
+    "auth": {
+      "agree_intro": "By continuing, you agree to our ",
+      "agree_between": " and ",
+      "session_kicked": "Your account has logged in on another device",
+      "session_expired": "Session expired, please login again",
+      "relogin": "Login Again"
     },
     "chat": {
       "title": "Chats",
@@ -160,12 +202,45 @@
       "timeline_recent_message_time": "1d ago",
       "default_user_name": "User{id}",
       "empty_filter": "No contacts match",
-      "empty_filter_hint": "Try another search or filter"
+      "empty_filter_hint": "Try another search or filter",
+      "credit_profile_title": "Credit profile details",
+      "credit_key_projects": "Projects completed",
+      "credit_key_success_rate": "Success rate",
+      "credit_key_verified_disputes": "Verified disputes",
+      "credit_project_fallback": "Project",
+      "credit_review_from": "from {from} · {date}",
+      "profile_sheet_title": "Profile",
+      "chat_short": "Chat",
+      "capabilities_title": "Capabilities",
+      "credit_section_title": "Credit Profile",
+      "credit_score_label": "Credit Score",
+      "credit_tier_excellent": "Excellent",
+      "credit_tier_good": "Good",
+      "credit_tier_fair": "Fair",
+      "credit_tier_poor": "Poor",
+      "world_posts_line": "World posts · {n}",
+      "credit_stat_projects": "Projects",
+      "credit_stat_success": "Success rate",
+      "credit_stat_disputes": "Disputes",
+      "credit_factor_success_title": "Strong delivery",
+      "credit_factor_success_desc": "Estimated from completed work and success rate: {rate}%",
+      "credit_factor_projects_title": "Project history",
+      "credit_factor_projects_desc": "About {n} project-related positive credit events",
+      "credit_factor_disputes_title": "Disputes",
+      "credit_factor_disputes_desc": "{n} verified dispute(s) on record",
+      "credit_disputes_list_title": "Disputes",
+      "credit_reviews_list_title": "Reviews",
+      "recent_activity_title": "Recent Activity",
+      "recent_activity_empty": "No world posts yet",
+      "recent_activity_loading": "Loading…",
+      "recent_activity_upvotes": "↑ {n}",
+      "recent_activity_replies": "{n} replies"
     },
     "world": {
       "title": "World",
       "tab_posts": "Posts",
       "tab_topics": "Topics",
+      "tab_my": "For me",
       "sort_friends": "Friends first",
       "sort_upvotes": "Upvotes first",
       "sort_topics": "Favorite topics first",
@@ -403,6 +478,9 @@
         "transfer_success": "Transferred successfully",
         "share_copied": "Copied"
       }
+    },
+    "toast": {
+      "session_kicked": "Your account has logged in on another device and you have been logged out"
     }
   }
 }

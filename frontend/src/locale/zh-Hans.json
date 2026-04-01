@@ -8,6 +8,10 @@
   "pages.world.title": "世界",
   "pages.profile.title": "我的",
   "pages.project.title": "项目",
+  "page.login.use_phone": "使用手机号登录",
+  "page.login.use_email": "使用邮箱登录",
+  "field.email": "邮箱",
+  "placeholder.email": "请输入邮箱",
   "app": {
     "name": "EqoChat",
     "slogan": "人与数字生命协同社交平台"
@@ -32,7 +36,9 @@
     "logout": "退出登录",
     "not_logged_in": "未登录",
     "you": "你",
-    "dash": "—"
+    "dash": "—",
+    "or": "或",
+    "seconds": "{n}秒"
   },
   "action": {
     "start_chat": "发起聊天",
@@ -46,16 +52,22 @@
     "add_friend": "添加好友",
     "send_request": "发送申请",
     "accept": "同意",
-    "reject": "拒绝"
+    "reject": "拒绝",
+    "expand": "展开",
+    "collapse": "收起",
+    "details": "详情",
+    "hide": "收起"
   },
   "field": {
     "phone": "手机号",
+    "email": "邮箱",
     "password": "密码",
     "nickname": "昵称",
     "verify_code": "验证码"
   },
   "placeholder": {
     "phone": "请输入手机号",
+    "email": "请输入邮箱",
     "password": "请输入密码",
     "nickname": "请输入昵称",
     "verify_code": "请输入验证码",
@@ -76,6 +88,11 @@
     "send_failed": "发送失败",
     "login_failed": "登录失败",
     "register_failed": "注册失败",
+    "email_password_required": "请输入邮箱和密码",
+    "email_invalid": "邮箱格式不正确",
+    "password_too_short": "密码长度至少为 6 位",
+    "password_mismatch": "两次输入的密码不一致",
+    "accept_terms_required": "请先阅读并同意服务条款和隐私政策",
     "load_failed": "加载失败",
     "copy_ok": "已复制到剪贴板",
     "create_failed": "创建失败",
@@ -104,13 +121,38 @@
       "title": "欢迎回来",
       "subtitle": "登录 EqoChat 开始协同社交",
       "switch": "还没有账号？去注册",
-      "nav": "登录"
+      "nav": "登录",
+      "show_password": "显示",
+      "hide_password": "隐藏",
+      "password_hint": "密码长度需至少 6 位",
+      "forgot_password": "忘记密码？",
+      "use_phone": "使用手机号登录",
+      "use_email": "使用邮箱登录",
+      "social_google": "使用 Google 继续",
+      "social_github": "使用 GitHub 继续"
     },
     "register": {
       "title": "创建账号",
       "subtitle": "开启你的数字生命社交体验",
       "switch": "已有账号？去登录",
-      "nav": "注册"
+      "nav": "注册",
+      "use_phone": "使用手机号注册",
+      "use_email": "使用邮箱注册",
+      "confirm_password": "确认密码",
+      "confirm_password_placeholder": "请再次输入密码",
+      "terms_prefix": "继续注册即表示你同意 ",
+      "terms_of_service": "服务条款",
+      "privacy_policy": "隐私政策",
+      "and": " 和 ",
+      "social_google": "使用 Google 注册",
+      "social_github": "使用 GitHub 注册"
+    },
+    "auth": {
+      "agree_intro": "继续使用即表示你同意",
+      "agree_between": "和",
+      "session_kicked": "您的账号已在其他设备登录",
+      "session_expired": "登录已过期，请重新登录",
+      "relogin": "重新登录"
     },
     "chat": {
       "title": "聊天",
@@ -160,12 +202,45 @@
       "timeline_recent_message_time": "1天前",
       "default_user_name": "用户{id}",
       "empty_filter": "没有匹配的联系人",
-      "empty_filter_hint": "试试调整搜索或筛选"
+      "empty_filter_hint": "试试调整搜索或筛选",
+      "credit_profile_title": "信用档案",
+      "credit_key_projects": "完成项目",
+      "credit_key_success_rate": "成功率",
+      "credit_key_verified_disputes": "已核实争议",
+      "credit_project_fallback": "项目",
+      "credit_review_from": "来自 {from} · {date}",
+      "profile_sheet_title": "资料",
+      "chat_short": "聊天",
+      "capabilities_title": "能力",
+      "credit_section_title": "信用档案",
+      "credit_score_label": "信用分",
+      "credit_tier_excellent": "优秀",
+      "credit_tier_good": "良好",
+      "credit_tier_fair": "一般",
+      "credit_tier_poor": "偏低",
+      "world_posts_line": "世界动态 · {n}",
+      "credit_stat_projects": "项目",
+      "credit_stat_success": "成功率",
+      "credit_stat_disputes": "争议",
+      "credit_factor_success_title": "较高成功率",
+      "credit_factor_success_desc": "基于已完成项目与成功率估算：{rate}%",
+      "credit_factor_projects_title": "项目记录",
+      "credit_factor_projects_desc": "信用记录中与项目相关的正向条目约 {n} 条",
+      "credit_factor_disputes_title": "争议记录",
+      "credit_factor_disputes_desc": "已核实争议 {n} 条",
+      "credit_disputes_list_title": "争议明细",
+      "credit_reviews_list_title": "评价摘录",
+      "recent_activity_title": "最近动态",
+      "recent_activity_empty": "暂无世界动态",
+      "recent_activity_loading": "加载中…",
+      "recent_activity_upvotes": "↑ {n}",
+      "recent_activity_replies": "{n} 条回复"
     },
     "world": {
       "title": "世界",
       "tab_posts": "动态",
       "tab_topics": "话题",
+      "tab_my": "与我相关",
       "sort_friends": "好友优先",
       "sort_upvotes": "热度优先",
       "sort_topics": "常看话题优先",
@@ -403,6 +478,9 @@
         "transfer_success": "转让成功",
         "share_copied": "已复制"
       }
+    },
+    "toast": {
+      "session_kicked": "您的账号已在其他设备登录，您已被迫下线"
     }
   }
 }

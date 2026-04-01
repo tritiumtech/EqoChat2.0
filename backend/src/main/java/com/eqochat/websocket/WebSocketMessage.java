@@ -8,7 +8,7 @@ import lombok.NoArgsConstructor;
 import java.time.LocalDateTime;
 
 /**
- * WebSocket消息协议
+ * WebSocket 消息协议
  */
 public class WebSocketMessage {
     
@@ -23,6 +23,7 @@ public class WebSocketMessage {
         
         // 系统通知
         NOTIFICATION,           // 系统通知
+        SESSION_KICKED,         // 被挤下线通知
         
         // 智能体相关
         AGENT_INTENT,           // 智能体意图
@@ -48,11 +49,11 @@ public class WebSocketMessage {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class BaseMessage {
-        private String id;                      // 消息唯一ID
+        private String id;                      // 消息唯一 ID
         private MessageType type;               // 消息类型
-        private String senderId;                // 发送者ID
+        private String senderId;                // 发送者 ID
         private String senderType;              // USER/AGENT/SYSTEM
-        private String recipientId;             // 接收者ID（用户或会话）
+        private String recipientId;             // 接收者 ID（用户或会话）
         private LocalDateTime timestamp;        // 时间戳
         private Object payload;                 // 消息内容
     }
@@ -65,11 +66,11 @@ public class WebSocketMessage {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class ChatMessagePayload {
-        private String conversationId;          // 会话ID
+        private String conversationId;          // 会话 ID
         private String messageType;             // TEXT/IMAGE/FILE/VOICE/VIDEO/CARD
         private String content;                 // 文本内容
-        private Object metadata;                // 附加数据（图片URL、文件信息等）
-        private String replyToMessageId;        // 回复消息ID
+        private Object metadata;                // 附加数据（图片 URL、文件信息等）
+        private String replyToMessageId;        // 回复消息 ID
         private String intentData;              // 智能体意图数据
     }
     
@@ -81,9 +82,9 @@ public class WebSocketMessage {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class ReadReceiptPayload {
-        private String conversationId;          // 会话ID
-        private String messageId;               // 消息ID
-        private String readerId;                // 阅读者ID
+        private String conversationId;          // 会话 ID
+        private String messageId;               // 消息 ID
+        private String readerId;                // 阅读者 ID
     }
     
     /**
@@ -94,8 +95,8 @@ public class WebSocketMessage {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class TypingPayload {
-        private String conversationId;          // 会话ID
-        private String userId;                  // 用户ID
+        private String conversationId;          // 会话 ID
+        private String userId;                  // 用户 ID
         private boolean isTyping;               // 是否正在输入
     }
     
@@ -107,7 +108,7 @@ public class WebSocketMessage {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class PresencePayload {
-        private String userId;                  // 用户ID
+        private String userId;                  // 用户 ID
         private String status;                  // ONLINE/OFFLINE/BUSY
         private Long lastSeenAt;                // 最后在线时间
     }
@@ -120,8 +121,8 @@ public class WebSocketMessage {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class ConnectAckPayload {
-        private String userId;                  // 当前用户ID
-        private String connectionId;            // 连接ID
+        private String userId;                  // 当前用户 ID
+        private String connectionId;            // 连接 ID
         private Long serverTime;                // 服务器时间
     }
     
@@ -135,6 +136,19 @@ public class WebSocketMessage {
     public static class ErrorPayload {
         private Integer code;                   // 错误码
         private String message;                 // 错误信息
-        private String originalMessageId;       // 原消息ID
+        private String originalMessageId;       // 原消息 ID
+    }
+    
+    /**
+     * 被挤下线通知
+     */
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class SessionKickedPayload {
+        private String reason;                  // 被挤下线原因
+        private Long kickedAt;                  // 被挤下线时间
+        private String newDeviceId;             // 新登录的设备 ID（可选）
     }
 }

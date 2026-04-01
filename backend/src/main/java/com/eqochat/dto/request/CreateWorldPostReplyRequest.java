@@ -10,5 +10,10 @@ public class CreateWorldPostReplyRequest {
     @NotBlank
     @Size(max = 8000)
     private String content;
+
+    /**
+     * 父回复ID，null 表示对动态本身的一级评论。
+     */
+    private Long parentId;
 }
 

@@ -15,15 +15,18 @@ import com.eqochat.domain.entity.WorldTopicFollow;
 import com.eqochat.dto.request.CreateWorldPostRequest;
 import com.eqochat.dto.request.CreateWorldPostReplyRequest;
 import com.eqochat.dto.response.WorldPostResponse;
+import com.eqochat.dto.response.WorldPostReplyResponse;
 import com.eqochat.dto.response.WorldShareLinkResponse;
 import com.eqochat.dto.response.WorldTopicResponse;
 import com.eqochat.mapper.NotificationMapper;
+import com.eqochat.mapper.UserFriendMapper;
 import com.eqochat.mapper.UserProfileMapper;
 import com.eqochat.mapper.WorldPostMentionMapper;
 import com.eqochat.mapper.WorldPostMapper;
 import com.eqochat.mapper.WorldPostReplyMapper;
 import com.eqochat.mapper.WorldPostTopicMapper;
 import com.eqochat.mapper.WorldPostUpvoteMapper;
+import com.eqochat.mapper.WorldPostReplyUpvoteMapper;
 import com.eqochat.mapper.WorldTopicFollowMapper;
 import com.eqochat.mapper.WorldTopicMapper;
 import com.eqochat.world.WorldService;
@@ -58,7 +61,9 @@ public class WorldServiceImpl implements WorldService {
     private final WorldPostUpvoteMapper worldPostUpvoteMapper;
     private final WorldTopicFollowMapper worldTopicFollowMapper;
     private final WorldPostReplyMapper worldPostReplyMapper;
+    private final WorldPostReplyUpvoteMapper worldPostReplyUpvoteMapper;
     private final UserProfileMapper userProfileMapper;
+    private final UserFriendMapper userFriendMapper;
     private final NotificationMapper notificationMapper;
     private final WorldModuleProperties worldModuleProperties;
 
@@ -74,6 +79,28 @@ public class WorldServiceImpl implements WorldService {
                 .map(WorldPostMapper.WorldPostRow::getId)
                 .collect(Collectors.toMap(id -> id, worldPostMapper::selectTopicNamesByPostId));
 
+        return rows.stream()
+                .map(r -> toPostResponse(r, topicsByPostId.getOrDefault(r.getId(), List.of())))
+                .toList();
+    }
+
+    @Override
+    public List<WorldPostResponse> listPostsByAuthor(Long viewerId, Long authorId, Long cursorId, Integer limit) {
+        if (authorId == null) {
+            throw BizException.of("world.author.required");
+        }
+        if (!userFriendMapper.areFriends(viewerId, authorId)) {
+            throw BizException.of("contact.not_friend");
+        }
+        int size = sanitizeLimit(limit, DEFAULT_LIMIT);
+        List<WorldPostMapper.WorldPostRow> rows =
+                worldPostMapper.selectPostsByAuthor(viewerId, authorId, cursorId, size);
+        if (rows.isEmpty()) {
+            return List.of();
+        }
+        Map<Long, List<String>> topicsByPostId = rows.stream()
+                .map(WorldPostMapper.WorldPostRow::getId)
+                .collect(Collectors.toMap(id -> id, worldPostMapper::selectTopicNamesByPostId));
         return rows.stream()
                 .map(r -> toPostResponse(r, topicsByPostId.getOrDefault(r.getId(), List.of())))
                 .toList();
@@ -179,8 +206,10 @@ public class WorldServiceImpl implements WorldService {
 
         WorldPostReply reply = WorldPostReply.builder()
                 .postId(postId)
+                .parentId(request.getParentId())
                 .authorId(authorId)
                 .content(content)
+                .upvoteCount(0)
                 .build();
         worldPostReplyMapper.insert(reply);
 
@@ -330,6 +359,113 @@ public class WorldServiceImpl implements WorldService {
         return true;
     }
 
+    @Override
+    public List<WorldPostReplyResponse> listReplies(Long viewerId, Long postId, Long cursorId, Integer limit) {
+        if (postId == null) {
+            throw BizException.of("world.post.required");
+        }
+        int size = sanitizeLimit(limit, DEFAULT_LIMIT);
+
+        List<WorldPostReply> rows = worldPostReplyMapper.selectList(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<WorldPostReply>()
+                        .eq(WorldPostReply::getPostId, postId)
+                        .orderByAsc(WorldPostReply::getCreateTime)
+                        .last("LIMIT " + size)
+        );
+        if (rows.isEmpty()) {
+            return List.of();
+        }
+
+        // 作者信息
+        Set<Long> authorIds = rows.stream()
+                .map(WorldPostReply::getAuthorId)
+                .filter(id -> id != null && id > 0)
+                .collect(Collectors.toSet());
+        Map<Long, UserProfile> profiles = authorIds.isEmpty()
+                ? Map.of()
+                : userProfileMapper.selectBatchIds(authorIds).stream()
+                .collect(Collectors.toMap(UserProfile::getId, p -> p));
+
+        // 当前用户点赞的回复
+        Set<Long> likedIds = worldPostReplyUpvoteMapper.selectList(
+                        new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.eqochat.domain.entity.WorldPostReplyUpvote>()
+                                .eq(com.eqochat.domain.entity.WorldPostReplyUpvote::getUserId, viewerId)
+                                .eq(com.eqochat.domain.entity.WorldPostReplyUpvote::getDelToken, 0L)
+                                .in(com.eqochat.domain.entity.WorldPostReplyUpvote::getReplyId,
+                                        rows.stream().map(WorldPostReply::getId).toList())
+                ).stream()
+                .map(com.eqochat.domain.entity.WorldPostReplyUpvote::getReplyId)
+                .collect(Collectors.toSet());
+
+        // 先扁平化，再组装树
+        Map<Long, WorldPostReplyResponse> nodeMap = rows.stream()
+                .collect(Collectors.toMap(
+                        WorldPostReply::getId,
+                        r -> toReplyResponse(r, profiles.get(r.getAuthorId()), likedIds.contains(r.getId()))
+                ));
+
+        List<WorldPostReplyResponse> roots = new java.util.ArrayList<>();
+        for (WorldPostReply r : rows) {
+            WorldPostReplyResponse node = nodeMap.get(r.getId());
+            Long pid = r.getParentId();
+            if (pid == null) {
+                roots.add(node);
+            } else {
+                WorldPostReplyResponse parent = nodeMap.get(pid);
+                if (parent != null) {
+                    if (parent.getReplies() == null) {
+                        parent.setReplies(new java.util.ArrayList<>());
+                    }
+                    parent.getReplies().add(node);
+                } else {
+                    roots.add(node);
+                }
+            }
+        }
+        return roots;
+    }
+
+    @Override
+    @Transactional
+    public boolean toggleReplyUpvote(Long viewerId, Long replyId) {
+        if (replyId == null) {
+            throw BizException.of("world.reply.required");
+        }
+        WorldPostReply reply = worldPostReplyMapper.selectById(replyId);
+        if (reply == null || (reply.getDelToken() != null && reply.getDelToken() != 0L)) {
+            throw BizException.of("world.reply.not_found");
+        }
+
+        com.eqochat.domain.entity.WorldPostReplyUpvote existing =
+                worldPostReplyUpvoteMapper.findActive(replyId, viewerId);
+        if (existing != null) {
+            worldPostReplyUpvoteMapper.update(null, new LambdaUpdateWrapper<com.eqochat.domain.entity.WorldPostReplyUpvote>()
+                    .set(com.eqochat.domain.entity.WorldPostReplyUpvote::getDelToken, System.currentTimeMillis())
+                    .eq(com.eqochat.domain.entity.WorldPostReplyUpvote::getId, existing.getId()));
+            worldPostReplyMapper.update(null, new LambdaUpdateWrapper<WorldPostReply>()
+                    .setSql("upvote_count = GREATEST(upvote_count - 1, 0)")
+                    .eq(WorldPostReply::getId, replyId));
+            return false;
+        }
+
+        com.eqochat.domain.entity.WorldPostReplyUpvote any =
+                worldPostReplyUpvoteMapper.findAny(replyId, viewerId);
+        if (any != null) {
+            worldPostReplyUpvoteMapper.update(null, new LambdaUpdateWrapper<com.eqochat.domain.entity.WorldPostReplyUpvote>()
+                    .set(com.eqochat.domain.entity.WorldPostReplyUpvote::getDelToken, 0L)
+                    .eq(com.eqochat.domain.entity.WorldPostReplyUpvote::getId, any.getId()));
+        } else {
+            worldPostReplyUpvoteMapper.insert(com.eqochat.domain.entity.WorldPostReplyUpvote.builder()
+                    .replyId(replyId)
+                    .userId(viewerId)
+                    .build());
+        }
+        worldPostReplyMapper.update(null, new LambdaUpdateWrapper<WorldPostReply>()
+                .setSql("upvote_count = upvote_count + 1")
+                .eq(WorldPostReply::getId, replyId));
+        return true;
+    }
+
     private static int sanitizeLimit(Integer limit, int fallback) {
         if (limit == null) return fallback;
         if (limit <= 0) return fallback;
@@ -392,6 +528,29 @@ public class WorldServiceImpl implements WorldService {
                 .topics(topics)
                 .upvoted(false)
                 .friend(false)
+                .build();
+    }
+
+    private static WorldPostReplyResponse toReplyResponse(WorldPostReply reply, UserProfile profile, boolean upvoted) {
+        String name = profile != null && StringUtils.hasText(profile.getNickname())
+                ? profile.getNickname()
+                : "User";
+        String color = profile != null && StringUtils.hasText(profile.getAvatarUrl())
+                ? profile.getAvatarUrl()
+                : ColorUtil.pick(name + "#" + (profile != null ? profile.getId() : reply.getAuthorId()));
+        return WorldPostReplyResponse.builder()
+                .id(String.valueOf(reply.getId()))
+                .author(WorldPostReplyResponse.Author.builder()
+                        .name(name)
+                        .avatar(color)
+                        .ai(false)
+                        .build())
+                .content(reply.getContent())
+                .timestamp(WorldPostResponse.formatTime(reply.getCreateTime()))
+                .upvotes(reply.getUpvoteCount() == null ? 0 : reply.getUpvoteCount())
+                .upvoted(upvoted)
+                .parentId(reply.getParentId() == null ? null : String.valueOf(reply.getParentId()))
+                .replies(java.util.List.of())
                 .build();
     }
 

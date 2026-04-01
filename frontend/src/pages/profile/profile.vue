@@ -9,21 +9,21 @@
           <text class="profile-name">{{ userInfo?.nickname || t('common.not_logged_in') }}</text>
           <text class="profile-email">{{ subLine }}</text>
           <view class="level-pill">
-            <text>{{ t('page.profile.level_short', { n: levelInfo.level, name: levelInfo.name }) }}</text>
+            <text>{{ tf('page.profile.level_short', { n: levelInfo.level, name: t(levelInfo.nameKey) }) }}</text>
           </view>
         </view>
       </view>
       <view class="progress-card">
         <view class="progress-top">
-          <text class="progress-label">★ {{ t('page.profile.points', { n: userPoints }) }}</text>
-          <text class="progress-hint">{{ levelInfo.toNext }}</text>
+          <text class="progress-label">★ {{ tf('page.profile.points', { n: userPoints }) }}</text>
+          <text class="progress-hint">{{ levelInfo.isMax ? t('page.profile.level_max') : tf('page.profile.points_to_level', { n: levelInfo.need, name: t(levelInfo.nextNameKey) }) }}</text>
         </view>
         <view class="progress-track">
           <view class="progress-fill" :style="{ width: levelInfo.pct + '%' }" />
         </view>
         <view class="progress-feet">
-          <text>{{ t('page.profile.level_abbr', { n: levelInfo.level }) }}</text>
-          <text>{{ t('page.profile.level_abbr', { n: levelInfo.nextLevel }) }}</text>
+          <text>{{ tf('page.profile.level_abbr', { n: levelInfo.level }) }}</text>
+          <text>{{ tf('page.profile.level_abbr', { n: levelInfo.nextLevel }) }}</text>
         </view>
       </view>
     </view>
@@ -41,7 +41,7 @@
         <view class="menu-icon">🔔</view>
         <view class="menu-body">
           <text class="menu-title">{{ t('page.profile.menu_notifications') }}</text>
-          <text class="menu-desc">{{ unreadCount > 0 ? t('page.profile.unread_count', { n: unreadCount }) : t('page.profile.menu_notifications_desc') }}</text>
+          <text class="menu-desc">{{ unreadCount > 0 ? tf('page.profile.unread_count', { n: unreadCount }) : t('page.profile.menu_notifications_desc') }}</text>
         </view>
         <text class="chev">›</text>
       </button>
@@ -155,24 +155,24 @@
     </view>
   </view>
 
-  <BottomNav />
+  <FgTabbar />
 </template>
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
-import { useI18n } from 'vue-i18n'
+import { useI18nWithFormat } from '@/composables/useI18nWithFormat'
 import { userApi, type UserInfo } from '@/api/modules/user'
 import { useUserStore } from '@/store/modules/user'
 import { setLocale } from '../../locale/i18n'
 import { notificationApi, type NotificationItem } from '@/api/modules/notification'
 import { getApiErrorMessage } from '@/utils/request'
 import { agentApi, type MyAgentItem } from '@/api/modules/agent'
-import BottomNav from '@/components/BottomNav.vue'
+import FgTabbar from '@/tabbar/index.vue'
 
 const userStore = useUserStore()
 const userInfo = ref<UserInfo | null>(userStore.userInfo || null)
-const { t, locale } = useI18n({ useScope: 'global' })
+const { t, tf, locale } = useI18nWithFormat()
 const notifications = ref<NotificationItem[]>([])
 const notificationFilter = ref<'all' | 'mention'>('all')
 const showNotifications = ref(false)
@@ -215,15 +215,15 @@ const levelInfo = computed(() => {
   const span = !isMax ? (next.min - cur.min) || 1 : 1
   const pct = isMax ? 100 : Math.min(100, Math.round(((pts - cur.min) / span) * 100))
   const need = isMax ? 0 : Math.max(0, next.min - pts)
-  const toNext = isMax
-    ? t('page.profile.level_max')
-    : t('page.profile.points_to_level', { n: need, name: t(next.nameKey) })
+  
   return {
     level: cur.level,
-    name: t(cur.nameKey),
+    nameKey: cur.nameKey,
     nextLevel: isMax ? cur.level : next.level,
     pct,
-    toNext,
+    need,
+    isMax,
+    nextNameKey: next.nameKey,
   }
 })
 
@@ -348,7 +348,7 @@ onShow(() => {
 
 .profile-head {
   margin: 0;
-  padding: 32rpx 24rpx 28rpx;
+  padding: calc(var(--status-bar-height) + 32rpx) 24rpx 28rpx;
   background: rgba(255, 255, 255, 0.75);
   backdrop-filter: blur(14rpx);
   border-radius: 0;
@@ -371,6 +371,7 @@ onShow(() => {
   align-items: center;
   justify-content: center;
   box-shadow: var(--c-shadow-soft);
+  flex-shrink: 0;
 }
 
 .avatar-text {
@@ -382,6 +383,13 @@ onShow(() => {
 .profile-text {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  height: 112rpx;
+  gap: 8rpx;
+  box-sizing: border-box;
 }
 
 .profile-name {
@@ -389,18 +397,26 @@ onShow(() => {
   font-weight: 700;
   color: var(--c-ink);
   display: block;
+  line-height: 36rpx;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .profile-email {
   font-size: 24rpx;
   color: var(--c-muted);
-  margin-top: 8rpx;
   display: block;
+  line-height: 36rpx;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .level-pill {
-  display: inline-block;
-  margin-top: 16rpx;
+  display: inline-flex;
   padding: 6rpx 16rpx;
   border-radius: var(--radius-md);
   background: rgba(255, 122, 89, 0.1);
@@ -411,6 +427,7 @@ onShow(() => {
   font-size: 22rpx;
   font-weight: 600;
   color: var(--c-primary);
+  line-height: 22rpx;
 }
 
 .progress-card {
@@ -460,7 +477,7 @@ onShow(() => {
 }
 
 .menu-block {
-  margin: 0 24rpx 24rpx;
+  margin: 24rpx 24rpx 24rpx;
   display: flex;
   flex-direction: column;
   gap: 16rpx;
@@ -492,11 +509,19 @@ onShow(() => {
   align-items: center;
   justify-content: center;
   font-size: 30rpx;
+  flex-shrink: 0;
 }
 
 .menu-body {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  height: 64rpx;
+  gap: 6rpx;
+  box-sizing: border-box;
 }
 
 .menu-title {
@@ -504,13 +529,22 @@ onShow(() => {
   font-weight: 600;
   color: var(--c-ink);
   display: block;
+  line-height: 28rpx;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .menu-desc {
   font-size: 22rpx;
   color: var(--c-muted);
-  margin-top: 6rpx;
   display: block;
+  line-height: 28rpx;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .chev {

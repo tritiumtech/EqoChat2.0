@@ -15,7 +15,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * JWT工具类
+ * JWT 工具类
  */
 @Component
 @Slf4j
@@ -32,18 +32,34 @@ public class JwtTokenUtil {
     }
     
     /**
-     * 生成token
+     * 生成 token（带 sessionId）
      */
-    public String generateToken(Long userId, String did) {
+    public String generateToken(Long userId, String did, String sessionId) {
         Map<String, Object> claims = new HashMap<>();
         claims.put("userId", userId);
         claims.put("did", did);
+        claims.put("sessionId", sessionId);
         
         return createToken(claims, userId.toString());
     }
     
     /**
-     * 创建token
+     * 生成 token（旧版本，兼容用）
+     */
+    public String generateToken(Long userId, String did) {
+        return generateToken(userId, did, null);
+    }
+    
+    /**
+     * 从 token 获取 sessionId
+     */
+    public String getSessionIdFromToken(String token) {
+        Claims claims = getAllClaimsFromToken(token);
+        return claims.get("sessionId", String.class);
+    }
+    
+    /**
+     * 创建 token
      */
     private String createToken(Map<String, Object> claims, String subject) {
         Date now = new Date();
@@ -59,7 +75,7 @@ public class JwtTokenUtil {
     }
     
     /**
-     * 从token获取用户ID
+     * 从 token 获取用户 ID
      */
     public Long getUserIdFromToken(String token) {
         Claims claims = getAllClaimsFromToken(token);
@@ -86,7 +102,7 @@ public class JwtTokenUtil {
     }
     
     /**
-     * 从token获取DID
+     * 从 token 获取 DID
      */
     public String getDidFromToken(String token) {
         Claims claims = getAllClaimsFromToken(token);
@@ -94,19 +110,19 @@ public class JwtTokenUtil {
     }
     
     /**
-     * 验证token是否有效
+     * 验证 token 是否有效
      */
     public boolean validateToken(String token) {
         try {
             return !isTokenExpired(token);
         } catch (Exception e) {
-            log.error("JWT验证失败: {}", e.getMessage());
+            log.error("JWT 验证失败：{}", e.getMessage());
             return false;
         }
     }
     
     /**
-     * 检查token是否过期
+     * 检查 token 是否过期
      */
     public boolean isTokenExpired(String token) {
         Date expiration = getExpirationDateFromToken(token);
@@ -114,14 +130,14 @@ public class JwtTokenUtil {
     }
     
     /**
-     * 获取token过期时间
+     * 获取 token 过期时间
      */
     public Date getExpirationDateFromToken(String token) {
         return getAllClaimsFromToken(token).getExpiration();
     }
     
     /**
-     * 获取所有Claims
+     * 获取所有 Claims
      */
     private Claims getAllClaimsFromToken(String token) {
         return Jwts.parser()
@@ -132,7 +148,7 @@ public class JwtTokenUtil {
     }
     
     /**
-     * 刷新token
+     * 刷新 token
      */
     public String refreshToken(String token) {
         Claims claims = getAllClaimsFromToken(token);

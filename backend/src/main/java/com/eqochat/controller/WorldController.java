@@ -5,6 +5,7 @@ import com.eqochat.common.UserContext;
 import com.eqochat.dto.request.CreateWorldPostRequest;
 import com.eqochat.dto.request.CreateWorldPostReplyRequest;
 import com.eqochat.dto.response.WorldPostResponse;
+import com.eqochat.dto.response.WorldPostReplyResponse;
 import com.eqochat.dto.response.WorldShareLinkResponse;
 import com.eqochat.dto.response.WorldTopicResponse;
 import com.eqochat.world.WorldService;
@@ -39,6 +40,16 @@ public class WorldController {
                                                          @RequestParam(required = false) Long cursorId,
                                                          @RequestParam(required = false) Integer limit) {
         return ApiResponse.success(worldService.listFeed(UserContext.requireCurrentUser(), sort, cursorId, limit));
+    }
+
+    /**
+     * 某好友最近发布的动态（需互为好友）。
+     */
+    @GetMapping("/users/{authorId}/posts")
+    public ApiResponse<List<WorldPostResponse>> listPostsByAuthor(@PathVariable Long authorId,
+                                                                   @RequestParam(required = false) Long cursorId,
+                                                                   @RequestParam(required = false) Integer limit) {
+        return ApiResponse.success(worldService.listPostsByAuthor(UserContext.requireCurrentUser(), authorId, cursorId, limit));
     }
 
     @PostMapping("/posts")
@@ -86,6 +97,19 @@ public class WorldController {
                                                          @Valid @RequestBody CreateWorldPostReplyRequest request) {
         int replyCount = worldService.createReply(UserContext.requireCurrentUser(), postId, request);
         return ApiResponse.success(Map.of("replyCount", replyCount));
+    }
+
+    @PostMapping("/replies/{replyId}/upvote")
+    public ApiResponse<Map<String, Object>> toggleReplyUpvote(@PathVariable Long replyId) {
+        boolean upvoted = worldService.toggleReplyUpvote(UserContext.requireCurrentUser(), replyId);
+        return ApiResponse.success(Map.of("upvoted", upvoted));
+    }
+
+    @GetMapping("/posts/{postId}/replies")
+    public ApiResponse<List<WorldPostReplyResponse>> listReplies(@PathVariable Long postId,
+                                                                 @RequestParam(required = false) Long cursorId,
+                                                                 @RequestParam(required = false) Integer limit) {
+        return ApiResponse.success(worldService.listReplies(UserContext.requireCurrentUser(), postId, cursorId, limit));
     }
 
     @PostMapping(value = "/uploads", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)

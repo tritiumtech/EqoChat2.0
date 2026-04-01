@@ -18,6 +18,7 @@ import com.eqochat.service.ConversationParticipantService;
 import com.eqochat.service.ConversationService;
 import com.eqochat.service.MessageService;
 import com.eqochat.service.UserProfileService;
+import com.eqochat.websocket.ChatMessageRealtimeNotifier;
 import com.eqochat.websocket.WebSocketSessionManager;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -44,6 +45,7 @@ public class ConversationServiceImpl extends ServiceImpl<ConversationMapper, Con
     private final UserProfileService userProfileService;
     private final ObjectMapper objectMapper;
     private final WebSocketSessionManager webSocketSessionManager;
+    private final ChatMessageRealtimeNotifier chatMessageRealtimeNotifier;
     
     @Override
     public List<ConversationSummaryResponse> listConversations(Long userId) {
@@ -365,6 +367,8 @@ public class ConversationServiceImpl extends ServiceImpl<ConversationMapper, Con
         LocalDateTime createdAt = message.getCreateTime() != null ? message.getCreateTime() : LocalDateTime.now();
         updateLastMessage(conversationId, message.getId(), createdAt);
         participantService.updateLastRead(conversationId, userId, message.getId(), createdAt);
+
+        chatMessageRealtimeNotifier.notifyChatMessageSaved(message);
 
         return MessageResponse.builder()
                 .id(message.getId())

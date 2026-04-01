@@ -5,7 +5,41 @@
     "navigationBarBackgroundColor": "#F8F8F8",
     "backgroundColor": "#F8F8F8"
   },
+  "tabBar": {
+    "custom": true,
+    "color": "#888888",
+    "selectedColor": "#030213",
+    "backgroundColor": "#FFFFFF",
+    "borderStyle": "black",
+    "list": [
+      {
+        "pagePath": "pages/chat/chat-list",
+        "text": "%pages.chat.title%"
+      },
+      {
+        "pagePath": "pages/project/project",
+        "text": "%pages.project.title%"
+      },
+      {
+        "pagePath": "pages/world/world",
+        "text": "%pages.world.title%"
+      },
+      {
+        "pagePath": "pages/contact/contact-list",
+        "text": "%pages.contact.title%"
+      },
+      {
+        "pagePath": "pages/profile/profile",
+        "text": "%pages.profile.title%"
+      }
+    ]
+  },
   "pages": [
+    {
+      "path": "pages/index/index",
+      "type": "home",
+      "style": {}
+    },
     {
       "path": "pages/auth/login",
       "type": "page",
@@ -24,7 +58,8 @@
       "path": "pages/chat/chat-list",
       "type": "page",
       "style": {
-        "navigationBarTitleText": "%pages.chat.title%"
+       "navigationBarTitleText": "",
+       "navigationStyle": "custom"
       }
     },
     {
@@ -32,14 +67,18 @@
       "type": "page",
       "style": {
         "navigationBarTitleText": "",
-        "navigationStyle": "custom"
+        "navigationStyle": "custom",
+        "app-plus": {
+          "softinputMode": "adjustResize"
+        }
       }
     },
     {
       "path": "pages/contact/contact-list",
       "type": "page",
       "style": {
-        "navigationBarTitleText": "%pages.contact.title%"
+        "navigationBarTitleText": "",
+        "navigationStyle": "custom"
       }
     },
     {
@@ -53,21 +92,24 @@
       "path": "pages/world/world",
       "type": "page",
       "style": {
-        "navigationBarTitleText": "%pages.world.title%"
+        "navigationBarTitleText": "",
+        "navigationStyle": "custom"
       }
     },
     {
       "path": "pages/profile/profile",
       "type": "page",
       "style": {
-        "navigationBarTitleText": "%pages.profile.title%"
+        "navigationBarTitleText": "",
+        "navigationStyle": "custom"
       }
     },
     {
       "path": "pages/project/project",
       "type": "page",
       "style": {
-        "navigationBarTitleText": "%pages.project.title%"
+        "navigationBarTitleText": "",
+        "navigationStyle": "custom"
       }
     }
   ],

@@ -58,7 +58,7 @@ public class UserContext {
     public static Long requireCurrentUser() {
         Long userId = CURRENT_USER.get();
         if (userId == null) {
-            throw BizException.of(401, "auth.token.invalid");
+            throw BizException.of(ApiErrorCodes.CODE_UNAUTHORIZED, ApiErrorCodes.AUTH_TOKEN_INVALID);
         }
         return userId;
     }

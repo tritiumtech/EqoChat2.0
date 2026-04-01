@@ -13,30 +13,17 @@
           </view>
         </view>
       </view>
-      <!-- #ifdef H5 -->
-      <view class="scroll-feed native-scroll">
+      <view class="scroll-feed">
         <WorldPostCard
           v-for="post in topicPosts"
           :key="post.id"
           :post="post"
+          @open-detail="detailTarget = post"
           @upvote="() => toggleUpvote(post)"
           @reply="() => onReplyTap(post)"
           @share="openShare(post)"
         />
       </view>
-      <!-- #endif -->
-      <!-- #ifndef H5 -->
-      <scroll-view class="scroll-feed" scroll-y>
-        <WorldPostCard
-          v-for="post in topicPosts"
-          :key="post.id"
-          :post="post"
-          @upvote="() => toggleUpvote(post)"
-          @reply="() => onReplyTap(post)"
-          @share="openShare(post)"
-        />
-      </scroll-view>
-      <!-- #endif -->
     </template>
 
     <template v-else>
@@ -88,8 +75,7 @@
             </button>
           </view>
         </view>
-        <!-- #ifdef H5 -->
-        <view class="scroll-feed native-scroll">
+        <view class="scroll-feed">
           <view v-if="sortedPosts.length === 0" class="feed-empty">
             <text>{{ t('common.empty_conversation') }}</text>
           </view>
@@ -97,6 +83,7 @@
             v-for="post in sortedPosts"
             :key="post.id"
             :post="post"
+            @open-detail="detailTarget = post"
             @upvote="() => toggleUpvote(post)"
             @reply="() => onReplyTap(post)"
             @share="openShare(post)"
@@ -105,29 +92,9 @@
             <text>没有更多内容了</text>
           </view>
         </view>
-        <!-- #endif -->
-        <!-- #ifndef H5 -->
-        <scroll-view class="scroll-feed" scroll-y>
-          <view v-if="sortedPosts.length === 0" class="feed-empty">
-            <text>{{ t('common.empty_conversation') }}</text>
-          </view>
-          <WorldPostCard
-            v-for="post in sortedPosts"
-            :key="post.id"
-            :post="post"
-            @upvote="() => toggleUpvote(post)"
-            @reply="() => onReplyTap(post)"
-            @share="openShare(post)"
-          />
-          <view v-if="sortedPosts.length > 0" class="feed-end">
-            <text>没有更多内容了</text>
-          </view>
-        </scroll-view>
-        <!-- #endif -->
       </template>
 
-      <!-- #ifdef H5 -->
-      <view v-else class="scroll-feed scroll-topics native-scroll">
+      <view v-else-if="activeTab === 'topics'" class="scroll-feed scroll-topics">
         <view v-if="topicList.length === 0" class="feed-empty">
           <text>{{ t('common.empty_conversation') }}</text>
         </view>
@@ -146,28 +113,25 @@
           <text>没有更多内容了</text>
         </view>
       </view>
-      <!-- #endif -->
-      <!-- #ifndef H5 -->
-      <scroll-view v-else class="scroll-feed scroll-topics" scroll-y>
-        <view v-if="topicList.length === 0" class="feed-empty">
+
+      <!-- “我的” Tab：后端提供的提及我的动态列表，作为轻量个人时间线 -->
+      <view v-else class="scroll-feed">
+        <view v-if="mentionedPosts.length === 0" class="feed-empty">
           <text>{{ t('common.empty_conversation') }}</text>
         </view>
-        <WorldTopicCard
-          v-for="topic in topicList"
-          :key="topic.id"
-          :topic="topic"
-          :posts-label="t('page.world.posts')"
-          :followers-label="t('page.world.followers')"
-          :follow-text="t('page.world.follow')"
-          :followed-text="t('page.world.followed')"
-          @open="openTopic"
-          @toggle-follow="toggleFollow"
+        <WorldPostCard
+          v-for="post in mentionedPosts"
+          :key="post.id"
+          :post="post"
+          @open-detail="detailTarget = post"
+          @upvote="() => toggleUpvote(post)"
+          @reply="() => onReplyTap(post)"
+          @share="openShare(post)"
         />
-        <view v-if="topicList.length > 0" class="feed-end">
+        <view v-if="mentionedPosts.length > 0" class="feed-end">
           <text>没有更多内容了</text>
         </view>
-      </scroll-view>
-      <!-- #endif -->
+      </view>
     </template>
 
     <WorldNewPostModal
@@ -212,7 +176,19 @@
       @copy="copyShareLink"
       @update:share-note="(v) => (shareNote = v)"
     />
-    <BottomNav />
+
+    <!-- 详情层：覆盖时隐藏底部导航 -->
+    <WorldPostDetail
+      v-if="detailTarget"
+      ref="detailRef"
+      :post="detailTarget"
+      @back="detailTarget = null"
+      @upvote="detailTarget && toggleUpvote(detailTarget)"
+      @reply="detailTarget && onReplyTap(detailTarget)"
+      @share="detailTarget && openShare(detailTarget)"
+    />
+
+    <FgTabbar v-if="!detailTarget" />
   </view>
 </template>
 
@@ -225,16 +201,17 @@ import { contactApi, type ContactItem } from '@/api/modules/contact'
 import { getApiErrorMessage } from '@/utils/request'
 import WorldPostCard from '@/components/world/WorldPostCard.vue'
 import WorldTopicCard from '@/components/world/WorldTopicCard.vue'
+import WorldPostDetail from '@/components/world/WorldPostDetail.vue'
 import WorldNewPostModal from '@/components/world/WorldNewPostModal.vue'
 import WorldReplyModal from '@/components/world/WorldReplyModal.vue'
 import WorldShareModal from '@/components/world/WorldShareModal.vue'
-import BottomNav from '@/components/BottomNav.vue'
+import FgTabbar from '@/tabbar/index.vue'
 
 const { t } = useI18n({ useScope: 'global' })
 
 type SortOption = WorldSort
 
-const activeTab = ref<'posts' | 'topics'>('posts')
+const activeTab = ref<'posts' | 'topics' | 'my'>('posts')
 const sortBy = ref<SortOption>('friends')
 const showSortDropdown = ref(false)
 const selectedTopic = ref<string | null>(null)
@@ -242,6 +219,7 @@ const selectedTopic = ref<string | null>(null)
 const posts = ref<WorldPost[]>([])
 const topicList = ref<WorldTopic[]>([])
 const topicPosts = ref<WorldPost[]>([])
+const mentionedPosts = ref<WorldPost[]>([])
 const loading = ref(false)
 
 const showNewPostModal = ref(false)
@@ -264,6 +242,9 @@ const shareLinkUrl = ref('')
 const shareNote = ref('')
 const shareCopied = ref(false)
 
+const detailTarget = ref<WorldPost | null>(null)
+const detailRef = ref<InstanceType<typeof WorldPostDetail> | null>(null)
+
 const sortOptions = computed(() => [
   { value: 'friends' as SortOption, label: t('page.world.sort_friends') },
   { value: 'upvotes' as SortOption, label: t('page.world.sort_upvotes') },
@@ -272,13 +253,48 @@ const sortOptions = computed(() => [
 const tabOptions = computed(() => ([
   { name: t('page.world.tab_posts'), value: 'posts' },
   { name: t('page.world.tab_topics'), value: 'topics' },
+  { name: t('page.world.tab_my'), value: 'my' },
 ]))
-const activeTabIndex = computed(() => (activeTab.value === 'posts' ? 0 : 1))
+const activeTabIndex = computed(() => {
+  if (activeTab.value === 'topics') return 1
+  if (activeTab.value === 'my') return 2
+  return 0
+})
 
 const sortLabel = computed(() => sortOptions.value.find((o) => o.value === sortBy.value)?.label ?? '')
 
 const topicMeta = computed(() => topicList.value.find((x) => x.name === selectedTopic.value))
-const sortedPosts = computed(() => posts.value)
+const sortedPosts = computed(() => {
+  const list = posts.value.slice()
+  if (!list.length) return list
+
+  if (sortBy.value === 'friends') {
+    return list.sort((a, b) => {
+      const af = a.friend ? 1 : 0
+      const bf = b.friend ? 1 : 0
+      if (af !== bf) return bf - af
+      if (a.upvotes !== b.upvotes) return b.upvotes - a.upvotes
+      return b.replies - a.replies
+    })
+  }
+
+  if (sortBy.value === 'upvotes') {
+    return list.sort((a, b) => {
+      if (a.upvotes !== b.upvotes) return b.upvotes - a.upvotes
+      return b.replies - a.replies
+    })
+  }
+
+  // sortBy === 'topics'，优先展示关联收藏话题的动态
+  const favoriteTopics = topicList.value.filter((t) => t.favorite).map((t) => t.name)
+  return list.sort((a, b) => {
+    const aFav = a.topics?.some((t) => favoriteTopics.includes(t)) ? 1 : 0
+    const bFav = b.topics?.some((t) => favoriteTopics.includes(t)) ? 1 : 0
+    if (aFav !== bFav) return bFav - aFav
+    if (a.upvotes !== b.upvotes) return b.upvotes - a.upvotes
+    return b.replies - a.replies
+  })
+})
 
 const canSubmitPost = computed(() => {
   const text = String(newPostContent.value || '').trim()
@@ -346,7 +362,13 @@ function openNewPost() {
 
 function onTabChange(item: any, index?: number) {
   const idx = typeof item?.index === 'number' ? item.index : (typeof index === 'number' ? index : 0)
-  activeTab.value = idx === 1 ? 'topics' : 'posts'
+  if (idx === 1) {
+    activeTab.value = 'topics'
+  } else if (idx === 2) {
+    activeTab.value = 'my'
+  } else {
+    activeTab.value = 'posts'
+  }
 }
 
 function onSortDropdownSelect(value: SortOption) {
@@ -470,7 +492,10 @@ async function submitReply() {
   if (!replyTarget.value || !canSubmitReply.value || replyPosting.value) return
   replyPosting.value = true
   try {
-    await worldApi.createReply(replyTarget.value.id, { content: replyContent.value.trim() })
+    await worldApi.createReply(replyTarget.value.id, {
+      content: replyContent.value.trim(),
+      // 简化：目前仅支持对动态本身回复，不在前端区分 parentId，后续如需对评论再回复可在这里加 parentId
+    })
     // 刷新当前列表，确保 replyCount 即时一致
     if (selectedTopic.value) {
       await openTopic(selectedTopic.value)
@@ -478,6 +503,10 @@ async function submitReply() {
       await loadPosts()
     }
     uni.showToast({ title: t('toast.post_published'), icon: 'success' })
+    // 如果当前在详情页，尝试刷新该动态的回复列表
+    if (detailRef.value && typeof detailRef.value.loadReplies === 'function') {
+      detailRef.value.loadReplies()
+    }
   } catch (err: any) {
     uni.showToast({ title: getApiErrorMessage(err, t('toast.create_failed')), icon: 'none' })
   } finally {
@@ -594,6 +623,15 @@ const loadMentionFriends = async () => {
   }
 }
 
+const loadMentionedPosts = async () => {
+  try {
+    const list = await worldApi.listMentionedMe({ limit: 30 })
+    mentionedPosts.value = list.map(normalizePost)
+  } catch (err: any) {
+    uni.showToast({ title: getApiErrorMessage(err, t('toast.load_failed')), icon: 'none' })
+  }
+}
+
 const openTopic = async (name: string) => {
   selectedTopic.value = name
   try {
@@ -653,8 +691,13 @@ watch(sortBy, () => {
 })
 
 watch(activeTab, (v) => {
-  if (v === 'posts') loadPosts()
-  else loadTopics()
+  if (v === 'posts') {
+    loadPosts()
+  } else if (v === 'topics') {
+    loadTopics()
+  } else if (v === 'my') {
+    loadMentionedPosts()
+  }
 })
 
 watch(selectedTopic, (v) => {
@@ -675,7 +718,7 @@ watch(selectedTopic, (v) => {
 
 .header {
   flex-shrink: 0;
-  padding: 16rpx 24rpx 0;
+  padding: calc(var(--status-bar-height) + 16rpx) 24rpx 0;
   background: rgba(255, 255, 255, 0.95);
   border-bottom: 1rpx solid var(--c-border);
   box-shadow: 0 6rpx 16rpx rgba(0, 0, 0, 0.04);
@@ -831,8 +874,7 @@ watch(selectedTopic, (v) => {
 
 
 .scroll-feed {
-  flex: 1;
-  height: 0;
+  /* 列表交给页面滚动，不用区域 scroll-view */
   padding: 24rpx;
   padding-bottom: var(--page-pad-bottom-tabbar);
   box-sizing: border-box;

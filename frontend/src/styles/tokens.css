@@ -47,7 +47,15 @@
   --space-5: 24rpx;
 
   /*
-   * 自定义底部导航（components/BottomNav.vue）
+   * 状态栏安全距离
+   * 用于自定义头部时避免被真机状态栏遮挡
+   */
+  --status-bar-height: var(--status-bar-height);
+  --header-safe-padding-top: var(--status-bar-height);
+  --header-safe-padding-bottom: 0rpx;
+
+  /*
+   * 自定义底部导航（src/tabbar/index.vue，与 pages.json tabBar 联动）
    * .nav-inner { height: 96rpx } + .bottom-nav { padding-bottom: env(safe-area-inset-bottom) }
    * 主滚动区（scroll-view / page）底部需预留，否则内容会被 fixed tabbar 遮挡。
    */

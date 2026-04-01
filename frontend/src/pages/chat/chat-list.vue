@@ -10,8 +10,7 @@
       <SearchBar v-model="searchQuery" :placeholder="t('page.chat.search_placeholder')" />
     </view>
 
-    <!-- #ifdef H5 -->
-    <view class="list-scroll native-scroll">
+    <view class="list-scroll">
       <view v-if="loading" class="state">{{ t('common.loading') }}</view>
       <view v-else-if="filteredSorted.length === 0" class="state">
         <EmptyState :title="t('common.empty_conversation')" icon="💬" />
@@ -52,52 +51,8 @@
         </view>
       </view>
     </view>
-    <!-- #endif -->
-    <!-- #ifndef H5 -->
-    <scroll-view class="list-scroll" scroll-y>
-      <view v-if="loading" class="state">{{ t('common.loading') }}</view>
-      <view v-else-if="filteredSorted.length === 0" class="state">
-        <EmptyState :title="t('common.empty_conversation')" icon="💬" />
-      </view>
-      <view
-        v-else
-        v-for="item in filteredSorted"
-        :key="item.id"
-        class="conv-wrap"
-        :class="{ pinned: isPinned(item.id) }"
-        @click="openConversation(item)"
-      >
-        <view class="conv-inner">
-          <view class="avatar-wrap">
-            <view class="avatar" :style="avatarStyle(item)">
-              <text class="avatar-letter">{{ isAgentConversation(item) ? '🤖' : '👤' }}</text>
-            </view>
-            <view v-if="isOnline(item)" class="online-dot" />
-          </view>
-          <view class="body">
-            <view class="row-top">
-              <view class="name-block">
-                <text class="name">{{ item.title || t('common.conversation') }}</text>
-                <text v-if="isAgentConversation(item)" class="badge-ai">{{ t('page.chat.agent_badge') }}</text>
-              </view>
-              <text class="time">{{ formatTimeShort(item) }}</text>
-            </view>
-            <view class="row-bottom">
-              <text class="preview">{{ item.lastMessage || t('page.chat.no_message') }}</text>
-              <view v-if="item.unreadCount && item.unreadCount > 0" class="unread">
-                <text>{{ item.unreadCount > 99 ? '99+' : item.unreadCount }}</text>
-              </view>
-            </view>
-          </view>
-          <button class="pin-btn" :class="{ on: isPinned(item.id) }" @click.stop="togglePin(item.id)">
-            <text class="pin-glyph">{{ isPinned(item.id) ? t('page.chat.pinned') : t('page.chat.pin') }}</text>
-          </button>
-        </view>
-      </view>
-    </scroll-view>
-    <!-- #endif -->
 
-    <BottomNav />
+    <FgTabbar />
   </view>
 </template>
 
@@ -105,12 +60,12 @@
 import { computed, ref, watch } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { useI18n } from 'vue-i18n'
-import { conversationApi, type ConversationSummary } from '@/api/modules/conversation'
-import { useUserStore } from '@/store/modules/user'
-import { useChatStore } from '@/store/modules/chat'
-import EmptyState from '@/components/EmptyState.vue'
-import SearchBar from '@/components/SearchBar.vue'
-import BottomNav from '@/components/BottomNav.vue'
+import { conversationApi, type ConversationSummary } from '../../api/modules/conversation'
+import { useUserStore } from '../../store/modules/user'
+import { useChatStore } from '../../store/modules/chat'
+import EmptyState from '../../components/EmptyState.vue'
+import SearchBar from '../../components/SearchBar.vue'
+import FgTabbar from '@/tabbar/index.vue'
 
 const PIN_STORAGE_KEY = 'eqo_chat_pins'
 
@@ -283,7 +238,7 @@ watch(
 
 .head {
   flex-shrink: 0;
-  padding: 20rpx 24rpx 16rpx;
+  padding: calc(var(--status-bar-height) + 20rpx) 24rpx 16rpx;
   background: rgba(255, 255, 255, 0.96);
   border-bottom: 1rpx solid var(--c-border);
   box-shadow: 0 6rpx 16rpx rgba(0, 0, 0, 0.04);
@@ -321,8 +276,7 @@ watch(
 }
 
 .list-scroll {
-  flex: 1;
-  height: 0;
+  flex: 0 0 auto;
   padding: 12rpx 16rpx var(--page-pad-bottom-tabbar-loose);
   box-sizing: border-box;
 }

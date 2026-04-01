@@ -6,8 +6,9 @@
       :auto="false"
       :fixed="false"
       :use-chat-record-mode="true"
+      :safe-area-inset-bottom="true"
       :auto-hide-keyboard-when-chat="true"
-      :auto-adjust-position-when-chat="true"
+      :auto-adjust-position-when-chat="autoAdjustPosition"
       :auto-to-bottom-when-chat="true"
       :show-default-loading-page="false"
       :show-default-empty-view="false"
@@ -86,7 +87,8 @@
                 :maxlength="5000"
                 :placeholder="t('placeholder.message')"
                 confirm-type="send"
-                cursor-spacing="24"
+                :adjust-position="textareaAdjustPosition"
+                cursor-spacing="80"
               @input="onInputTyping"
                 @confirm="send"
               />
@@ -184,6 +186,15 @@ const userStore = useUserStore()
 const chatStore = useChatStore()
 const { t } = useI18n({ useScope: 'global' })
 
+/** App 端关闭系统上推，避免与 z-paging 聊天记录倒置冲突；H5 无 onKeyboardHeightChange，需保留默认上推 */
+const textareaAdjustPosition = ref(true)
+/** z-paging 键盘自动调整：App 端关闭避免与原生键盘推挤冲突导致输入框异常上推 */
+const autoAdjustPosition = ref(true)
+// #ifdef APP-PLUS
+textareaAdjustPosition.value = false
+autoAdjustPosition.value = false
+// #endif
+
 const parseUserIdFromToken = (token: string | null | undefined): number | null => {
   if (!token) return null
   try {
@@ -249,6 +260,8 @@ const loading = ref(false)
 const isPageVisible = ref(true)
 const pendingTimers = new Map<string, number>()
 const syncingReadMessageIds = new Set<string>()
+/** 发送防抖锁：防止同一条消息被重复发送（confirm + click 双触发） */
+let isSending = false
 
 const showEmoji = ref(false)
 const showAttachMenu = ref(false)
@@ -379,11 +392,14 @@ const updateHistoryState = (page: MessagePageResponse, mapped: ChatMessage[]) =>
 const appendChatMessage = (message: ChatMessage, scrollToBottom = true) => {
   messageIdSet.add(message.id)
   const pagingRef = paging.value
+  
+  // 先添加到 messages 数组，确保 local 属性被保留
+  messages.value.push(message)
+  
   if (pagingRef?.addChatRecordData) {
     pagingRef.addChatRecordData(message, scrollToBottom, true)
-    return
   }
-  messages.value.push(message)
+  
   if (scrollToBottom) {
     nextTick(() => {
       pagingRef?.scrollToBottom?.(true)
@@ -493,16 +509,42 @@ const showComingSoon = () => {
 
 const { isConnected, sendMessage, sendReadReceipt, sendTyping } = useWebSocket({
   autoConnect: true,
+  onSessionKicked: (payload, message) => {
+    console.log('[onSessionKicked] 被挤下线:', payload)
+    uni.showModal({
+      title: t('common.notice'),
+      content: t('toast.session_kicked'),
+      showCancel: false,
+      success: () => {
+        // 退出登录
+        userStore.logout()
+        // 跳转到登录页
+        uni.reLaunch({ url: '/pages/auth/login' })
+      }
+    })
+  },
   onChatMessage: (payload, message) => {
     if (String(payload.conversationId) !== String(conversationId.value)) return
     const id = String(message.id)
-    if (messageIdSet.has(id)) return
     const senderId = Number(message.senderId)
     const createTime = message.timestamp
     const mt = (payload.messageType || 'TEXT').toString().toUpperCase()
     const attachment = parseAttachmentFromPayload(payload)
+    
+    console.log('[onChatMessage] 收到消息:', { id, senderId, createTime, mt, isSelf: senderId === currentUserId.value })
+    console.log('[onChatMessage] messageIdSet:', Array.from(messageIdSet))
+    console.log('[onChatMessage] messages 数量:', messages.value.length)
+    
+    if (messageIdSet.has(id)) {
+      console.log('[onChatMessage] 消息已存在，跳过')
+      return
+    }
+    
     const replaced = replaceLocalMessage(senderId, payload, createTime, id)
+    console.log('[onChatMessage] replaceLocalMessage 结果:', replaced)
+    
     if (!replaced) {
+      console.log('[onChatMessage] 未找到匹配的本地消息，添加新消息')
       appendChatMessage({
         id,
         senderId,
@@ -668,6 +710,13 @@ const scrollToBottom = () => {
 }
 
 const send = async () => {
+  // 防抖：防止 confirm + click 双触发导致重复发送
+  // 使用非响应式变量，因为 Vue 响应式更新有延迟
+  if (isSending) {
+    console.log('[send] 重复调用被阻止')
+    return
+  }
+
   if (!conversationId.value) {
     uni.showToast({ title: t('toast.load_failed'), icon: 'none' })
     return
@@ -677,6 +726,10 @@ const send = async () => {
   const hasText = text.length > 0
   const hasAttachment = attachments.value.length > 0
   if (!hasText && !hasAttachment) return
+
+  // 加锁
+  isSending = true
+  console.log('[send] 开始发送消息:', { text, hasAttachment })
 
   // 发送消息前，通知对方你已停止输入
   stopLocalTyping()
@@ -688,6 +741,7 @@ const send = async () => {
   if (messageType !== 'TEXT' && pendingAttachment) {
     const tempFilePath = pendingAttachment.attachment.tempFilePath
     if (!tempFilePath) {
+      isSending = false
       uni.showToast({ title: t('toast.load_failed'), icon: 'none' })
       return
     }
@@ -708,13 +762,15 @@ const send = async () => {
   }
 
   const localId = `local-${Date.now()}`
+  const now = new Date()
   const localMessage: ChatMessage = {
     id: localId,
     senderId: currentUserId.value,
     senderType: 'USER',
     isAgent: false,
     content: hasText ? text : '',
-    createTime: new Date().toISOString(),
+    // 使用 ISO 字符串格式，与后端保持一致（UTC 时间）
+    createTime: now.toISOString(),
     isSelf: true,
     local: true,
     messageType,
@@ -744,10 +800,12 @@ const send = async () => {
     await sendHttpMessage(localId, wsContent, messageType, metadata)
   }
 
+  // 清空输入并释放锁
   inputText.value = ''
   attachments.value = []
   showEmoji.value = false
   showAttachMenu.value = false
+  isSending = false
 }
 
 const sendHttpMessage = async (
@@ -796,7 +854,12 @@ const replaceLocalMessage = (
   createTime: string,
   realId: string
 ) => {
-  if (senderId !== currentUserId.value) return false
+  console.log('[replaceLocalMessage] 开始替换:', { senderId, realId, createTime })
+  
+  if (senderId !== currentUserId.value) {
+    console.log('[replaceLocalMessage] senderId 不匹配')
+    return false
+  }
 
   const mt = (payload.messageType || 'TEXT').toString().toUpperCase()
   const parsedAttachment = parseAttachmentFromPayload(payload)
@@ -805,28 +868,78 @@ const replaceLocalMessage = (
   const payloadFileName =
     parsedAttachment?.fileName != null ? String(parsedAttachment.fileName) : ''
 
-  const targetIndex = messages.value.findIndex((item) => {
-    if (!item.local || !item.isSelf) return false
+  // 查找最近的本地消息：优先匹配时间最近的，避免匹配到之前的消息
+  let targetIndex = -1
+  let minTimeDiff = Infinity
+
+  // 使用 JSON.stringify 捕获快照，避免 Vue 响应式引用问题
+  const messagesSnapshot = messages.value.map(m => ({ 
+    id: m.id, 
+    local: m.local, 
+    isSelf: m.isSelf, 
+    content: m.content?.slice(0, 20),
+    createTime: m.createTime 
+  }))
+  console.log('[replaceLocalMessage] messages 数组快照:', messagesSnapshot)
+  console.log('[replaceLocalMessage] 后端返回的 createTime:', createTime)
+
+  for (let i = messages.value.length - 1; i >= 0; i--) {
+    const item = messages.value[i]
+    const itemSnapshot = { id: item.id, local: item.local, isSelf: item.isSelf }
+    
+    if (!item.local || !item.isSelf) {
+      console.log('[replaceLocalMessage] 跳过消息:', itemSnapshot, 'local:', item.local, 'isSelf:', item.isSelf)
+      continue
+    }
     const itemMt = (item.messageType || 'TEXT').toString().toUpperCase()
-    if (itemMt !== mt) return false
-
-    const diff = Math.abs(
-      new Date(item.createTime).getTime() - new Date(createTime).getTime()
-    )
-    if (diff >= 10000) return false
-
-    if (mt === 'TEXT') {
-      return (item.content || '') === payloadContent
+    if (itemMt !== mt) {
+      console.log('[replaceLocalMessage] 消息类型不匹配:', itemMt, '!=', mt)
+      continue
     }
 
-    const localFileName =
-      item.attachment?.fileName != null ? String(item.attachment.fileName) : ''
+    const itemTime = new Date(item.createTime).getTime()
+    const backendTime = new Date(createTime).getTime()
+    const diff = Math.abs(itemTime - backendTime)
+    
+    console.log('[replaceLocalMessage] 时间比较:', {
+      itemCreateTime: item.createTime,
+      itemTime,
+      backendCreateTime: createTime,
+      backendTime,
+      diff
+    })
+    
+    if (diff >= 10000) {
+      console.log('[replaceLocalMessage] 时间差过大:', diff)
+      continue
+    }
 
-    if (!payloadFileName) return false
-    if (!localFileName) return false
-    return payloadFileName === localFileName
-  })
+    if (mt === 'TEXT') {
+      if ((item.content || '') === payloadContent) {
+        // 文本消息：选择时间差最小的
+        console.log('[replaceLocalMessage] 找到匹配的文本消息:', item.id, 'diff:', diff)
+        if (diff < minTimeDiff) {
+          minTimeDiff = diff
+          targetIndex = i
+        }
+      }
+    } else {
+      // 附件消息：需要文件名匹配
+      const localFileName =
+        item.attachment?.fileName != null ? String(item.attachment.fileName) : ''
 
+      if (!payloadFileName || !localFileName) continue
+      if (payloadFileName === localFileName) {
+        console.log('[replaceLocalMessage] 找到匹配的附件消息:', item.id, 'diff:', diff)
+        if (diff < minTimeDiff) {
+          minTimeDiff = diff
+          targetIndex = i
+        }
+      }
+    }
+  }
+
+  console.log('[replaceLocalMessage] 最终目标索引:', targetIndex)
   if (targetIndex < 0) return false
   clearPendingTimer(messages.value[targetIndex].id)
   messageIdSet.delete(messages.value[targetIndex].id)
@@ -843,6 +956,7 @@ const replaceLocalMessage = (
     attachment: parsedAttachment,
   }
   messageIdSet.add(realId)
+  console.log('[replaceLocalMessage] 替换成功')
   return true
 }
 
@@ -978,7 +1092,7 @@ const goBack = () => {
   if (pages.length > 1) {
     uni.navigateBack()
   } else {
-    uni.redirectTo({ url: '/pages/chat/chat-list' })
+    uni.switchTab({ url: '/pages/chat/chat-list' })
   }
 }
 </script>

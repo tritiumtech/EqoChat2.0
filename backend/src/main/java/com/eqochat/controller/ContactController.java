@@ -3,6 +3,7 @@ package com.eqochat.controller;
 import com.eqochat.common.ApiResponse;
 import com.eqochat.common.UserContext;
 import com.eqochat.dto.request.UpdateContactTagsRequest;
+import com.eqochat.dto.response.ContactDetailResponse;
 import com.eqochat.dto.response.ContactResponse;
 import com.eqochat.service.ContactService;
 import jakarta.validation.Valid;
@@ -43,6 +44,11 @@ public class ContactController {
                     .toList();
         }
         return ApiResponse.success(list);
+    }
+
+    @GetMapping("/{contactId}")
+    public ApiResponse<ContactDetailResponse> getContactDetail(@PathVariable Long contactId) {
+        return ApiResponse.success(contactService.getContactDetail(UserContext.requireCurrentUser(), contactId));
     }
 
     @PutMapping("/{contactId}/tags")

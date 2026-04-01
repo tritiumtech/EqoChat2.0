@@ -16,7 +16,7 @@
   flex-direction: column;
   background: linear-gradient(165deg, var(--c-bg) 0%, var(--c-bg-2) 100%);
   box-sizing: border-box;
-  /* 避免被自定义 BottomNav 遮挡底部内容 */
+  /* 避免被自定义 tabbar（FgTabbar）遮挡底部内容 */
   padding-bottom: var(--page-pad-bottom-tabbar);
 }
 
@@ -28,7 +28,7 @@
 
 .header {
   flex-shrink: 0;
-  padding: 16rpx 24rpx 0;
+  padding: calc(var(--status-bar-height) + 16rpx) 24rpx 0;
   background: rgba(255, 255, 255, 0.95);
   border-bottom: 1rpx solid var(--c-border);
   box-shadow: 0 6rpx 16rpx rgba(0, 0, 0, 0.04);

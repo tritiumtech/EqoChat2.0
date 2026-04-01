@@ -1,5 +1,7 @@
 package com.eqochat.security;
 
+import com.eqochat.common.UserContext;
+import com.eqochat.service.UserSessionService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -14,16 +16,18 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.util.Collections;
+import java.util.Date;
 
 /**
- * JWT认证过滤器
+ * JWT认证过滤器（支持单设备登录验证）
  */
 @Component
 @RequiredArgsConstructor
 @Slf4j
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
-    
+
     private final JwtTokenUtil jwtTokenUtil;
+    private final UserSessionService userSessionService;
     
     @Override
     protected void doFilterInternal(HttpServletRequest request,
@@ -49,15 +53,24 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if (token != null && jwtTokenUtil.validateToken(token)) {
             Long userId = jwtTokenUtil.getUserIdFromToken(token);
             String did = jwtTokenUtil.getDidFromToken(token);
-            
+            String sessionId = jwtTokenUtil.getSessionIdFromToken(token);
+
             if (userId == null) {
                 log.warn("JWT缺少userId: {}", path);
                 filterChain.doFilter(request, response);
                 return;
             }
 
-            log.debug("JWT验证成功: userId={}, did={}", userId, did);
-            
+            // 验证 sessionId 是否有效（单设备登录检查）
+            if (sessionId != null && !userSessionService.validateSession(sessionId)) {
+                log.warn("Session 已失效（被挤下线）: userId={}, sessionId={}", userId, sessionId);
+                response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                response.getWriter().write("{\"code\":401,\"message\":\"Session expired, please login again\"}");
+                return;
+            }
+
+            log.debug("JWT验证成功: userId={}, did={}, sessionId={}", userId, did, sessionId);
+
             // 创建认证对象
             UsernamePasswordAuthenticationToken authentication =
                     new UsernamePasswordAuthenticationToken(
@@ -68,6 +81,29 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
             // 设置SecurityContext
             SecurityContextHolder.getContext().setAuthentication(authentication);
+
+            // 设置用户上下文
+            UserContext.setCurrentUser(userId);
+
+            // 每次请求自动续期 JWT（滑动过期）
+            try {
+                Date exp = jwtTokenUtil.getExpirationDateFromToken(token);
+                Date now = new Date();
+                // token 仍然有效，则直接刷新一个新的并透出到响应头
+                if (exp != null && exp.after(now)) {
+                    String newToken = jwtTokenUtil.refreshToken(token);
+                    response.setHeader(HttpHeaders.AUTHORIZATION, "Bearer " + newToken);
+                    // 允许前端 JS 读取 Authorization 响应头
+                    String expose = response.getHeader("Access-Control-Expose-Headers");
+                    if (expose == null || expose.isBlank()) {
+                        response.setHeader("Access-Control-Expose-Headers", HttpHeaders.AUTHORIZATION);
+                    } else if (!expose.toLowerCase().contains("authorization")) {
+                        response.setHeader("Access-Control-Expose-Headers", expose + ", " + HttpHeaders.AUTHORIZATION);
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("刷新 JWT 失败（忽略，不影响本次请求）: {}", e.getMessage());
+            }
         } else if (token == null) {
             log.warn("请求缺少Authorization头: {}", path);
         } else {
@@ -75,6 +111,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
 
         filterChain.doFilter(request, response);
+
+        // 清理用户上下文
+        UserContext.clear();
     }
     
     /**
@@ -101,8 +140,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
      */
     private boolean isPublicPath(String path) {
         return path.equals("/api/v1/auth/login") ||
+               path.equals("/api/v1/auth/login/email") ||
                path.equals("/api/v1/auth/register") ||
+               path.equals("/api/v1/auth/register/email") ||
                path.equals("/api/v1/auth/verify-code") ||
+               path.equals("/api/v1/auth/verify-code/email") ||
                path.equals("/api/v1/auth/refresh") ||
                path.startsWith("/actuator/") ||
                path.startsWith("/ws/") ||

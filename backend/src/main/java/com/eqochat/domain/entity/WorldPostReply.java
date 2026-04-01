@@ -18,11 +18,17 @@ public class WorldPostReply {
     @TableField("post_id")
     private Long postId;
 
+    @TableField("parent_id")
+    private Long parentId;
+
     @TableField("author_id")
     private Long authorId;
 
     @TableField("content")
     private String content;
+
+    @TableField("upvote_count")
+    private Integer upvoteCount;
 
     @TableField(value = "create_time", fill = FieldFill.INSERT)
     private LocalDateTime createTime;

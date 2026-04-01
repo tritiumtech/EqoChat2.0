@@ -260,10 +260,7 @@ public class WebSocketMessageHandler {
      * 广播消息给会话中的所有用户
      */
     private void broadcastToConversation(String conversationId, WebSocketMessage.BaseMessage message) {
-        Set<String> users = sessionManager.getConversationUsers(conversationId);
-        for (String userId : users) {
-            webSocketSender.sendToUser(userId, message);
-        }
+        webSocketSender.broadcastToConversation(conversationId, message);
     }
 
     private void joinConversationUsers(String conversationId) {

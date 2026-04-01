@@ -9,6 +9,7 @@ import org.springframework.web.socket.WebSocketSession;
 
 import java.io.IOException;
 import java.time.LocalDateTime;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -32,6 +33,16 @@ public class WebSocketSender {
             }
         } else {
             log.debug("用户不在线: userId={}", userId);
+        }
+    }
+
+    /**
+     * 向已加入该会话广播列表的所有在线用户推送同一条消息（含发送方，便于多端同步）。
+     */
+    public void broadcastToConversation(String conversationId, WebSocketMessage.BaseMessage message) {
+        Set<String> users = sessionManager.getConversationUsers(conversationId);
+        for (String userId : users) {
+            sendToUser(userId, message);
         }
     }
     

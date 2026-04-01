@@ -16,7 +16,8 @@ export enum MessageType {
   CONNECT_ACK = 'CONNECT_ACK',
   PING = 'PING',
   PONG = 'PONG',
-  ERROR = 'ERROR'
+  ERROR = 'ERROR',
+  SESSION_KICKED = 'SESSION_KICKED'
 }
 
 // 发送者类型
@@ -102,6 +103,13 @@ export interface ErrorPayload {
   originalMessageId?: string
 }
 
+// 被挤下线通知内容
+export interface SessionKickedPayload {
+  reason: string
+  kickedAt: number
+  newDeviceId?: string
+}
+
 // 回调函数类型
 export type MessageCallback<T = unknown> = (payload: T, message: BaseMessage) => void
 
@@ -117,6 +125,7 @@ export interface WebSocketCallbacks {
   onNotification?: MessageCallback<unknown>
   onAgentResponse?: MessageCallback<unknown>
   onConnectAck?: MessageCallback<ConnectAckPayload>
+  onSessionKicked?: MessageCallback<SessionKickedPayload>
 }
 
 // WebSocket配置

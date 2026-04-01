@@ -21,10 +21,10 @@ spring:
   
   data:
     redis:
-      host: ${REDIS_HOST:localhost}
+      host: ${REDIS_HOST:192.168.28.240}
       port: ${REDIS_PORT:6379}
-      password: ${REDIS_PASSWORD:}
-      database: 0
+      password: ${REDIS_PASSWORD:k7090bteA9ao}
+      database: 5
       lettuce:
         pool:
           max-active: 10
@@ -54,7 +54,7 @@ server:
 
 jwt:
   secret: ${JWT_SECRET:your-secret-key-here-change-in-production}
-  expiration: 86400000 # 24 hours
+  expiration: 432000000 # 5 days (滑动过期基础时间窗)
 
 eqochat:
   world:
