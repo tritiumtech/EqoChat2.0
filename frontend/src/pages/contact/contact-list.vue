@@ -1,16 +1,18 @@
 <template>
   <view class="page">
-    <view class="head">
-      <view class="head-row">
-        <text class="screen-title">{{ t('page.contact.title') }}</text>
-        <button class="add-btn" @click="showAddModal = true; addFormError = ''">
-          <u-icon name="man-add-fill" :size="22" color="#ffffff" />
-        </button>
-      </view>
-      <view class="search-shell">
-        <SearchBar v-model="searchQuery" :placeholder="t('page.contact.search_placeholder')" />
-      </view>
-    </view>
+    <PageHeader 
+      :title="t('page.contact.title')"
+      action-icon="＋"
+      action-variant="primary"
+      action-size="md"
+      @action-click="showAddModal = true; addFormError = ''"
+    >
+      <template #search>
+        <view class="search-shell">
+          <SearchBar v-model="searchQuery" :placeholder="t('page.contact.search_placeholder')" />
+        </view>
+      </template>
+    </PageHeader>
 
     <view class="chips-scroll">
       <view class="chips-inner">
@@ -176,6 +178,7 @@ import { useUserStore } from '@/store/modules/user'
 import { getApiErrorMessage } from '@/utils/request'
 import ModalSheet from '@/components/ModalSheet.vue'
 import SearchBar from '@/components/SearchBar.vue'
+import PageHeader from '@/components/PageHeader.vue'
 import FgTabbar from '@/tabbar/index.vue'
 
 const contacts = ref<Contact[]>([])
@@ -756,7 +759,7 @@ watch(searchQuery, () => {
   height: 96rpx;
   margin: 0 auto 20rpx;
   border-radius: 50%;
-  background: #f3f3f5;
+  background: rgba(255, 255, 255, 0.9);
   display: flex;
   align-items: center;
   justify-content: center;

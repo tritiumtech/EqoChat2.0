@@ -1,0 +1,466 @@
+---
+globs: *.vue,*.css
+alwaysApply: false
+---
+# UI 设计系统与开发规范
+
+## 核心设计理念
+
+### 1. 配色体系 - 黑白灰极简风格
+
+**主色调**：
+- 主色：`#030213`（深黑）
+- 次级主色：`#1f1e2f`（深灰紫）
+
+**背景色**：
+- 主背景：`#ffffff`（纯白）
+- 次级背景：`#f5f5f5`（浅灰）
+- 输入框背景：`rgba(255, 255, 255, 0.9)`（半透明白）
+
+**文字颜色**：
+- 主文字：`#030213`（深黑）
+- 次级文字：`#717182`（中灰）
+
+**边框与阴影**：
+- 边框：`rgba(0, 0, 0, 0.08)`（淡灰）
+- 阴影：`0 10rpx 24rpx rgba(0, 0, 0, 0.06)`（柔和阴影）
+
+**语义色**：
+- 危险：`#d4183d` / `#dc2626`（红色系）
+- 成功：`#10b981` / `#059669`（绿色系）
+- 警告：`#f59e0b` / `#b45309`（琥珀色系）
+- 信息：`#3b82f6` / `#2563eb`（蓝色系）
+
+**禁止使用**：
+- ❌ 米色系（如 `#f6f2ee`、`#f3f3f5`）
+- ❌ 橙色系（如 `#ff7a59`）
+- ❌ 高饱和度颜色
+
+### 2. 圆角体系
+
+```css
+--radius-xl: 32rpx;   /* 大卡片 */
+--radius-lg: 24rpx;   /* 默认卡片、按钮 */
+--radius-md: 18rpx;   /* 小组件 */
+--radius-pill: 999rpx; /* 胶囊形、药丸形 */
+```
+
+### 3. 间距阶梯
+
+```css
+--space-1: 4rpx;
+--space-2: 8rpx;
+--space-3: 12rpx;
+--space-4: 16rpx;
+--space-5: 24rpx;
+```
+
+### 4. 按钮系统
+
+**使用 `Button` 组件**，禁止使用原生 `button` 标签。
+
+**尺寸规范**：
+| 尺寸 | 高度 | 场景 |
+|------|------|------|
+| `mini` | 48rpx | 标签、小操作 |
+| `small` | 56rpx | 紧凑布局 |
+| `medium` | 72rpx | 默认尺寸 |
+| `large` | 88rpx | 主要操作、模态框 |
+
+**样式变体**：
+- `default`：默认，浅灰背景 + 细边框
+- `primary`：主色背景（深黑）+ 白字
+- `secondary`：白色背景 + 细边框
+- `outline`：透明背景 + 细边框
+- `ghost`：完全透明无边框
+- `danger`：红色背景 + 白字
+
+**形状**：
+- `square`：方角（默认圆角）
+- `round`：更圆的圆角
+- `circle`：胶囊形/药丸形
+
+**使用示例**：
+```vue
+<!-- 主要确认按钮 -->
+<Button variant="primary" size="large" shape="round" @click="handleConfirm">
+  确认
+</Button>
+
+<!-- 取消按钮 -->
+<Button variant="secondary" size="large" shape="round" @click="handleCancel">
+  取消
+</Button>
+
+<!-- 图标按钮 -->
+<IconBtn icon="✎" variant="bordered" size="md" @click="handleEdit" />
+
+<!-- 危险操作 -->
+<Button variant="danger" size="large" shape="round" block @click="handleDelete">
+  删除
+</Button>
+
+<!-- 块级按钮（占满整行） -->
+<Button variant="primary" size="large" shape="round" block @click="handleSubmit">
+  提交
+</Button>
+```
+
+### 5. 卡片与容器
+
+**标准卡片样式**：
+```css
+background: rgba(255, 255, 255, 0.6);
+border: 1rpx solid var(--c-border);
+border-radius: var(--radius-lg);
+padding: 20rpx;
+box-shadow: var(--c-shadow-soft);
+backdrop-filter: blur(12rpx);
+```
+
+**毛玻璃效果**：
+- 背景透明度：`0.6` - `0.9`
+- 模糊度：`blur(12rpx)`
+- 边框：`1rpx solid rgba(0, 0, 0, 0.08)`
+
+### 6. 模态框与弹窗
+
+**居中 Modal**：
+- 背景：`rgba(0, 0, 0, 0.50)` + `backdrop-filter: blur(10rpx)`
+- 卡片：圆角 `40rpx`，白色背景 `0.92` 透明度
+- 按钮：大尺寸 + 圆角 + 次要/主要配对
+
+**底部 Sheet**：
+- 圆角：`28rpx 28rpx 0 0`
+- 最大高度：`85vh`
+- 背景：`rgba(255, 255, 255, 0.98)`
+
+### 7. 图标与符号
+
+**常用图标字符**：
+```
+编辑：✎
+添加：＋
+关闭：✕
+确认：✓
+返回：←
+更多：⋮
+分享：⤴
+刷新：↻
+设置：⚙
+警告：！
+```
+
+**图标按钮尺寸**：
+- 小：56rpx × 56rpx，图标 24rpx
+- 中：72rpx × 72rpx，图标 32rpx
+- 大：88rpx × 88rpx，图标 40rpx
+
+### 8. 列表与卡片间距
+
+**列表项间距**：
+- 父容器使用 `display: flex; flex-direction: column; gap: 14rpx`
+- 避免使用 `margin-bottom`，防止尾部多余空白
+
+**卡片内边距**：
+- 默认：`20rpx`
+- 紧凑：`16rpx`
+- 宽松：`24rpx`
+
+### 9. 文字排版
+
+**字号规范**：
+```css
+--font-size-title: 34rpx;    /* 大标题 */
+--font-size-subtitle: 28rpx; /* 副标题 */
+--font-size-body: 26rpx;     /* 正文 */
+--font-size-caption: 22rpx;  /* 辅助文字 */
+```
+
+**字重**：
+- 标题：`700` / `800` / `900`（粗体）
+- 正文：`400` / `600`
+- 辅助：`400`
+
+### 10. 交互反馈
+
+**点击态**：
+```css
+:active {
+  opacity: 0.7;
+  transform: scale(0.98);
+}
+```
+
+**禁用态**：
+```css
+.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+```
+
+**加载态**：
+- 显示旋转图标 `⟳`
+- 透明度 `0.7`
+- 禁用点击
+
+### 11. 组件使用规范
+
+**必须使用封装组件**：
+- ✅ `Button.vue` - 所有按钮
+- ✅ `IconBtn.vue` - 图标按钮
+- ✅ `PageHeader.vue` - 页面头部
+- ❌ 禁止使用原生 `button` 标签
+
+**PageHeader 组件使用**：
+
+所有页面头部必须使用 `PageHeader` 组件，确保统一的标题字号、间距和布局。
+
+```vue
+<!-- 基础用法 -->
+<PageHeader 
+  :title="t('page.chat.title')"
+  action-icon="✎"
+  action-variant="bordered"
+  @action-click="handleAction"
+/>
+
+<!-- 带副标题 -->
+<PageHeader 
+  :title="t('page.project.title')"
+  :subtitle="t('page.project.subtitle')"
+  action-icon="＋"
+  @action-click="handleCreate"
+/>
+
+<!-- 带搜索框 -->
+<PageHeader 
+  :title="t('page.contact.title')"
+  action-icon="＋"
+  action-variant="primary"
+>
+  <template #search>
+    <SearchBar v-model="query" placeholder="搜索" />
+  </template>
+</PageHeader>
+
+<!-- 带 Tabs -->
+<PageHeader 
+  :title="t('page.world.title')"
+  action-icon="⌕"
+  :has-tabs="true"
+>
+  <template #tabs>
+    <u-tabs :list="tabs" :current="activeTab" @change="onTabChange" />
+  </template>
+</PageHeader>
+```
+
+**Props**：
+- `title`: 页面标题（必填）
+- `subtitle`: 副标题（可选）
+- `actionIcon`: 右侧操作图标
+- `actionVariant`: 操作按钮样式（默认 `bordered`）
+- `actionSize`: 操作按钮尺寸（默认 `md`）
+- `hasTabs`: 是否包含 Tabs（默认 `false`）
+
+**Slots**：
+- `actions`: 自定义右侧操作区域
+- `search`: 搜索框区域
+- `tabs`: Tabs 区域
+
+**组件优先顺序**：
+1. 使用现有封装组件
+2. 复用项目中的样式类
+3. 最后才自定义样式
+
+### 12. 布局规范
+
+**Flex 布局优先**：
+```css
+display: flex;
+align-items: center;     /* 垂直居中 */
+justify-content: space-between; /* 两端对齐 */
+gap: 12rpx;             /* 间距 */
+```
+
+**响应式适配**：
+- 移动端优先
+- 使用 `rpx` 单位
+- 避免固定宽度，使用 `flex: 1` 或百分比
+
+### 13. 安全区域
+
+**顶部状态栏安全区域**：
+```css
+/* 方式1：使用 SafeTop 组件（推荐） */
+<SafeTop />
+
+<!-- 或固定顶部 -->
+<SafeTop fixed>
+  <view class="custom-header">内容</view>
+</SafeTop>
+
+/* 方式2：手动添加 padding */
+padding-top: calc(var(--status-bar-height) + 24rpx);
+
+/* 方式3：在组件内部使用占位元素 */
+<view class="safe-area-top" />
+```
+
+**底部导航适配**：
+```css
+padding-bottom: var(--page-pad-bottom-tabbar);
+/* 定义：calc(24rpx + 96rpx + env(safe-area-inset-bottom)) */
+```
+
+**Drawer/Sheet 安全区域**：
+```css
+/* Drawer 头部必须预留状态栏高度 */
+.drawer-head {
+  padding: calc(var(--status-bar-height) + 24rpx) 24rpx 24rpx;
+}
+
+/* Drawer 底部预留安全区域 */
+.drawer {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+```
+
+### 13. 安全区域适配（全局自动）
+
+**自动应用**：
+- ✅ 所有 `.page` 容器自动应用顶部安全区域
+- ✅ `PageHeader` 组件内置安全区域
+- ✅ 底部导航自动计算 `safe-area-inset-bottom`
+
+**CSS 变量**：
+```css
+/* 顶部状态栏高度 */
+var(--status-bar-height)
+
+/* 底部导航高度（含安全区域） */
+var(--page-pad-bottom-tabbar)
+
+/* 宽松版本（聊天列表等） */
+var(--page-pad-bottom-tabbar-loose)
+```
+
+**手动使用场景**：
+```vue
+<!-- 自定义顶部区域 -->
+<SafeTop />
+
+<!-- 固定顶部（吸顶） -->
+<SafeTop fixed>
+  <view class="custom-header">内容</view>
+</SafeTop>
+
+<!-- 在组件内部使用 -->
+<view class="safe-area-top" />
+```
+
+**注意事项**：
+- 如果页面有 `PageHeader`，不需要额外处理安全区域
+- 自定义头部需要手动添加 `<SafeTop />` 或 `padding-top`
+- 吸顶元素使用 `position: fixed` 时需要 `z-index: 999`
+
+### 14. 开发最佳实践
+
+**样式隔离**：
+- 子组件使用 `<style scoped src=".../project.styles.css">`
+- 页面本身也使用相同的样式文件
+- 不依赖 `styleIsolation: 'shared'`
+
+**颜色使用**：
+- 优先使用 CSS 变量（如 `var(--c-primary)`）
+- 禁止硬编码颜色值
+- 统一在 `tokens.css` 中定义
+
+**代码复用**：
+- 公共样式抽离到 `.css` 文件
+- 组件样式使用 `src` 引用
+- 避免重复样式定义
+
+**可访问性**：
+- 所有用户可见文案必须走 `i18n`
+- 按钮需要 `disabled` 状态
+- 加载状态需要视觉反馈
+
+### 15. 检查清单
+
+开发完成后检查：
+- [ ] 是否使用了 `Button` / `IconBtn` 组件
+- [ ] 是否使用了 `PageHeader` 组件（页面头部）
+- [ ] 颜色是否符合黑白灰体系
+- [ ] 圆角是否使用统一变量
+- [ ] 间距是否符合阶梯规范
+- [ ] 按钮是否有合适的尺寸和变体
+- [ ] 是否有点击态和禁用态
+- [ ] 文案是否使用 i18n
+- [ ] 样式是否复用现有类
+
+## 示例代码
+
+### 标准卡片列表
+```vue
+<view class="cards">
+  <view 
+    v-for="item in list" 
+    :key="item.id" 
+    class="project-card"
+  >
+    <view class="project-card-head">
+      <text class="project-name">{{ item.name }}</text>
+    </view>
+    <view class="progress">
+      <text class="progress-label">进度</text>
+      <text class="progress-val">{{ item.progress }}%</text>
+    </view>
+  </view>
+</view>
+```
+
+### 模态框标准结构
+```vue
+<view class="modal-mask modal-mask-center" @click="handleClose">
+  <view class="modal-card modal-card-md" @click.stop>
+    <view class="modal-head">
+      <text class="sheet-title">标题</text>
+      <text class="sheet-close" @click="handleClose">✕</text>
+    </view>
+    
+    <view class="modal-body modal-body-spaced">
+      <!-- 内容 -->
+    </view>
+    
+    <view class="modal-foot">
+      <Button variant="secondary" size="large" shape="round" @click="handleCancel">
+        取消
+      </Button>
+      <Button variant="primary" size="large" shape="round" @click="handleConfirm">
+        确认
+      </Button>
+    </view>
+  </view>
+</view>
+```
+
+### 图标按钮使用
+```vue
+<view class="head-row">
+  <text class="screen-title">标题</text>
+  <IconBtn icon="✎" variant="bordered" size="md" @click="handleEdit" />
+</view>
+```
+
+## 禁止事项
+
+- ❌ 使用米色、橙色等暖色调
+- ❌ 使用原生 `button` 标签
+- ❌ 硬编码颜色值（必须用 CSS 变量）
+- ❌ 使用非标准间距（如 `13rpx`、`17rpx`）
+- ❌ 忽略点击态和禁用态
+- ❌ 文案不走 i18n
+- ❌ 在组件中直接写复杂样式（应抽离到 CSS 文件）

@@ -4,11 +4,15 @@ import com.eqochat.common.I18nUtil;
 import com.eqochat.websocket.ChatWebSocketHandler;
 import com.eqochat.websocket.WebSocketMessage;
 import com.eqochat.websocket.WebSocketSender;
+import com.eqochat.websocket.WebSocketSessionManager;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.web.socket.CloseStatus;
+import org.springframework.web.socket.WebSocketSession;
 
+import java.io.IOException;
 import java.time.ZoneId;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
@@ -25,6 +29,7 @@ public class UserSessionService {
     private final StringRedisTemplate redisTemplate;
     private final WebSocketSender webSocketSender;
     private final ChatWebSocketHandler chatWebSocketHandler;
+    private final WebSocketSessionManager webSocketSessionManager;
     
     private static final String USER_SESSION_KEY = "user:session:";
     private static final String SESSION_USER_KEY = "session:user:";
@@ -40,33 +45,50 @@ public class UserSessionService {
      */
     public String createSession(Long userId) {
         String oldSessionId = getSessionId(userId);
-        
+
         // 生成新的 sessionId
         String newSessionId = UUID.randomUUID().toString().replace("-", "");
-        
-        // 存储用户->会话映射
+
+        log.info("准备创建会话：userId={}, oldSessionId={}, newSessionId={}", userId, oldSessionId, newSessionId);
+
+        // 如果存在旧会话，先发送挤下线通知，再删除旧会话
+        if (oldSessionId != null && !oldSessionId.equals(newSessionId)) {
+            // 先发送通知（旧 session 还在，WebSocket 连接还在）
+            sendSessionKickedNotification(userId, oldSessionId);
+            // 删除旧 session 的映射（使旧 token 失效）
+            Boolean deleted = redisTemplate.delete(SESSION_USER_KEY + oldSessionId);
+            log.info("已删除旧 session:user:{} 结果: {}", oldSessionId, deleted);
+        }
+
+        // 存储用户->会话映射（覆盖旧的）
         String userSessionKey = USER_SESSION_KEY + userId;
         redisTemplate.opsForValue().set(userSessionKey, newSessionId, SESSION_EXPIRE_SECONDS, TimeUnit.SECONDS);
-        
+        log.info("已设置 user:session:{} = {}", userId, newSessionId);
+
         // 存储会话->用户映射（用于反向查找）
         String sessionUserKey = SESSION_USER_KEY + newSessionId;
         redisTemplate.opsForValue().set(sessionUserKey, userId.toString(), SESSION_EXPIRE_SECONDS, TimeUnit.SECONDS);
-        
-        log.info("创建用户会话：userId={}, oldSessionId={}, newSessionId={}", userId, oldSessionId, newSessionId);
-        
-        // 如果存在旧会话，发送挤下线通知
-        if (oldSessionId != null && !oldSessionId.equals(newSessionId)) {
-            sendSessionKickedNotification(userId, oldSessionId);
-        }
-        
+        log.info("已设置 session:user:{} = {}", newSessionId, userId);
+
         return newSessionId;
     }
     
     /**
-     * 发送挤下线通知
+     * 发送挤下线通知并关闭旧连接
      */
     private void sendSessionKickedNotification(Long userId, String oldSessionId) {
+        String userIdStr = userId.toString();
+        WebSocketSession oldSession = null;
+
         try {
+            // 获取旧 WebSocket 连接
+            oldSession = webSocketSessionManager.getSession(userIdStr);
+
+            if (oldSession == null || !oldSession.isOpen()) {
+                log.info("用户 {} 没有活跃的 WebSocket 连接，跳过发送踢人通知", userId);
+                return;
+            }
+
             // 使用国际化消息
             String reason = I18nUtil.get("auth.session.kicked");
 
@@ -80,17 +102,27 @@ public class UserSessionService {
                     .type(WebSocketMessage.MessageType.SESSION_KICKED)
                     .senderId("system")
                     .senderType("SYSTEM")
-                    .recipientId(userId.toString())
+                    .recipientId(userIdStr)
                     .timestamp(java.time.LocalDateTime.now())
                     .payload(payload)
                     .build();
 
-            // 通过 WebSocketHandler 直接发送给旧会话
-            chatWebSocketHandler.sendMessageToUser(userId.toString(), message);
+            // 发送踢人通知
+            chatWebSocketHandler.sendMessageToUser(userIdStr, message);
+            log.info("已发送挤下线通知：userId={}, oldSessionId={}", userId, oldSessionId);
 
-            log.info("发送挤下线通知：userId={}, oldSessionId={}", userId, oldSessionId);
         } catch (Exception e) {
             log.warn("发送挤下线通知失败：userId={}", userId, e);
+        } finally {
+            // 无论消息是否发送成功，都关闭旧连接
+            if (oldSession != null && oldSession.isOpen()) {
+                try {
+                    oldSession.close(CloseStatus.NORMAL);
+                    log.info("已关闭旧 WebSocket 连接：userId={}", userId);
+                } catch (IOException e) {
+                    log.warn("关闭旧 WebSocket 连接失败：userId={}", userId, e);
+                }
+            }
         }
     }
     

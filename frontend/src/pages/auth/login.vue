@@ -158,7 +158,7 @@ const authInputStyle = {
   width: '100%',
   minHeight: '100rpx',
   height: '100rpx',
-  backgroundColor: '#f3f3f5',
+  backgroundColor: 'rgba(255, 255, 255, 0.9)',
   border: '2rpx solid rgba(0, 0, 0, 0.12)',
   borderRadius: '24rpx',
   paddingLeft: '12rpx',

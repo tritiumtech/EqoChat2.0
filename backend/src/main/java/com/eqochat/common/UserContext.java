@@ -17,7 +17,6 @@ public class UserContext {
      */
     public static void setCurrentUser(Long userId) {
         CURRENT_USER.set(userId);
-        log.debug("设置当前用户: {}", userId);
     }
     
     /**
@@ -25,7 +24,6 @@ public class UserContext {
      */
     public static Long getCurrentUser() {
         Long userId = CURRENT_USER.get();
-        log.debug("获取当前用户: {}", userId);
         return userId;
     }
     
@@ -34,7 +32,6 @@ public class UserContext {
      */
     public static void clear() {
         CURRENT_USER.remove();
-        log.debug("清除当前用户上下文");
     }
     
     /**

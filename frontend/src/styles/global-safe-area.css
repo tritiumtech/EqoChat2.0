@@ -1,0 +1,53 @@
+/**
+ * 全局安全区域样式
+ * 自动适配状态栏和底部导航
+ */
+
+@import "./tokens.css";
+
+/* 页面容器自动应用顶部安全区域 */
+.page {
+  padding-top: var(--status-bar-height);
+  box-sizing: border-box;
+}
+
+/* 如果页面有自定义头部，移除自动 padding，由 PageHeader 处理 */
+.page:has(.page-header) {
+  padding-top: 0;
+}
+
+/* 滚动视图也需要应用安全区域 */
+scroll-view {
+  padding-top: var(--status-bar-height);
+  box-sizing: border-box;
+}
+
+/* 如果 scroll-view 在 page 内部，移除 padding */
+.page scroll-view {
+  padding-top: 0;
+}
+
+/* 顶部安全区域组件 */
+.safe-area-top {
+  height: var(--status-bar-height);
+  flex-shrink: 0;
+  width: 100%;
+}
+
+/* 底部安全区域组件 */
+.safe-area-bottom {
+  height: var(--page-pad-bottom-tabbar);
+  flex-shrink: 0;
+  width: 100%;
+}
+
+/* 固定顶部区域（用于吸顶头部） */
+.safe-top--fixed {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 999;
+  padding-top: var(--status-bar-height);
+  background: inherit;
+}

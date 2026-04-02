@@ -3,6 +3,7 @@ package com.eqochat.controller;
 import com.eqochat.common.ApiResponse;
 import com.eqochat.common.UserContext;
 import com.eqochat.dto.request.CreateProjectRequest;
+import com.eqochat.dto.request.CreateProjectTaskRequest;
 import com.eqochat.dto.request.TransferProjectOwnershipRequest;
 import com.eqochat.dto.request.UpdateProjectBidRequest;
 import com.eqochat.dto.response.*;
@@ -76,6 +77,14 @@ public class ProjectController {
     public ApiResponse<List<ProjectFileResponse>> listSidebarFiles(@PathVariable Long projectId) {
         Long viewerId = UserContext.requireCurrentUser();
         return ApiResponse.success(projectService.listSidebarFiles(viewerId, projectId));
+    }
+
+    @PostMapping("/{projectId}/tasks")
+    public ApiResponse<ProjectTaskResponse> createTask(
+            @PathVariable Long projectId,
+            @Valid @RequestBody CreateProjectTaskRequest request) {
+        Long viewerId = UserContext.requireCurrentUser();
+        return ApiResponse.success(projectService.createTask(viewerId, projectId, request));
     }
 }
 

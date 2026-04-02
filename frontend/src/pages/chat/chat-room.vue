@@ -1113,7 +1113,7 @@ const goBack = () => {
 }
 
 .header {
-  padding: calc(12rpx + env(safe-area-inset-top)) 16rpx 12rpx;
+  padding: 12rpx 16rpx;
   background: rgba(255, 255, 255, 0.84);
   color: var(--c-ink);
   backdrop-filter: blur(18rpx);
@@ -1187,7 +1187,7 @@ const goBack = () => {
 
 .input-wrap {
   flex: 1;
-  background: rgba(246, 242, 238, 0.65);
+  background: rgba(255, 255, 255, 0.7);
   border-radius: 999rpx;
   border: 1rpx solid rgba(26, 23, 32, 0.08);
   padding: 6rpx 16rpx;
@@ -1247,7 +1247,7 @@ const goBack = () => {
   gap: 10rpx;
   padding: 10rpx 14rpx;
   border-radius: var(--radius-pill);
-  background: rgba(246, 242, 238, 0.75);
+  background: rgba(255, 255, 255, 0.8);
   border: 1rpx solid var(--c-border);
   white-space: nowrap;
 }
@@ -1317,7 +1317,7 @@ const goBack = () => {
   width: 60rpx;
   height: 60rpx;
   border-radius: var(--radius-md);
-  background: rgba(246, 242, 238, 0.75);
+  background: rgba(255, 255, 255, 0.8);
   border: 1rpx solid var(--c-border);
   display: flex;
   align-items: center;

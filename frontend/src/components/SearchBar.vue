@@ -9,7 +9,7 @@
     :search-icon-color="'#717182'"
     :color="'#030213'"
     :placeholder-color="'#717182'"
-    :bg-color="'#f3f3f5'"
+    :bg-color="'rgba(255, 255, 255, 0.9)'"
     :border-color="'rgba(0, 0, 0, 0.1)'"
     height="72rpx"
     :custom-style="{ width: '100%' }"

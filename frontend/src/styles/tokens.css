@@ -1,7 +1,7 @@
 :root {
-  /* 基础背景与前景色（对齐 Chatinterfacedesign theme.css） */
+  /* 基础背景与前景色 */
   --c-bg: #ffffff;
-  --c-bg-2: #ececf0;
+  --c-bg-2: #f5f5f5;
   --c-ink: #030213;
   --c-muted: #717182;
 
@@ -13,17 +13,17 @@
 
   /* 表面与边框、阴影 */
   --c-surface: #ffffff;
-  --c-border: rgba(0, 0, 0, 0.1);
-  --c-input-bg: #f3f3f5;
-  --c-accent: #e9ebef;
+  --c-border: rgba(0, 0, 0, 0.08);
+  --c-input-bg: rgba(255, 255, 255, 0.9);
+  --c-accent: #f0f0f0;
   --c-destructive: #d4183d;
   --c-shadow: 0 24rpx 60rpx rgba(0, 0, 0, 0.12);
   --c-shadow-soft: 0 10rpx 24rpx rgba(0, 0, 0, 0.06);
 
   /* 消息语义色 */
   --c-message-inbound: #ffffff;
-  --c-message-outbound: #f3f3f5;
-  --c-message-system: #e5e7eb;
+  --c-message-outbound: rgba(255, 255, 255, 0.9);
+  --c-message-system: #f0f0f0;
 
   /* 圆角体系 */
   --radius-xl: 32rpx;
@@ -53,6 +53,12 @@
   --status-bar-height: var(--status-bar-height);
   --header-safe-padding-top: var(--status-bar-height);
   --header-safe-padding-bottom: 0rpx;
+  
+  /*
+   * 页面顶部安全区域（全局应用）
+   * 所有 page 类容器自动应用，避免内容被状态栏遮挡
+   */
+  --page-safe-top: var(--status-bar-height);
 
   /*
    * 自定义底部导航（src/tabbar/index.vue，与 pages.json tabBar 联动）

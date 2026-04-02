@@ -71,9 +71,30 @@
       </button>
     </view>
 
-    <button class="btn-logout" @click="logout">{{ t('common.logout') }}</button>
-    <view class="foot-pad" />
-
+    <view class="logout-wrap">
+      <Button 
+        v-if="!showLogoutConfirm" 
+        variant="danger" 
+        size="large" 
+        shape="round" 
+        block 
+        @click="showLogoutConfirm = true"
+      >
+        {{ t('common.logout') }}
+      </Button>
+      
+      <view v-else class="logout-confirm-wrap">
+        <text class="logout-confirm-text">{{ t('page.profile.logout_confirm') }}</text>
+        <view class="logout-confirm-actions">
+          <Button variant="secondary" size="medium" shape="round" @click="showLogoutConfirm = false">
+            {{ t('common.cancel') }}
+          </Button>
+          <Button variant="danger" size="medium" shape="round" :loading="loggingOut" @click="handleLogout">
+            {{ t('common.confirm') }}
+          </Button>
+        </view>
+      </view>
+    </view>
   </scroll-view>
 
   <view v-if="showNotifications" class="sheet-mask" @click="showNotifications = false">
@@ -165,25 +186,28 @@ import { useI18nWithFormat } from '@/composables/useI18nWithFormat'
 import { userApi, type UserInfo } from '@/api/modules/user'
 import { useUserStore } from '@/store/modules/user'
 import { setLocale } from '../../locale/i18n'
-import { notificationApi, type NotificationItem } from '@/api/modules/notification'
-import { getApiErrorMessage } from '@/utils/request'
+import { useNotificationStore } from '@/store/modules/notification'
 import { agentApi, type MyAgentItem } from '@/api/modules/agent'
+import Button from '@/components/Button.vue'
 import FgTabbar from '@/tabbar/index.vue'
 
 const userStore = useUserStore()
 const userInfo = ref<UserInfo | null>(userStore.userInfo || null)
 const { t, tf, locale } = useI18nWithFormat()
-const notifications = ref<NotificationItem[]>([])
+const notificationStore = useNotificationStore()
 const notificationFilter = ref<'all' | 'mention'>('all')
 const showNotifications = ref(false)
 const showSettings = ref(false)
 const showMyAgents = ref(false)
 const myAgents = ref<MyAgentItem[]>([])
 const myAgentsLoading = ref(false)
-const unreadCount = computed(() => notifications.value.filter((x) => !x.read).length)
+const showLogoutConfirm = ref(false)
+const loggingOut = ref(false)
+const unreadCount = computed(() => notificationStore.unreadCount)
 const filteredNotifications = computed(() => {
-  if (notificationFilter.value === 'all') return notifications.value
-  return notifications.value.filter((x) => x.type === 'MESSAGE_MENTION')
+  const list = notificationStore.notifications
+  if (notificationFilter.value === 'all') return list
+  return list.filter((x) => x.type === 'MESSAGE_MENTION')
 })
 
 const LEVELS = [
@@ -257,17 +281,13 @@ const fetchUserInfo = async () => {
 }
 
 const loadNotifications = async () => {
-  try {
-    notifications.value = await notificationApi.list(30)
-  } catch (err: any) {
-    uni.showToast({ title: getApiErrorMessage(err, t('toast.load_failed')), icon: 'none' })
-  }
+  await notificationStore.loadNotifications(30)
 }
 
 const openNotifications = async () => {
   showNotifications.value = true
   notificationFilter.value = 'all'
-  if (notifications.value.length === 0) {
+  if (notificationStore.notifications.length === 0) {
     await loadNotifications()
   }
 }
@@ -300,19 +320,18 @@ const closeMyAgents = () => {
 }
 
 const markNotificationRead = async (id: number) => {
-  const target = notifications.value.find((x) => x.id === id)
-  if (!target || target.read) return
-  target.read = true
-  try {
-    await notificationApi.markRead(id)
-  } catch {
-    // ignore rollback for UX smoothness
-  }
+  await notificationStore.markRead(id)
 }
 
-const logout = () => {
-  userStore.logout()
-  uni.reLaunch({ url: '/pages/auth/login' })
+const handleLogout = async () => {
+  loggingOut.value = true
+  try {
+    await userStore.logout()
+    uni.reLaunch({ url: '/pages/auth/login' })
+  } finally {
+    loggingOut.value = false
+    showLogoutConfirm.value = false
+  }
 }
 
 const changeLocale = (value: 'zh-Hans' | 'en') => {
@@ -348,7 +367,7 @@ onShow(() => {
 
 .profile-head {
   margin: 0;
-  padding: calc(var(--status-bar-height) + 32rpx) 24rpx 28rpx;
+  padding: calc(var(--status-bar-height) + 16rpx) 24rpx 24rpx;
   background: rgba(255, 255, 255, 0.75);
   backdrop-filter: blur(14rpx);
   border-radius: 0;
@@ -419,8 +438,8 @@ onShow(() => {
   display: inline-flex;
   padding: 6rpx 16rpx;
   border-radius: var(--radius-md);
-  background: rgba(255, 122, 89, 0.1);
-  border: 1rpx solid rgba(255, 122, 89, 0.22);
+  background: rgba(0, 0, 0, 0.06);
+  border: 1rpx solid rgba(0, 0, 0, 0.12);
 }
 
 .level-pill text {
@@ -477,10 +496,10 @@ onShow(() => {
 }
 
 .menu-block {
-  margin: 24rpx 24rpx 24rpx;
+  margin: 20rpx 24rpx;
   display: flex;
   flex-direction: column;
-  gap: 16rpx;
+  gap: 12rpx;
   align-items: stretch;
 }
 
@@ -504,7 +523,7 @@ onShow(() => {
   width: 64rpx;
   height: 64rpx;
   border-radius: var(--radius-md);
-  background: rgba(246, 242, 238, 0.9);
+  background: rgba(255, 255, 255, 0.9);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -552,24 +571,38 @@ onShow(() => {
   color: var(--c-muted);
 }
 
-.btn-logout {
-  margin: 0 24rpx;
-  height: 88rpx;
-  line-height: 88rpx;
-  border-radius: var(--radius-lg);
-  background: rgba(239, 68, 68, 0.1);
-  border: 1rpx solid rgba(239, 68, 68, 0.2);
-  color: #dc2626;
-  font-size: 28rpx;
-  font-weight: 600;
+
+.logout-wrap {
+  margin: 20rpx 24rpx;
   display: flex;
-  align-items: center;
   justify-content: center;
 }
 
-.foot-pad {
-  /* 底部留白已由 .page padding-bottom 统一处理 */
-  height: 0;
+.logout-confirm-wrap {
+  width: 100%;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1rpx solid rgba(239, 68, 68, 0.2);
+  border-radius: var(--radius-lg);
+  padding: 20rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+}
+
+.logout-confirm-text {
+  font-size: 24rpx;
+  color: #dc2626;
+  font-weight: 600;
+  text-align: center;
+}
+
+.logout-confirm-actions {
+  display: flex;
+  gap: 12rpx;
+}
+
+.logout-confirm-actions .fg-btn {
+  flex: 1;
 }
 
 .sheet-mask {
@@ -630,8 +663,8 @@ onShow(() => {
 }
 
 .notice-filter-btn.active {
-  background: rgba(255, 122, 89, 0.12);
-  color: var(--c-primary);
+  background: var(--c-primary);
+  color: #fff;
   font-weight: 600;
 }
 
@@ -660,7 +693,7 @@ onShow(() => {
   font-size: 26rpx;
   font-weight: 600;
   border-radius: var(--radius-pill);
-  background: rgba(246, 242, 238, 0.9);
+  background: rgba(255, 255, 255, 0.9);
   color: var(--c-ink);
   border: 1rpx solid transparent;
   margin: 0;
@@ -730,6 +763,7 @@ onShow(() => {
   line-height: 1.4;
   display: -webkit-box;
   -webkit-line-clamp: 2;
+  line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
@@ -784,8 +818,8 @@ onShow(() => {
 }
 
 .notice.unread {
-  background: rgba(255, 122, 89, 0.06);
-  border-color: rgba(255, 122, 89, 0.25);
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.12);
 }
 
 .notice-title {

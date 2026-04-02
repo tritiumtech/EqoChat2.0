@@ -15,7 +15,7 @@
             </view>
             <view class="share-project-main">
               <text class="share-project-name">{{ projectDetail?.name || '-' }}</text>
-              <text class="share-project-id">{{ t('page.project.modals.share.project_id_label', { id: projectDetail?.id }) }}</text>
+              <text class="share-project-id">{{ tf('page.project.modals.share.project_id_label', { id: projectDetail?.id }) }}</text>
             </view>
           </view>
         </view>
@@ -48,7 +48,7 @@
 
 <script setup lang="ts">
 import { toRefs } from 'vue'
-import { useI18n } from 'vue-i18n'
+import { useI18nWithFormat } from '@/composables/useI18nWithFormat'
 import type { ProjectDetail } from '@/api/modules/project'
 
 defineOptions({
@@ -71,7 +71,7 @@ const emit = defineEmits<{
   (e: 'update:shareMessage', value: string): void
 }>()
 
-const { t } = useI18n({ useScope: 'global' })
+const { t, tf } = useI18nWithFormat()
 const { open, projectDetail, shareUrl, shareMessage } = toRefs(props)
 
 function resolveTextareaValue(payload: any): string {

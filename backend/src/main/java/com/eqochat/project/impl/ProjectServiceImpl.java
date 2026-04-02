@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.eqochat.common.BizException;
 import com.eqochat.config.ProjectModuleProperties;
 import com.eqochat.dto.request.CreateProjectRequest;
+import com.eqochat.dto.request.CreateProjectTaskRequest;
 import com.eqochat.dto.request.TransferProjectOwnershipRequest;
 import com.eqochat.dto.request.UpdateProjectBidRequest;
 import com.eqochat.dto.response.*;
@@ -556,6 +557,69 @@ public class ProjectServiceImpl implements ProjectService {
         String v = raw.trim().toUpperCase(Locale.ROOT);
         if ("AGENT".equals(v)) return ProjectMember.MemberType.AGENT;
         return ProjectMember.MemberType.HUMAN;
+    }
+
+    private static ProjectTask.TaskPriority parseTaskPriority(String raw) {
+        if (!StringUtils.hasText(raw)) {
+            return ProjectTask.TaskPriority.MEDIUM;
+        }
+        String v = raw.trim().toUpperCase(Locale.ROOT);
+        try {
+            return ProjectTask.TaskPriority.valueOf(v);
+        } catch (IllegalArgumentException e) {
+            return ProjectTask.TaskPriority.MEDIUM;
+        }
+    }
+
+    @Override
+    public ProjectTaskResponse createTask(Long viewerId, Long projectId, CreateProjectTaskRequest request) {
+        if (viewerId == null) {
+            throw BizException.of("auth.user.not_found");
+        }
+        if (projectId == null) {
+            throw BizException.of("project.required");
+        }
+        if (request == null || !StringUtils.hasText(request.getTitle()) 
+                || request.getValue() == null || !StringUtils.hasText(request.getDeadline())) {
+            throw BizException.of("project.task.create.invalid");
+        }
+
+        Project project = projectMapper.selectById(projectId);
+        if (project == null) {
+            throw BizException.of("project.not_found");
+        }
+        ensureViewerCanAccess(viewerId, projectId, project);
+
+        UserProfile viewerProfile = userProfileMapper.selectById(viewerId);
+
+        ProjectTask task = ProjectTask.builder()
+                .projectId(projectId)
+                .title(request.getTitle().trim())
+                .assigneeId(viewerId)
+                .assigneeType(ProjectTask.AssigneeType.HUMAN)
+                .assigneeName(viewerProfile != null && StringUtils.hasText(viewerProfile.getNickname())
+                        ? viewerProfile.getNickname()
+                        : "User")
+                .deadline(request.getDeadline())
+                .status(ProjectTask.TaskStatus.PENDING)
+                .priority(parseTaskPriority(request.getPriority()))
+                .createTime(LocalDateTime.now())
+                .updateTime(LocalDateTime.now())
+                .createBy(viewerId)
+                .updateBy(viewerId)
+                .build();
+
+        projectTaskMapper.insert(task);
+
+        return ProjectTaskResponse.builder()
+                .id(task.getId())
+                .title(task.getTitle())
+                .assignee(task.getAssigneeName())
+                .isAgent(false)
+                .deadline(task.getDeadline())
+                .status(toTaskStatus(task.getStatus()))
+                .priority(toLower(task.getPriority() != null ? task.getPriority().name() : null))
+                .build();
     }
 }
 

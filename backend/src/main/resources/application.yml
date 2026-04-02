@@ -62,6 +62,15 @@ eqochat:
     max-image-bytes: 5242880
     max-video-bytes: 52428800
     share-url-template: ${EQOCHAT_WORLD_SHARE_URL_TEMPLATE:http://127.0.0.1:5173/#/pages/world/world?postId={postId}}
+  file:
+    s3:
+      endpoint: qrcode-1321489360.cos.na-siliconvalley.myqcloud.com  # MinIO 地址
+      bucket: qrcode-1321489360                   # 存储桶名称
+      access-key: IKIDrQfZ8rGK39vOWKnwlFOCfoc7I8epfAK2 # 访问密钥
+      access-secret: PLxDfnnSnnUrucz1ipb25oCH7dpfBMCh # 访问密钥密码
+      domain: https://darryuscos.darryring.com/qrcode-1321489360    # 自定义域名（可选）
+    max-file-bytes: 20971520 # 最大文件大小 20MB
+    path-prefix: eqochat/dev/ # 文件路径前缀
 
 logging:
   level:

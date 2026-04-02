@@ -13,21 +13,27 @@
       </view>
 
       <view class="drawer-tabs">
-        <button
+        <Button
           class="tab-btn"
           :class="{ active: sidebarTab === 'tasks' }"
+          variant="ghost"
+          size="mini"
           @click="onChangeTab('tasks')"
-        >{{ t('page.project.tabs.tasks') }}</button>
-        <button
+        >{{ t('page.project.tabs.tasks') }}</Button>
+        <Button
           class="tab-btn"
           :class="{ active: sidebarTab === 'payments' }"
+          variant="ghost"
+          size="mini"
           @click="onChangeTab('payments')"
-        >{{ t('page.project.tabs.payments') }}</button>
-        <button
+        >{{ t('page.project.tabs.payments') }}</Button>
+        <Button
           class="tab-btn"
           :class="{ active: sidebarTab === 'files' }"
+          variant="ghost"
+          size="mini"
           @click="onChangeTab('files')"
-        >{{ t('page.project.tabs.files') }}</button>
+        >{{ t('page.project.tabs.files') }}</Button>
       </view>
 
       <scroll-view class="drawer-body" scroll-y>
@@ -104,6 +110,7 @@
 <script setup lang="ts">
 import { toRefs } from 'vue'
 import { useI18n } from 'vue-i18n'
+import Button from '@/components/Button.vue'
 import type { ProjectFile, ProjectPayment, ProjectTask } from '@/api/modules/project'
 
 defineOptions({

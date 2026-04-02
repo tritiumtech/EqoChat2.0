@@ -33,12 +33,14 @@ import { computed, ref, onMounted } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { useI18n } from 'vue-i18n'
 import { useChatStore } from '@/store/modules/chat'
+import { useNotificationStore } from '@/store/modules/notification'
 import { customTabbarEnable, needHideNativeTabbar, tabbarCacheEnable } from './config'
 import type { CustomTabBarItem } from './types'
 import { tabbarList, tabbarStore } from './store'
 
 const { t } = useI18n({ useScope: 'global' })
 const chatStore = useChatStore()
+const notificationStore = useNotificationStore()
 
 const currentRoute = ref('')
 
@@ -68,8 +70,14 @@ function getImageByIndex(index: number, item: CustomTabBarItem) {
 
 function badgeCount(index: number) {
   const item = tabbarList[index]
-  if (!item || item.pagePath !== '/pages/chat/chat-list') return 0
-  return chatStore.totalUnread
+  if (!item) return 0
+  if (item.pagePath === '/pages/chat/chat-list') {
+    return chatStore.totalUnread
+  }
+  if (item.pagePath === '/pages/profile/profile') {
+    return notificationStore.unreadCount
+  }
+  return 0
 }
 
 function badgeText(n: number) {

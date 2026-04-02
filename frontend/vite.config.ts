@@ -9,6 +9,17 @@ export default ({ mode }: { mode: string }) => {
   const proxyPrefix = env.VITE_APP_PROXY_PREFIX || '/api'
   const proxyTarget = env.VITE_PROXY_TARGET || env.VITE_API_BASE_URL || 'http://localhost:8080'
 
+
+  const {
+    VITE_APP_PORT,
+    VITE_SERVER_BASEURL,
+    VITE_DELETE_CONSOLE,
+    VITE_SHOW_SOURCEMAP,
+    VITE_APP_PROXY,
+    VITE_APP_PROXY_PREFIX,
+  } = env
+  console.log('环境变量 env -> ', env)
+
   return defineConfig({
     envDir: './env',
     plugins: [uni()],

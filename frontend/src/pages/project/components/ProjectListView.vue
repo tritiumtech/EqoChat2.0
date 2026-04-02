@@ -1,16 +1,13 @@
 <template>
   <view class="list-wrap">
-    <view class="header">
-      <view class="header-row">
-        <view class="header-titles">
-          <text class="header-title">{{ t('page.project.title') }}</text>
-          <text class="header-sub">{{ t('page.project.subtitle') }}</text>
-        </view>
-        <button class="icon-btn bordered" @click="openCreateModal">
-          <text class="plus">＋</text>
-        </button>
-      </view>
-    </view>
+    <PageHeader
+      :title="t('page.project.title')"
+      :subtitle="t('page.project.subtitle')"
+      action-icon="＋"
+      action-variant="bordered"
+      action-size="md"
+      @action-click="openCreateModal"
+    />
 
     <view class="content">
       <view v-if="loading" class="empty-wrap">
@@ -74,6 +71,7 @@
 <script setup lang="ts">
 import { toRefs } from 'vue'
 import { useI18n } from 'vue-i18n'
+import PageHeader from '@/components/PageHeader.vue'
 import type { ProjectSummary } from '@/api/modules/project'
 
 // 小程序端默认样式隔离：让页面样式可作用到子组件

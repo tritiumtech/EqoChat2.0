@@ -89,7 +89,7 @@ function avatarStyle(avatar: string) {
           </u-grid-item>
         </u-grid>
 
-        <u-button class="copy-btn" shape="circle" color="#f3f3f5" @click="emit('copy')">
+        <u-button class="copy-btn" shape="circle" color="#ffffff" @click="emit('copy')">
           {{ props.copied ? $t('page.world.link_copied') : $t('page.world.copy_link') }}
         </u-button>
 

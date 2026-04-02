@@ -257,9 +257,10 @@ public class AuthServiceImpl implements AuthService {
         String oldSessionId = jwtTokenUtil.getSessionIdFromToken(token);
         String sessionId = oldSessionId;
         
-        // 如果原 sessionId 无效，创建新的
+        // 如果原 sessionId 无效，说明用户已被挤下线或 session 已过期
         if (sessionId == null || !userSessionService.validateSession(sessionId)) {
-            sessionId = userSessionService.createSession(userId);
+            log.warn("refreshToken: session 已失效，拒绝刷新 token: userId={}, sessionId={}", userId, oldSessionId);
+            throw BizException.of(ApiErrorCodes.CODE_UNAUTHORIZED, "auth.session.expired");
         }
         
         // 生成带 sessionId 的新 token

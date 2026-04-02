@@ -1,5 +1,25 @@
 <template>
+  <!-- 图片类型：直接显示预览 -->
   <view
+    v-if="isImage"
+    class="image-attachment"
+    @click.stop="handlePreviewImage"
+  >
+    <image
+      class="image-preview"
+      :src="downloadUrl"
+      mode="aspectFill"
+      @error="handleImageError"
+    />
+    <view class="image-overlay">
+      <text class="image-name">{{ fileName || t('common.attachment') }}</text>
+      <text class="image-size">{{ fileSize }}</text>
+    </view>
+  </view>
+  
+  <!-- 其他文件类型：显示下载按钮 -->
+  <view
+    v-else
     class="attachment"
     :class="{ 'with-download': !!downloadUrl }"
   >
@@ -33,7 +53,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 const props = defineProps<{
@@ -45,9 +65,17 @@ const props = defineProps<{
 
 const { t } = useI18n({ useScope: 'global' })
 const fileTypeLower = computed(() => (props.fileType || '').toLowerCase())
+const imageLoadError = ref(false)
+
+// 判断是否为图片类型
+const isImage = computed(() => {
+  if (imageLoadError.value) return false
+  const mt = fileTypeLower.value
+  const fileName = (props.fileName || '').toLowerCase()
+  return /^image\//.test(mt) || /\.(png|jpg|jpeg|gif|webp|bmp|svg)$/i.test(fileName)
+})
 
 const iconGradientStyle = computed(() => {
-  // 粗略对齐 Figma：根据文件扩展名/类型决定渐变色
   const mt = fileTypeLower.value
   const map: Array<[RegExp, string]> = [
     [/pdf/, 'linear-gradient(135deg, rgba(239,68,68,0.95), rgba(225,29,72,0.95))'],
@@ -59,6 +87,28 @@ const iconGradientStyle = computed(() => {
   const hit = map.find(([re]) => re.test(mt))
   return { backgroundImage: hit?.[1] ?? 'linear-gradient(135deg, rgba(148,163,184,0.95), rgba(100,116,139,0.95))' }
 })
+
+const handleImageError = () => {
+  imageLoadError.value = true
+}
+
+// 图片预览：点击放大
+const handlePreviewImage = () => {
+  if (!props.downloadUrl) return
+  
+  // #ifdef H5
+  if (typeof window !== 'undefined') {
+    window.open(props.downloadUrl, '_blank')
+  }
+  // #endif
+  
+  // #ifndef H5
+  uni.previewImage({
+    urls: [props.downloadUrl],
+    current: props.downloadUrl,
+  })
+  // #endif
+}
 
 const handleNoDownload = () => {
   // Phase 2 才会提供真实下载能力，这里给出静默 UX
@@ -97,6 +147,50 @@ const handleDownload = () => {
 <style scoped>
 @import "@/styles/tokens.css";
 
+/* 图片附件样式 */
+.image-attachment {
+  margin-top: 10rpx;
+  position: relative;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  max-width: 520rpx;
+  background: rgba(255, 255, 255, 0.6);
+  border: 1rpx solid rgba(0, 0, 0, 0.08);
+}
+
+.image-preview {
+  width: 520rpx;
+  height: 280rpx;
+  display: block;
+}
+
+.image-overlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 10rpx 14rpx;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.2), transparent);
+}
+
+.image-name {
+  font-size: 22rpx;
+  font-weight: 600;
+  color: #fff;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.image-size {
+  font-size: 18rpx;
+  color: rgba(255, 255, 255, 0.85);
+  display: block;
+  margin-top: 4rpx;
+}
+
+/* 其他文件附件样式 */
 .attachment {
   margin-top: 10rpx;
   display: flex;
@@ -105,7 +199,7 @@ const handleDownload = () => {
   padding: 14rpx 16rpx;
   border-radius: var(--radius-lg);
   border: 1rpx solid rgba(0, 0, 0, 0.08);
-  background: rgba(246, 242, 238, 0.6);
+  background: rgba(255, 255, 255, 0.6);
   max-width: 100%;
 }
 

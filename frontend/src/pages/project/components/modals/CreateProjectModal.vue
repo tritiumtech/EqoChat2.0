@@ -33,10 +33,12 @@
       </view>
 
       <view class="modal-foot">
-        <button class="btn-secondary btn-modal" @click="emit('close')">{{ t('toast.cancel') }}</button>
-        <button class="btn-primary btn-modal" :disabled="!canCreateProject" @click="emit('submit')">
+        <Button variant="secondary" size="large" shape="round" @click="emit('close')">
+          {{ t('toast.cancel') }}
+        </Button>
+        <Button variant="primary" size="large" shape="round" :disabled="!canCreateProject" @click="emit('submit')">
           {{ t('page.project.modals.create.confirm') }}
-        </button>
+        </Button>
       </view>
     </view>
   </view>
@@ -45,6 +47,7 @@
 <script setup lang="ts">
 import { toRefs } from 'vue'
 import { useI18n } from 'vue-i18n'
+import Button from '@/components/Button.vue'
 
 defineOptions({
   options: {

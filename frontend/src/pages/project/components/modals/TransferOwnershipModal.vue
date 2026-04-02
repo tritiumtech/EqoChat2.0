@@ -33,7 +33,7 @@
             </view>
 
             <text class="transfer-info-body">
-              {{ t('page.project.modals.transfer.responsibilities_body', { memberName: member.name }) }}
+              {{ tf('page.project.modals.transfer.responsibilities_body', { memberName: member.name }) }}
             </text>
 
             <view class="transfer-info-list">
@@ -44,7 +44,7 @@
             </view>
 
             <text class="transfer-info-accept">
-              {{ t('page.project.modals.transfer.must_accept', { memberName: member.name }) }}
+              {{ tf('page.project.modals.transfer.must_accept', { memberName: member.name }) }}
             </text>
           </view>
         </view>
@@ -62,7 +62,7 @@
 
 <script setup lang="ts">
 import { toRefs } from 'vue'
-import { useI18n } from 'vue-i18n'
+import { useI18nWithFormat } from '@/composables/useI18nWithFormat'
 import type { ProjectMember } from '@/api/modules/project'
 
 defineOptions({
@@ -82,7 +82,7 @@ const emit = defineEmits<{
   (e: 'submit'): void
 }>()
 
-const { t } = useI18n({ useScope: 'global' })
+const { t, tf } = useI18nWithFormat()
 const getMemberInitial = props.getMemberInitial
 
 const { open, member } = toRefs(props)

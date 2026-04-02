@@ -92,6 +92,13 @@ export interface TransferProjectOwnershipPayload {
   toMemberType: 'HUMAN' | 'AGENT'
 }
 
+export interface CreateProjectTaskPayload {
+  title: string
+  value: number
+  deadline: string
+  priority: 'low' | 'medium' | 'high'
+}
+
 export const projectApi = {
   listMyProjects() {
     return request.get<ProjectSummary[]>('/api/v1/projects')
@@ -119,6 +126,9 @@ export const projectApi = {
   },
   listSidebarFiles(projectId: number | string) {
     return request.get<ProjectFile[]>(`/api/v1/projects/${projectId}/sidebar/files`)
+  },
+  createTask(projectId: number | string, data: CreateProjectTaskPayload) {
+    return request.post<ProjectTask>(`/api/v1/projects/${projectId}/tasks`, data)
   },
 }
 

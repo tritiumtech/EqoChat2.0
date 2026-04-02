@@ -1,42 +1,42 @@
 <template>
   <view class="detail-wrap">
-    <view class="header">
-      <view class="header-row">
-        <view class="back-link" @click="onCloseProject">
-          <text class="back-glyph">←</text>
-          <text class="back-text">{{ t('page.project.back_to_list') }}</text>
-        </view>
+    <PageHeader
+      :title="projectDetail?.name || ''"
+      has-back-row
+      :back-text="t('page.project.back_to_list')"
+      @back-click="onCloseProject"
+    >
+      <template #title-prefix>
+        <view class="color-dot big" :style="{ backgroundColor: projectDetail?.color || '#7C3AED' }" />
+      </template>
 
-        <view class="header-actions">
-          <button class="mini-btn tasks-btn" @click="onOpenSidebar('tasks')">
-            <text>{{ t('page.project.tabs.tasks') }}</text>
-            <view v-if="pendingTaskCount > 0" class="tasks-badge">
-              <text>{{ pendingTaskCount }}</text>
-            </view>
-          </button>
-        </view>
-      </view>
+      <template #back-actions>
+        <button class="mini-btn tasks-btn" @click="onOpenSidebar('tasks')">
+          <text>{{ t('page.project.tabs.tasks') }}</text>
+          <view v-if="pendingTaskCount > 0" class="tasks-badge">
+            <text>{{ pendingTaskCount }}</text>
+          </view>
+        </button>
+      </template>
 
-      <view class="detail-title-row">
-        <view class="detail-title-left">
-          <view class="color-dot big" :style="{ backgroundColor: projectDetail?.color || '#7C3AED' }" />
-          <text class="detail-title">{{ projectDetail?.name || '' }}</text>
-        </view>
+      <template #actions>
         <button class="mini-btn share-btn" @click="onOpenShareModal">
           {{ t('page.project.actions.share') }}
         </button>
-      </view>
+      </template>
 
-      <view class="detail-sub-row">
-        <text class="detail-sub">
-          {{ t('page.project.detail_subtitle', {
-            humans: projectDetail?.humans || 0,
-            agents: projectDetail?.agents || 0,
-            deadline: projectDetail?.deadline || '-',
-          }) }}
-        </text>
-      </view>
-    </view>
+      <template #subtitle-custom>
+        <view class="detail-sub-row">
+          <text class="detail-sub">
+            {{ tf('page.project.detail_subtitle', {
+              humans: projectDetail?.humans || 0,
+              agents: projectDetail?.agents || 0,
+              deadline: projectDetail?.deadline || '-',
+            }) }}
+          </text>
+        </view>
+      </template>
+    </PageHeader>
 
     <view class="content">
       <view class="stats-grid">
@@ -85,7 +85,7 @@
         </view>
 
         <text class="bid-alert-sub">
-          {{ t('page.project.pending_bid_alert.subtitle', {
+          {{ tf('page.project.pending_bid_alert.subtitle', {
             newBid: formatBidK(pendingBidUpdate.newBid),
             currentBid: formatBidK(projectDetail?.bid || 0),
           }) }}
@@ -228,7 +228,8 @@
 
 <script setup lang="ts">
 import { toRefs } from 'vue'
-import { useI18n } from 'vue-i18n'
+import { useI18nWithFormat } from '@/composables/useI18nWithFormat'
+import PageHeader from '@/components/PageHeader.vue'
 import type { ProjectDetail, ProjectMember } from '@/api/modules/project'
 
 defineOptions({
@@ -267,7 +268,7 @@ type Props = {
 }
 
 const props = defineProps<Props>()
-const { t } = useI18n({ useScope: 'global' })
+const { t, tf } = useI18nWithFormat()
 
 const { projectDetail, pendingBidUpdate, pendingTaskCount, currentUserIsOwner, recentActivityList } = toRefs(props)
 

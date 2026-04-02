@@ -428,7 +428,10 @@
       },
       "placeholders": {
         "project_name": "e.g. Q2 Marketing Campaign",
-        "bid": "0"
+        "bid": "0",
+        "task_title": "Enter task title",
+        "task_value": "0.00",
+        "deadline": "Select deadline"
       },
       "modals": {
         "create": {
@@ -470,13 +473,24 @@
           "close": "Close",
           "copy": "Copy",
           "share_project": "Share Project"
+        },
+        "create_task": {
+          "title": "New Task",
+          "task_title": "Task Title",
+          "task_value": "Task Value",
+          "deadline": "Deadline",
+          "priority": "Priority",
+          "value_hint": "Monetary value for this task",
+          "info_note": "You can edit task details later by clicking on the task in the project dashboard.",
+          "confirm": "Create Task"
         }
       },
       "toasts": {
         "create_success": "Created successfully",
         "update_success": "Updated successfully",
         "transfer_success": "Transferred successfully",
-        "share_copied": "Copied"
+        "share_copied": "Copied",
+        "task_created": "Task created successfully"
       }
     },
     "toast": {

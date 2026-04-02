@@ -2,17 +2,12 @@
   <view class="page">
     <!-- 话题详情 -->
     <template v-if="selectedTopic">
-      <view class="header">
-        <view class="header-row">
-          <button class="icon-btn" @click="selectedTopic = null">
-            <text class="icon-chevron">‹</text>
-          </button>
-          <view class="header-titles">
-            <text class="header-title topic-hash">#{{ selectedTopic }}</text>
-            <text class="header-sub">{{ topicMeta?.posts }} {{ t('page.world.posts') }} · {{ topicMeta?.followers }} {{ t('page.world.followers') }}</text>
-          </view>
-        </view>
-      </view>
+      <PageHeader
+        :title="'#' + selectedTopic"
+        :subtitle="topicMeta ? `${topicMeta.posts} ${t('page.world.posts')} · ${topicMeta.followers} ${t('page.world.followers')}` : ''"
+        :has-back-row="true"
+        @back-click="selectedTopic = null"
+      />
       <view class="scroll-feed">
         <WorldPostCard
           v-for="post in topicPosts"
@@ -27,14 +22,15 @@
     </template>
 
     <template v-else>
-      <view class="header">
-        <view class="header-top">
-          <text class="header-title">{{ t('page.world.title') }}</text>
-          <button class="icon-btn bordered" @click="onSearchTap">
-            <text class="search-glyph">⌕</text>
-          </button>
-        </view>
-        <view class="tabs">
+      <PageHeader
+        :title="t('page.world.title')"
+        action-icon="⌕"
+        action-variant="bordered"
+        action-size="md"
+        :has-tabs="true"
+        @action-click="onSearchTap"
+      >
+        <template #tabs>
           <u-tabs
             :list="tabOptions"
             :current="activeTabIndex"
@@ -46,8 +42,8 @@
             :item-style="{ height: '88rpx' }"
             @change="onTabChange"
           />
-        </view>
-      </view>
+        </template>
+      </PageHeader>
 
       <template v-if="activeTab === 'posts'">
         <view class="sort-row">
@@ -199,6 +195,7 @@ import { useI18n } from 'vue-i18n'
 import { worldApi, type WorldMediaType, type WorldPost, type WorldSort, type WorldTopic } from '@/api/modules/world'
 import { contactApi, type ContactItem } from '@/api/modules/contact'
 import { getApiErrorMessage } from '@/utils/request'
+import PageHeader from '@/components/PageHeader.vue'
 import WorldPostCard from '@/components/world/WorldPostCard.vue'
 import WorldTopicCard from '@/components/world/WorldTopicCard.vue'
 import WorldPostDetail from '@/components/world/WorldPostDetail.vue'
@@ -716,81 +713,6 @@ watch(selectedTopic, (v) => {
   box-sizing: border-box;
 }
 
-.header {
-  flex-shrink: 0;
-  padding: calc(var(--status-bar-height) + 16rpx) 24rpx 0;
-  background: rgba(255, 255, 255, 0.95);
-  border-bottom: 1rpx solid var(--c-border);
-  box-shadow: 0 6rpx 16rpx rgba(0, 0, 0, 0.04);
-}
-
-.header-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding-bottom: 12rpx;
-}
-
-.header-row {
-  display: flex;
-  align-items: center;
-  gap: 16rpx;
-  padding-bottom: 16rpx;
-}
-
-.header-titles {
-  flex: 1;
-  min-width: 0;
-}
-
-.header-title {
-  font-size: 36rpx;
-  font-weight: 700;
-  color: var(--c-ink);
-}
-
-.header-sub {
-  font-size: 22rpx;
-  color: var(--c-muted);
-  margin-top: 6rpx;
-  display: block;
-}
-
-.icon-btn {
-  width: 72rpx;
-  height: 72rpx;
-  padding: 0;
-  margin: 0;
-  border: none;
-  border-radius: var(--radius-lg);
-  background: var(--c-input-bg);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.icon-btn.bordered {
-  border: 1rpx solid var(--c-border);
-  background: var(--c-surface);
-}
-
-.icon-chevron {
-  font-size: 44rpx;
-  font-weight: 300;
-  color: var(--c-ink);
-  line-height: 1;
-}
-
-.search-glyph {
-  font-size: 32rpx;
-  color: var(--c-ink);
-}
-
-.tabs {
-  display: block;
-  border-top: 1rpx solid var(--c-border);
-}
-
 .sort-row {
   padding: 20rpx 24rpx;
   border-bottom: 1rpx solid var(--c-border);
@@ -874,16 +796,9 @@ watch(selectedTopic, (v) => {
 
 
 .scroll-feed {
-  /* 列表交给页面滚动，不用区域 scroll-view */
   padding: 24rpx;
   padding-bottom: var(--page-pad-bottom-tabbar);
   box-sizing: border-box;
-}
-
-.native-scroll {
-  min-height: 0;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
 }
 
 .scroll-topics {
@@ -902,9 +817,5 @@ watch(selectedTopic, (v) => {
   color: var(--c-muted);
   font-size: 22rpx;
   padding: 8rpx 0 24rpx;
-}
-
-.topic-hash {
-  color: var(--c-violet);
 }
 </style>

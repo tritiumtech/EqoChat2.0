@@ -1,14 +1,16 @@
 <template>
   <view class="page">
-    <view class="head">
-      <view class="head-row">
-        <text class="screen-title">{{ t('page.chat.title') }}</text>
-        <button class="icon-btn" @click="onCompose">
-          <text class="icon-edit">✎</text>
-        </button>
-      </view>
-      <SearchBar v-model="searchQuery" :placeholder="t('page.chat.search_placeholder')" />
-    </view>
+    <PageHeader 
+      :title="t('page.chat.title')"
+      action-icon="✎"
+      action-variant="bordered"
+      action-size="md"
+      @action-click="onCompose"
+    >
+      <template #search>
+        <SearchBar v-model="searchQuery" :placeholder="t('page.chat.search_placeholder')" />
+      </template>
+    </PageHeader>
 
     <view class="list-scroll">
       <view v-if="loading" class="state">{{ t('common.loading') }}</view>
@@ -45,9 +47,13 @@
               </view>
             </view>
           </view>
-          <button class="pin-btn" :class="{ on: isPinned(item.id) }" @click.stop="togglePin(item.id)">
+          <view
+            class="pin-btn"
+            :class="{ on: isPinned(item.id) }"
+            @click.stop="togglePin(item.id)"
+          >
             <text class="pin-glyph">{{ isPinned(item.id) ? t('page.chat.pinned') : t('page.chat.pin') }}</text>
-          </button>
+          </view>
         </view>
       </view>
     </view>
@@ -65,6 +71,7 @@ import { useUserStore } from '../../store/modules/user'
 import { useChatStore } from '../../store/modules/chat'
 import EmptyState from '../../components/EmptyState.vue'
 import SearchBar from '../../components/SearchBar.vue'
+import PageHeader from '../../components/PageHeader.vue'
 import FgTabbar from '@/tabbar/index.vue'
 
 const PIN_STORAGE_KEY = 'eqo_chat_pins'
@@ -229,54 +236,19 @@ watch(
 @import "@/styles/tokens.css";
 
 .page {
-  min-height: 100vh;
+  height: 100vh;
   display: flex;
   flex-direction: column;
   background: linear-gradient(165deg, var(--c-bg) 0%, var(--c-bg-2) 100%);
   box-sizing: border-box;
-}
-
-.head {
-  flex-shrink: 0;
-  padding: calc(var(--status-bar-height) + 20rpx) 24rpx 16rpx;
-  background: rgba(255, 255, 255, 0.96);
-  border-bottom: 1rpx solid var(--c-border);
-  box-shadow: 0 6rpx 16rpx rgba(0, 0, 0, 0.04);
-}
-
-.head-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 20rpx;
-}
-
-.screen-title {
-  font-size: 40rpx;
-  font-weight: 700;
-  color: var(--c-ink);
-}
-
-.icon-btn {
-  width: 72rpx;
-  height: 72rpx;
-  padding: 0;
-  margin: 0;
-  border: 1rpx solid rgba(0, 0, 0, 0.08);
-  border-radius: var(--radius-lg);
-  background: rgba(255, 255, 255, 0.9);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.icon-edit {
-  font-size: 32rpx;
-  color: var(--c-ink);
+  overflow: hidden;
 }
 
 .list-scroll {
-  flex: 0 0 auto;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   padding: 12rpx 16rpx var(--page-pad-bottom-tabbar-loose);
   box-sizing: border-box;
 }
@@ -425,6 +397,10 @@ watch(
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.pin-btn:active {
+  opacity: 0.7;
 }
 
 .pin-btn.on {
