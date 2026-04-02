@@ -38,7 +38,11 @@
     "you": "你",
     "dash": "—",
     "or": "或",
-    "seconds": "{n}秒"
+    "seconds": "{n}秒",
+    "just_now": "刚刚",
+    "minutes_ago": "{n}分钟前",
+    "hours_ago": "{n}小时前",
+    "days_ago": "{n}天前"
   },
   "action": {
     "start_chat": "发起聊天",
@@ -56,7 +60,10 @@
     "expand": "展开",
     "collapse": "收起",
     "details": "详情",
-    "hide": "收起"
+    "hide": "收起",
+    "search": "搜索",
+    "clear": "清空",
+    "view_profile": "查看资料"
   },
   "field": {
     "phone": "手机号",
@@ -99,7 +106,9 @@
     "add_failed": "添加失败",
     "message_failed": "发送失败",
     "download_coming_soon": "下载地址将于后续版本启用",
-    "post_published": "发布成功"
+    "post_published": "发布成功",
+    "user_not_found": "未找到该用户",
+    "invalid_account": "请输入有效的账号信息"
   },
   "nav": {
     "chat": "聊天",
@@ -234,13 +243,53 @@
       "recent_activity_empty": "暂无世界动态",
       "recent_activity_loading": "加载中…",
       "recent_activity_upvotes": "↑ {n}",
-      "recent_activity_replies": "{n} 条回复"
+      "recent_activity_replies": "{n} 条回复",
+      "new_friends": "新的朋友",
+      "pending_requests_count": "{n} 条好友申请",
+      "search_user": "添加朋友",
+      "search_by_id": "用户ID",
+      "search_by_phone": "手机号",
+      "search_by_email": "邮箱",
+      "search_placeholder_id": "输入用户ID",
+      "search_placeholder_phone": "输入手机号",
+      "search_placeholder_email": "输入邮箱",
+      "search_placeholder": "输入用户 ID/手机号/邮箱",
+      "search_tips": "系统将自动识别账号类型",
+      "search_history": "搜索历史",
+      "add_to_contacts": "添加到通讯录",
+      "send_request_title": "发送好友申请",
+      "request_sent": "申请已发送",
+      "request_sent_waiting": "等待对方验证",
+      "request_received_from": "对方想添加你为好友",
+      "already_friend": "已是好友",
+      "need_friend_to_chat": "需要先添加对方为好友才能聊天",
+      "user_profile": "用户资料",
+      "no_requests_hint": "你可以通过搜索添加新朋友",
+      "no_sent_requests": "暂无已发送的申请",
+      "no_sent_requests_hint": "去添加一些新朋友吧",
+      "received_requests": "收到的申请",
+      "sent_requests": "已发送的申请",
+      "request_received_at": "申请时间",
+      "request_sent_at": "发送时间",
+      "request_message_label": "验证消息",
+      "request_accepted": "已添加",
+      "request_rejected": "已拒绝",
+      "request_status_pending": "等待验证",
+      "request_status_accepted": "已同意",
+      "request_status_rejected": "已拒绝"
     },
     "world": {
       "title": "世界",
+      "timeline_title": "我的动态时间线",
+      "timeline_total_posts": "{n} 条动态",
+      "timeline_months": "{n} 个月",
+      "timeline_days": "{n} 天",
+      "timeline_year": "{year} 年",
+      "timeline_end": "已到达时间线起点",
+      "timeline_empty": "还没有发布过动态",
       "tab_posts": "动态",
       "tab_topics": "话题",
-      "tab_my": "与我相关",
+      "tab_my": "我的",
       "sort_friends": "好友优先",
       "sort_upvotes": "热度优先",
       "sort_topics": "常看话题优先",
@@ -496,5 +545,6 @@
     "toast": {
       "session_kicked": "您的账号已在其他设备登录，您已被迫下线"
     }
-  }
+  },
+  "pages.contact.user_profile": "用户资料"
 }

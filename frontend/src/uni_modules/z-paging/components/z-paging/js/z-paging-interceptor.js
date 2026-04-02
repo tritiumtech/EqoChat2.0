@@ -56,17 +56,26 @@ function _handleLanguage2Local(language, local) {
 
 // 获取当前app对象
 function _getApp(){
-	// #ifndef APP-NVUE
-	return getApp();
-	// #endif
-	// #ifdef APP-NVUE
-	return getApp({ allowDefault: true });
-	// #endif
+	try {
+		// #ifndef APP-NVUE
+		return getApp();
+		// #endif
+		// #ifdef APP-NVUE
+		return getApp({ allowDefault: true });
+		// #endif
+	} catch (e) {
+		return null;
+	}
 }
 
 // 是否可以访问globalData
 function _hasGlobalData() {
-	return _getApp() && _getApp().globalData;
+	try {
+		const app = _getApp();
+		return app && app.globalData;
+	} catch (e) {
+		return false;
+	}
 }
 
 // 添加处理函数

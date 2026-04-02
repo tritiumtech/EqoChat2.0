@@ -464,3 +464,4 @@ var(--page-pad-bottom-tabbar-loose)
 - ❌ 忽略点击态和禁用态
 - ❌ 文案不走 i18n
 - ❌ 在组件中直接写复杂样式（应抽离到 CSS 文件）
+- ❌ 使用 emoji 表情符号（如 📭、✉️、👋 等），应使用图标组件或 Unicode 符号

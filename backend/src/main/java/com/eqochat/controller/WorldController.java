@@ -80,6 +80,12 @@ public class WorldController {
         return ApiResponse.success(worldService.listMentionedMe(UserContext.requireCurrentUser(), cursorId, limit));
     }
 
+    @GetMapping("/my-posts")
+    public ApiResponse<List<WorldPostResponse>> listMyPosts(@RequestParam(required = false) Long cursorId,
+                                                            @RequestParam(required = false) Integer limit) {
+        return ApiResponse.success(worldService.listMyPosts(UserContext.requireCurrentUser(), cursorId, limit));
+    }
+
     @PostMapping("/posts/{postId}/upvote")
     public ApiResponse<Map<String, Object>> toggleUpvote(@PathVariable Long postId) {
         boolean upvoted = worldService.toggleUpvote(UserContext.requireCurrentUser(), postId);

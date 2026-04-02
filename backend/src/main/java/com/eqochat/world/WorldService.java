@@ -43,5 +43,10 @@ public interface WorldService {
      * 点赞 / 取消点赞 回复。
      */
     boolean toggleReplyUpvote(Long viewerId, Long replyId);
+
+    /**
+     * 当前用户自己发布的动态（用于 My Tab 时间线展示）。
+     */
+    List<WorldPostResponse> listMyPosts(Long viewerId, Long cursorId, Integer limit);
 }
 

@@ -22,7 +22,14 @@ export interface WorldPost {
   mediaType?: WorldMediaType | string
   imageUrl?: string
   videoUrl?: string
+  /**
+   * 相对时间显示（如 "now", "15m", "2h", "3d"）
+   */
   timestamp: string
+  /**
+   * 完整的 ISO-8601 时间戳（如 "2026-04-02T10:30:00"），用于时间线分组
+   */
+  createdAt?: string
   upvotes: number
   replies: number
   topics: string[]
@@ -154,6 +161,10 @@ export const worldApi = {
 
   listMentionedMe(params?: { cursorId?: number | string; limit?: number }) {
     return request.get<WorldPost[]>('/api/v1/world/mentions', params)
+  },
+
+  listMyPosts(params?: { cursorId?: number | string; limit?: number }) {
+    return request.get<WorldPost[]>('/api/v1/world/my-posts', params)
   },
 
   toggleUpvote(postId: string | number) {

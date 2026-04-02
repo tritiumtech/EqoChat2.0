@@ -172,6 +172,40 @@ public interface WorldPostMapper extends BaseMapper<WorldPost> {
                                          @Param("cursorId") Long cursorId,
                                          @Param("limit") Integer limit);
 
+    /**
+     * 当前用户自己发布的动态（用于 My Tab 时间线展示）。
+     */
+    @Select("""
+            <script>
+            SELECT p.*,
+                   u.nickname AS author_name,
+                   u.avatar_url AS author_avatar_url,
+                   (CASE WHEN uf.user_id IS NULL THEN 0 ELSE 1 END) AS is_friend,
+                   (CASE WHEN up.user_id IS NULL THEN 0 ELSE 1 END) AS is_upvoted
+            FROM world_post p
+            JOIN user_profile u ON u.id = p.author_id
+            LEFT JOIN user_friend uf
+              ON uf.user_id = #{viewerId}
+             AND uf.friend_id = p.author_id
+             AND uf.del_token = '0'
+             AND uf.status = 'ACTIVE'
+            LEFT JOIN world_post_upvote up
+              ON up.post_id = p.id
+             AND up.user_id = #{viewerId}
+             AND up.del_token = '0'
+            WHERE p.del_token = '0'
+              AND p.author_id = #{viewerId}
+              <if test="cursorId != null">
+                AND p.id &lt; #{cursorId}
+              </if>
+            ORDER BY p.id DESC
+            LIMIT #{limit}
+            </script>
+            """)
+    List<WorldPostRow> selectMyPosts(@Param("viewerId") Long viewerId,
+                                     @Param("cursorId") Long cursorId,
+                                     @Param("limit") Integer limit);
+
     @Select("""
             SELECT t.name
             FROM world_post_topic pt

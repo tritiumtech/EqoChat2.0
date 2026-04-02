@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { useI18n } from 'vue-i18n'
+import { useI18nWithFormat } from '@/composables/useI18nWithFormat'
 
-const { t } = useI18n({ useScope: 'global' })
+const { t, tf } = useI18nWithFormat()
 
 const props = defineProps<{
   label?: string
@@ -12,7 +12,7 @@ const props = defineProps<{
 
 const labelText = computed(() => props.label || t('page.chat.typing_label_default'))
 const avatar = computed(() => props.avatarText || '…')
-const typingText = computed(() => t('page.chat.typing_text', { label: labelText.value }))
+const typingText = computed(() => tf('page.chat.typing_text', { label: labelText.value }))
 
 const safeAvatarColor = computed(() => {
   const v = String(props.avatarColor || '#7c3aed').trim()

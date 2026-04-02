@@ -38,7 +38,11 @@
     "you": "You",
     "dash": "—",
     "or": "OR",
-    "seconds": "{n}s"
+    "seconds": "{n}s",
+    "just_now": "Just now",
+    "minutes_ago": "{n} min ago",
+    "hours_ago": "{n} hr ago",
+    "days_ago": "{n} days ago"
   },
   "action": {
     "start_chat": "Start Chat",
@@ -56,7 +60,10 @@
     "expand": "Expand",
     "collapse": "Collapse",
     "details": "Details",
-    "hide": "Hide"
+    "hide": "Hide",
+    "search": "Search",
+    "clear": "Clear",
+    "view_profile": "View Profile"
   },
   "field": {
     "phone": "Phone",
@@ -99,7 +106,9 @@
     "add_failed": "Failed to add",
     "message_failed": "Failed to send message",
     "download_coming_soon": "Download URL will be available in a later version",
-    "post_published": "Published"
+    "post_published": "Published",
+    "user_not_found": "User not found",
+    "invalid_account": "Please enter valid account information"
   },
   "nav": {
     "chat": "Chats",
@@ -234,13 +243,53 @@
       "recent_activity_empty": "No world posts yet",
       "recent_activity_loading": "Loading…",
       "recent_activity_upvotes": "↑ {n}",
-      "recent_activity_replies": "{n} replies"
+      "recent_activity_replies": "{n} replies",
+      "new_friends": "New Friends",
+      "pending_requests_count": "{n} friend requests",
+      "search_user": "Add Friend",
+      "search_by_id": "User ID",
+      "search_by_phone": "Phone",
+      "search_by_email": "Email",
+      "search_placeholder_id": "Enter user ID",
+      "search_placeholder_phone": "Enter phone number",
+      "search_placeholder_email": "Enter email",
+      "search_placeholder": "Enter user ID, phone, or email",
+      "search_tips": "System will auto-detect account type",
+      "search_history": "Search History",
+      "add_to_contacts": "Add to Contacts",
+      "send_request_title": "Send Friend Request",
+      "request_sent": "Request sent",
+      "request_sent_waiting": "Waiting for verification",
+      "request_received_from": "wants to add you as a friend",
+      "already_friend": "Already friends",
+      "need_friend_to_chat": "You need to add them as a friend first",
+      "user_profile": "User Profile",
+      "no_requests_hint": "You can search to add new friends",
+      "no_sent_requests": "No sent requests",
+      "no_sent_requests_hint": "Go add some new friends",
+      "received_requests": "Received",
+      "sent_requests": "Sent",
+      "request_received_at": "Received at",
+      "request_sent_at": "Sent at",
+      "request_message_label": "Message",
+      "request_accepted": "Added",
+      "request_rejected": "Declined",
+      "request_status_pending": "Pending",
+      "request_status_accepted": "Accepted",
+      "request_status_rejected": "Rejected"
     },
     "world": {
       "title": "World",
+      "timeline_title": "My Posts Timeline",
+      "timeline_total_posts": "{n} total posts",
+      "timeline_months": "{n} months",
+      "timeline_days": "{n} days",
+      "timeline_year": "Year {year}",
+      "timeline_end": "You've reached the beginning of your timeline",
+      "timeline_empty": "No posts yet",
       "tab_posts": "Posts",
       "tab_topics": "Topics",
-      "tab_my": "For me",
+      "tab_my": "My",
       "sort_friends": "Friends first",
       "sort_upvotes": "Upvotes first",
       "sort_topics": "Favorite topics first",
@@ -496,5 +545,6 @@
     "toast": {
       "session_kicked": "Your account has logged in on another device and you have been logged out"
     }
-  }
+  },
+  "pages.contact.user_profile": "User Profile"
 }

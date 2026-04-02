@@ -390,15 +390,39 @@ const updateHistoryState = (page: MessagePageResponse, mapped: ChatMessage[]) =>
 }
 
 const appendChatMessage = (message: ChatMessage, scrollToBottom = true) => {
+  // 三重检查：同时检查 Set 和数组，避免重复添加
+  if (messageIdSet.has(message.id)) {
+    console.error('[appendChatMessage] 消息已在 Set 中存在，跳过添加:', message.id)
+    return
+  }
+  
+  // 额外检查：数组中是否已存在该消息（防止 Set 和数组状态不一致）
+  const existsInArray = messages.value.some(m => m.id === message.id)
+  if (existsInArray) {
+    console.error('[appendChatMessage] 消息已在数组中存在，跳过添加:', message.id)
+    console.error('[appendChatMessage] 当前消息数组 IDs:', messages.value.map(m => m.id))
+    return
+  }
+  
+  console.log('[appendChatMessage] 添加消息:', message.id, '到数组，当前长度:', messages.value.length)
+  
   messageIdSet.add(message.id)
   const pagingRef = paging.value
   
-  // 先添加到 messages 数组，确保 local 属性被保留
-  messages.value.push(message)
-  
+  // 关键修复：先通过 z-paging 的方法添加，让 z-paging 管理数组
   if (pagingRef?.addChatRecordData) {
     pagingRef.addChatRecordData(message, scrollToBottom, true)
   }
+  
+  // z-paging 会通过 v-model 自动更新 messages.value，不需要手动 push
+  // 但为了保险，我们还是检查一下是否已添加
+  const stillNotExists = !messages.value.some(m => m.id === message.id)
+  if (stillNotExists) {
+    console.warn('[appendChatMessage] z-paging 未添加消息，手动添加:', message.id)
+    messages.value.push(message)
+  }
+  
+  console.log('[appendChatMessage] 添加后数组 IDs:', messages.value.map(m => m.id))
   
   if (scrollToBottom) {
     nextTick(() => {
@@ -531,12 +555,22 @@ const { isConnected, sendMessage, sendReadReceipt, sendTyping } = useWebSocket({
     const mt = (payload.messageType || 'TEXT').toString().toUpperCase()
     const attachment = parseAttachmentFromPayload(payload)
     
+    // 使用消息的完整 ID 作为处理标记，防止同一消息被多次处理
+    const processKey = `msg_${id}_${createTime}`
+    
     console.log('[onChatMessage] 收到消息:', { id, senderId, createTime, mt, isSelf: senderId === currentUserId.value })
     console.log('[onChatMessage] messageIdSet:', Array.from(messageIdSet))
     console.log('[onChatMessage] messages 数量:', messages.value.length)
     
+    // 三重检查：检查 Set、数组和消息是否已存在
     if (messageIdSet.has(id)) {
-      console.log('[onChatMessage] 消息已存在，跳过')
+      console.log('[onChatMessage] 消息已在 Set 中存在，跳过:', id)
+      return
+    }
+    
+    const existsInMessages = messages.value.some(m => m.id === id)
+    if (existsInMessages) {
+      console.log('[onChatMessage] 消息已在数组中存在，跳过:', id)
       return
     }
     
@@ -658,9 +692,22 @@ const loadHistory = async () => {
     const pageRaw = await conversationApi.getMessages(conversationId.value, { limit: historyPageSize })
     const page = normalizeMessagePage(pageRaw as unknown as MessagePageResponse | MessageItem[])
     const mapped = (page.items || []).map(toChatMessage)
-    mapped.forEach((item) => messageIdSet.add(item.id))
-    messages.value = mapped
-    updateHistoryState(page, mapped)
+    
+    // 去重：确保没有重复的消息
+    const uniqueMessages: ChatMessage[] = []
+    const seenIds = new Set<string>()
+    for (const msg of mapped) {
+      if (!seenIds.has(msg.id)) {
+        seenIds.add(msg.id)
+        messageIdSet.add(msg.id)
+        uniqueMessages.push(msg)
+      } else {
+        console.warn('[loadHistory] 发现重复消息，跳过:', msg.id)
+      }
+    }
+    
+    messages.value = uniqueMessages
+    updateHistoryState(page, uniqueMessages)
     const latest = messages.value[0]
     if (isPageVisible.value && latest && latest.senderId !== currentUserId.value) {
       syncReadStatus(String(conversationId.value), latest.id)
@@ -688,9 +735,18 @@ const loadMoreHistory = async () => {
       limit: historyPageSize,
     })
     const page = normalizeMessagePage(pageRaw as unknown as MessagePageResponse | MessageItem[])
+    
+    // 去重：过滤掉已存在的消息
     const mapped = (page.items || [])
       .map(toChatMessage)
-      .filter((item) => !messageIdSet.has(item.id))
+      .filter((item) => {
+        if (messageIdSet.has(item.id)) {
+          console.warn('[loadMoreHistory] 发现重复消息，跳过:', item.id)
+          return false
+        }
+        return true
+      })
+    
     mapped.forEach((item) => messageIdSet.add(item.id))
     if (mapped.length > 0) {
       messages.value = [...messages.value, ...mapped]
@@ -861,6 +917,12 @@ const replaceLocalMessage = (
     return false
   }
 
+  // 先检查真实 ID 是否已存在，避免重复
+  if (messageIdSet.has(realId)) {
+    console.log('[replaceLocalMessage] 真实 ID 已存在，跳过:', realId)
+    return true
+  }
+
   const mt = (payload.messageType || 'TEXT').toString().toUpperCase()
   const parsedAttachment = parseAttachmentFromPayload(payload)
   const payloadContent = payload.content || ''
@@ -941,9 +1003,12 @@ const replaceLocalMessage = (
 
   console.log('[replaceLocalMessage] 最终目标索引:', targetIndex)
   if (targetIndex < 0) return false
-  clearPendingTimer(messages.value[targetIndex].id)
-  messageIdSet.delete(messages.value[targetIndex].id)
-  messages.value[targetIndex] = {
+  
+  const oldLocalId = messages.value[targetIndex].id
+  clearPendingTimer(oldLocalId)
+  
+  // 关键修复：创建新数组而不是直接修改，避免与 z-paging v-model 冲突
+  const newMessage: ChatMessage = {
     ...messages.value[targetIndex],
     id: realId,
     createTime,
@@ -955,19 +1020,46 @@ const replaceLocalMessage = (
     messageType: mt,
     attachment: parsedAttachment,
   }
+  
+  // 创建新数组，替换目标消息
+  const newMessages = [
+    ...messages.value.slice(0, targetIndex),
+    newMessage,
+    ...messages.value.slice(targetIndex + 1)
+  ]
+  
+  // 从 Set 中删除旧 ID
+  messageIdSet.delete(oldLocalId)
+  // 添加新 ID 到 Set
   messageIdSet.add(realId)
-  console.log('[replaceLocalMessage] 替换成功')
+  // 替换整个数组（触发 Vue 响应式更新）
+  messages.value = newMessages
+  
+  console.log('[replaceLocalMessage] 替换成功，旧 ID:', oldLocalId, '新 ID:', realId)
   return true
 }
 
 const updateLocalMessage = (localId: string, saved: MessageItem) => {
   const targetIndex = messages.value.findIndex(item => item.id === localId)
-  if (targetIndex < 0) return
+  if (targetIndex < 0) {
+    console.warn('[updateLocalMessage] 未找到本地消息:', localId)
+    return
+  }
+  
+  const realId = String(saved.id)
+  
+  // 检查真实 ID 是否已存在
+  if (messageIdSet.has(realId)) {
+    console.warn('[updateLocalMessage] 真实 ID 已存在，跳过:', realId)
+    return
+  }
+  
   clearPendingTimer(localId)
-  messageIdSet.delete(localId)
-  messages.value[targetIndex] = {
+  
+  // 创建新消息对象
+  const newMessage: ChatMessage = {
     ...messages.value[targetIndex],
-    id: String(saved.id),
+    id: realId,
     createTime: saved.createTime,
     local: false,
     failed: false,
@@ -976,7 +1068,22 @@ const updateLocalMessage = (localId: string, saved: MessageItem) => {
     messageType: (saved.messageType || 'TEXT').toString(),
     attachment: saved.attachment,
   }
-  messageIdSet.add(String(saved.id))
+  
+  // 创建新数组，替换目标消息
+  const newMessages = [
+    ...messages.value.slice(0, targetIndex),
+    newMessage,
+    ...messages.value.slice(targetIndex + 1)
+  ]
+  
+  // 从 Set 中删除旧 ID
+  messageIdSet.delete(localId)
+  // 添加新 ID 到 Set
+  messageIdSet.add(realId)
+  // 替换整个数组（触发 Vue 响应式更新）
+  messages.value = newMessages
+  
+  console.log('[updateLocalMessage] 替换成功，旧 ID:', localId, '新 ID:', realId)
 }
 
 const markLocalFailed = (localId: string) => {

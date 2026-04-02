@@ -33,6 +33,7 @@ import { computed, ref, onMounted } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { useI18n } from 'vue-i18n'
 import { useChatStore } from '@/store/modules/chat'
+import { useFriendRequestStore } from '@/store/modules/friendRequest'
 import { useNotificationStore } from '@/store/modules/notification'
 import { customTabbarEnable, needHideNativeTabbar, tabbarCacheEnable } from './config'
 import type { CustomTabBarItem } from './types'
@@ -40,6 +41,7 @@ import { tabbarList, tabbarStore } from './store'
 
 const { t } = useI18n({ useScope: 'global' })
 const chatStore = useChatStore()
+const friendRequestStore = useFriendRequestStore()
 const notificationStore = useNotificationStore()
 
 const currentRoute = ref('')
@@ -73,6 +75,9 @@ function badgeCount(index: number) {
   if (!item) return 0
   if (item.pagePath === '/pages/chat/chat-list') {
     return chatStore.totalUnread
+  }
+  if (item.pagePath === '/pages/contact/contact-list') {
+    return friendRequestStore.pendingCount
   }
   if (item.pagePath === '/pages/profile/profile') {
     return notificationStore.unreadCount

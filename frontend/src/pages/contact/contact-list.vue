@@ -5,7 +5,7 @@
       action-icon="＋"
       action-variant="primary"
       action-size="md"
-      @action-click="showAddModal = true; addFormError = ''"
+      @action-click="goToSearch"
     >
       <template #search>
         <view class="search-shell">
@@ -13,6 +13,21 @@
         </view>
       </template>
     </PageHeader>
+
+    <!-- 新的朋友入口 -->
+    <view class="new-friends-entry" @click="goToFriendRequests">
+      <view class="new-friends-icon">👋</view>
+      <view class="new-friends-body">
+        <text class="new-friends-title">{{ t('page.contact.new_friends') }}</text>
+        <text v-if="pendingRequestCount > 0" class="new-friends-subtitle">
+          {{ tf('page.contact.pending_requests_count', { n: pendingRequestCount }) }}
+        </text>
+      </view>
+      <view class="new-friends-arrow">
+        <text v-if="pendingRequestCount > 0" class="new-friends-badge">{{ pendingRequestCount > 99 ? '99+' : pendingRequestCount }}</text>
+        <text class="chev">›</text>
+      </view>
+    </view>
 
     <view class="chips-scroll">
       <view class="chips-inner">
@@ -32,19 +47,6 @@
         >
           #{{ topic }}
         </button>
-      </view>
-    </view>
-
-    <view v-if="receivedRequests.length > 0" class="requests-bar">
-      <text class="requests-title">{{ t('page.contact.friend_requests') }} ({{ receivedRequests.length }})</text>
-      <view class="req-scroll">
-        <view v-for="req in receivedRequests" :key="req.id" class="req-card">
-          <text class="req-name">{{ req.requesterNickname || `ID ${req.requesterId}` }}</text>
-          <view class="req-actions">
-            <button class="req-btn accept" @click="handleAccept(req.id)">{{ t('action.accept') }}</button>
-            <button class="req-btn reject" @click="handleReject(req.id)">{{ t('action.reject') }}</button>
-          </view>
-        </view>
       </view>
     </view>
 
@@ -116,67 +118,18 @@
       </view>
     </view>
 
-    <ModalSheet :visible="showAddModal" @close="showAddModal = false; addFormError = ''">
-      <template #header>
-        <view class="modal-header">
-          <view class="modal-icon-wrap">
-            <text class="modal-icon">👋</text>
-          </view>
-          <text class="modal-title">{{ t('action.add_friend') }}</text>
-          <text class="modal-subtitle">{{ t('page.contact.add_modal_subtitle') }}</text>
-        </view>
-      </template>
-      <view class="modal-form">
-        <view class="form-group">
-          <text class="form-label">{{ t('page.contact.add_modal_label_id') }}</text>
-          <view class="input-wrap">
-            <text class="input-prefix">#</text>
-            <input
-              v-model="addForm.friendId"
-              class="input"
-              type="number"
-              :placeholder="t('placeholder.new_contact')"
-            />
-          </view>
-        </view>
-        <view class="form-group">
-          <text class="form-label">{{ t('page.contact.add_modal_label_message') }} <text class="optional">{{ t('page.contact.add_modal_optional') }}</text></text>
-          <view class="textarea-wrap">
-            <textarea
-              v-model="addForm.requestMessage"
-              class="textarea"
-              :placeholder="t('placeholder.friend_request_message')"
-              maxlength="200"
-              :show-confirm-bar="false"
-            />
-            <text class="char-count">{{ addForm.requestMessage.length }}/200</text>
-          </view>
-        </view>
-        <view v-if="addFormError" class="form-error">{{ addFormError }}</view>
-      </view>
-      <template #footer>
-        <view class="modal-footer">
-          <button class="btn-cancel" @click="showAddModal = false">{{ t('toast.cancel') }}</button>
-          <button class="btn-send" @click="sendFriendRequest" :disabled="!addForm.friendId">
-            <text class="btn-send-text">{{ t('action.send_request') }}</text>
-          </button>
-        </view>
-      </template>
-    </ModalSheet>
-
     <FgTabbar />
   </view>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, reactive, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { onPageScroll, onShow } from '@dcloudio/uni-app'
-import { useI18n } from 'vue-i18n'
+import { useI18nWithFormat } from '@/composables/useI18nWithFormat'
 import { contactApi, type ContactItem as Contact } from '@/api/modules/contact'
 import { friendRequestApi, type FriendRequestItem } from '@/api/modules/friendRequest'
 import { useUserStore } from '@/store/modules/user'
 import { getApiErrorMessage } from '@/utils/request'
-import ModalSheet from '@/components/ModalSheet.vue'
 import SearchBar from '@/components/SearchBar.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import FgTabbar from '@/tabbar/index.vue'
@@ -184,16 +137,16 @@ import FgTabbar from '@/tabbar/index.vue'
 const contacts = ref<Contact[]>([])
 const receivedRequests = ref<FriendRequestItem[]>([])
 const loading = ref(false)
-const showAddModal = ref(false)
-const addFormError = ref('')
-const addForm = reactive({ friendId: '', requestMessage: '' })
 const userStore = useUserStore()
-const { t } = useI18n({ useScope: 'global' })
+const { t, tf } = useI18nWithFormat()
 
 const searchQuery = ref('')
 const tagFilter = ref('all')
 const pageScrollTop = ref(0)
 let queryTimer: number | null = null
+
+// 待处理的好友申请数量
+const pendingRequestCount = computed(() => receivedRequests.value.length)
 
 const avatarHue = (s: string) => {
   const hues = ['#14B8A6', '#3B82F6', '#8B5CF6', '#EC4899', '#F59E0B', '#10B981', '#6366F1', '#EF4444']
@@ -263,6 +216,24 @@ const goDetail = (id: number) => {
   uni.navigateTo({ url: '/pages/contact/contact-detail?id=' + id })
 }
 
+// 跳转到搜索用户页面
+const goToSearch = () => {
+  if (!userStore.isLoggedIn) {
+    uni.reLaunch({ url: '/pages/auth/login' })
+    return
+  }
+  uni.navigateTo({ url: '/pages/contact/user-search' })
+}
+
+// 跳转到新的朋友页面
+const goToFriendRequests = () => {
+  if (!userStore.isLoggedIn) {
+    uni.reLaunch({ url: '/pages/auth/login' })
+    return
+  }
+  uni.navigateTo({ url: '/pages/contact/friend-requests' })
+}
+
 const fetchContacts = async () => {
   loading.value = true
   try {
@@ -284,50 +255,6 @@ const fetchReceivedRequests = async () => {
     receivedRequests.value = await friendRequestApi.listReceived()
   } catch {
     receivedRequests.value = []
-  }
-}
-
-const sendFriendRequest = async () => {
-  addFormError.value = ''
-  const friendId = Number(addForm.friendId)
-  if (!friendId) {
-    addFormError.value = t('placeholder.new_contact')
-    return
-  }
-  try {
-    await friendRequestApi.sendRequest({
-      friendId,
-      requestMessage: addForm.requestMessage?.trim() || undefined
-    })
-    showAddModal.value = false
-    addForm.friendId = ''
-    addForm.requestMessage = ''
-    addFormError.value = ''
-    uni.showToast({ title: t('toast.request_sent') })
-    fetchReceivedRequests()
-  } catch (err: any) {
-    addFormError.value = getApiErrorMessage(err, t('toast.add_failed'))
-  }
-}
-
-const handleAccept = async (id: number) => {
-  try {
-    await friendRequestApi.accept(id)
-    fetchContacts()
-    fetchReceivedRequests()
-    uni.showToast({ title: t('toast.request_accepted') })
-  } catch (err: any) {
-    uni.showToast({ title: err?.message || t('toast.load_failed'), icon: 'none' })
-  }
-}
-
-const handleReject = async (id: number) => {
-  try {
-    await friendRequestApi.reject(id)
-    fetchReceivedRequests()
-    uni.showToast({ title: t('toast.request_rejected') })
-  } catch (err: any) {
-    uni.showToast({ title: err?.message || t('toast.load_failed'), icon: 'none' })
   }
 }
 
@@ -360,54 +287,10 @@ watch(searchQuery, () => {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  /* 对齐 Chatinterfacedesign theme：--background #ffffff（ContactsPage 主底为白） */
   background: #ffffff;
   box-sizing: border-box;
 }
 
-.head {
-  flex-shrink: 0;
-  padding: calc(var(--status-bar-height) + 20rpx) 32rpx 16rpx;
-  background: #ffffff;
-  border-bottom: 1rpx solid rgba(0, 0, 0, 0.06);
-  box-shadow: 0 1rpx 0 rgba(0, 0, 0, 0.04);
-}
-
-.head-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 20rpx;
-}
-
-.screen-title {
-  font-size: 40rpx;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  color: var(--c-ink);
-}
-
-.add-btn {
-  width: 80rpx;
-  height: 80rpx;
-  padding: 0;
-  margin: 0;
-  border: none;
-  border-radius: var(--radius-lg);
-  background: linear-gradient(135deg, var(--c-primary) 0%, var(--c-primary-deep) 100%);
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 10rpx 20rpx rgba(3, 2, 19, 0.22);
-}
-
-.add-btn:active {
-  opacity: 0.92;
-  transform: scale(0.96);
-}
-
-/* 对齐 ContactsPage：搜索框浅底 + 细边框 + 圆角 */
 .search-shell {
   width: 100%;
 }
@@ -420,6 +303,76 @@ watch(searchQuery, () => {
 
 .search-shell :deep(.u-search__content__input) {
   font-size: 26rpx !important;
+}
+
+/* 新的朋友入口 */
+.new-friends-entry {
+  display: flex;
+  align-items: center;
+  gap: 24rpx;
+  padding: 24rpx 32rpx;
+  background: #ffffff;
+  border-bottom: 1rpx solid rgba(0, 0, 0, 0.06);
+}
+
+.new-friends-entry:active {
+  background: rgba(3, 2, 19, 0.03);
+}
+
+.new-friends-icon {
+  width: 80rpx;
+  height: 80rpx;
+  border-radius: var(--radius-lg);
+  background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 40rpx;
+  flex-shrink: 0;
+}
+
+.new-friends-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+}
+
+.new-friends-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: var(--c-ink);
+}
+
+.new-friends-subtitle {
+  font-size: 24rpx;
+  color: var(--c-muted);
+}
+
+.new-friends-arrow {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+}
+
+.new-friends-badge {
+  min-width: 36rpx;
+  height: 36rpx;
+  padding: 0 12rpx;
+  border-radius: 999rpx;
+  background: rgba(239, 68, 68, 0.95);
+  color: #fff;
+  font-size: 22rpx;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.chev {
+  font-size: 36rpx;
+  color: var(--c-muted);
 }
 
 .chips-scroll {
@@ -462,80 +415,6 @@ watch(searchQuery, () => {
   box-shadow: 0 4rpx 12rpx rgba(3, 2, 19, 0.12);
 }
 
-.requests-bar {
-  flex-shrink: 0;
-  padding: 16rpx 0 12rpx;
-  background: #ffffff;
-  border-bottom: 1rpx solid rgba(0, 0, 0, 0.06);
-}
-
-.requests-title {
-  display: block;
-  font-size: 24rpx;
-  font-weight: 600;
-  color: var(--c-muted);
-  padding: 0 32rpx 12rpx;
-}
-
-.req-scroll {
-  white-space: nowrap;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-}
-
-.req-scroll::-webkit-scrollbar {
-  display: none;
-}
-
-.req-card {
-  display: inline-flex;
-  flex-direction: column;
-  gap: 12rpx;
-  margin-left: 32rpx;
-  padding: 20rpx 24rpx;
-  min-width: 260rpx;
-  background: rgba(243, 243, 245, 0.85);
-  border: 1rpx solid rgba(0, 0, 0, 0.06);
-  border-radius: var(--radius-lg);
-  vertical-align: top;
-  box-shadow: 0 8rpx 20rpx rgba(0, 0, 0, 0.04);
-}
-
-.req-card:last-child {
-  margin-right: 32rpx;
-}
-
-.req-name {
-  font-size: 26rpx;
-  font-weight: 600;
-  color: var(--c-ink);
-}
-
-.req-actions {
-  display: flex;
-  gap: 12rpx;
-}
-
-.req-btn {
-  flex: 1;
-  padding: 8rpx 16rpx;
-  font-size: 22rpx;
-  font-weight: 600;
-  border-radius: var(--radius-pill);
-  border: none;
-  margin: 0;
-}
-
-.req-btn.accept {
-  background: rgba(16, 185, 129, 0.2);
-  color: #047857;
-}
-
-.req-btn.reject {
-  background: rgba(26, 23, 32, 0.06);
-  color: var(--c-muted);
-}
-
 .list-zone {
   flex: 0 0 auto;
   min-height: 0;
@@ -548,12 +427,6 @@ watch(searchQuery, () => {
   padding-right: 72rpx;
   padding-bottom: var(--page-pad-bottom-tabbar);
   box-sizing: border-box;
-}
-
-.native-scroll {
-  min-height: 0;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
 }
 
 .section {
@@ -747,171 +620,5 @@ watch(searchQuery, () => {
 
 .scroll-pad {
   height: 48rpx;
-}
-
-.modal-header {
-  text-align: center;
-  padding: 12rpx 0 24rpx;
-}
-
-.modal-icon-wrap {
-  width: 96rpx;
-  height: 96rpx;
-  margin: 0 auto 20rpx;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.9);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.modal-icon {
-  font-size: 48rpx;
-}
-
-.modal-title {
-  font-size: 36rpx;
-  font-weight: 700;
-  color: var(--c-ink);
-  display: block;
-}
-
-.modal-subtitle {
-  font-size: 24rpx;
-  color: var(--c-muted);
-  margin-top: 12rpx;
-  display: block;
-  line-height: 1.5;
-}
-
-.modal-form {
-  display: flex;
-  flex-direction: column;
-  gap: 28rpx;
-  padding: 8rpx 0;
-}
-
-.form-group {
-  display: flex;
-  flex-direction: column;
-  gap: 12rpx;
-}
-
-.form-label {
-  font-size: 26rpx;
-  font-weight: 600;
-  color: var(--c-ink);
-}
-
-.optional {
-  font-weight: 400;
-  color: var(--c-muted);
-  font-size: 24rpx;
-}
-
-.input-wrap {
-  display: flex;
-  align-items: center;
-  background: #f8f8fb;
-  border: 2rpx solid rgba(3, 2, 19, 0.12);
-  border-radius: var(--radius-lg);
-  padding: 0 24rpx;
-}
-
-.input-prefix {
-  font-size: 28rpx;
-  font-weight: 600;
-  color: var(--c-primary);
-  margin-right: 8rpx;
-}
-
-.modal-form .input {
-  flex: 1;
-  height: 88rpx;
-  background: transparent;
-  font-size: 30rpx;
-  color: var(--c-ink);
-}
-
-.textarea-wrap {
-  position: relative;
-  background: #f8f8fb;
-  border: 2rpx solid rgba(3, 2, 19, 0.12);
-  border-radius: var(--radius-lg);
-  padding: 24rpx;
-  min-height: 160rpx;
-}
-
-.modal-form .textarea {
-  width: 100%;
-  min-height: 120rpx;
-  background: transparent;
-  font-size: 28rpx;
-  color: var(--c-ink);
-}
-
-.char-count {
-  position: absolute;
-  right: 24rpx;
-  bottom: 16rpx;
-  font-size: 22rpx;
-  color: var(--c-muted);
-}
-
-.form-error {
-  padding: 16rpx;
-  font-size: 26rpx;
-  color: #e53e3e;
-  background: rgba(229, 62, 62, 0.08);
-  border-radius: var(--radius-md);
-}
-
-.modal-footer {
-  display: flex;
-  gap: 24rpx;
-  padding-top: 24rpx;
-  border-top: 1rpx solid var(--c-border);
-}
-
-.btn-cancel {
-  flex: 1;
-  height: 88rpx;
-  line-height: 88rpx;
-  font-size: 28rpx;
-  color: var(--c-ink);
-  background: rgba(3, 2, 19, 0.06);
-  border-radius: var(--radius-lg);
-  border: 1rpx solid rgba(3, 2, 19, 0.12);
-  margin: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.btn-send {
-  flex: 1;
-  height: 88rpx;
-  line-height: 88rpx;
-  font-size: 28rpx;
-  font-weight: 700;
-  color: #fff;
-  background: linear-gradient(135deg, var(--c-primary) 0%, var(--c-primary-deep) 100%);
-  border-radius: var(--radius-lg);
-  border: 1rpx solid rgba(3, 2, 19, 0.2);
-  margin: 0;
-  box-shadow: 0 8rpx 18rpx rgba(3, 2, 19, 0.18);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.btn-send-text {
-  color: #fff;
-  font-weight: 700;
-}
-
-.btn-send[disabled] {
-  opacity: 0.45;
-  box-shadow: none;
 }
 </style>

@@ -110,22 +110,43 @@
         </view>
       </view>
 
-      <!-- “我的” Tab：后端提供的提及我的动态列表，作为轻量个人时间线 -->
-      <view v-else class="scroll-feed">
-        <view v-if="mentionedPosts.length === 0" class="feed-empty">
-          <text>{{ t('common.empty_conversation') }}</text>
-        </view>
-        <WorldPostCard
-          v-for="post in mentionedPosts"
-          :key="post.id"
-          :post="post"
-          @open-detail="detailTarget = post"
-          @upvote="() => toggleUpvote(post)"
-          @reply="() => onReplyTap(post)"
-          @share="openShare(post)"
+      <!-- "我的" Tab：个人时间线，支持时间索引和按月分组 -->
+      <view v-else class="my-tab-wrap">
+        <!-- Timeline Header with Index -->
+        <TimelineHeader
+          :title="t('page.world.timeline_title')"
+          :total-posts="myPosts.length"
+          :show-index="showTimelineIndex"
+          :timeline-structure="timelineStructure"
+          :expanded-years="expandedYears"
+          :expanded-months="expandedMonths"
+          @update:show-index="showTimelineIndex = $event"
+          @toggle-year="toggleYear"
+          @toggle-month="toggleMonth"
         />
-        <view v-if="mentionedPosts.length > 0" class="feed-end">
-          <text>没有更多内容了</text>
+
+        <!-- Month-Segmented Posts -->
+        <view class="timeline-content">
+          <view v-if="myPosts.length === 0" class="feed-empty">
+            <text>{{ t('page.world.timeline_empty') }}</text>
+          </view>
+
+          <template v-else>
+            <MonthGroup
+              v-for="(monthGroup, groupIndex) in postsByMonth"
+              :key="`${monthGroup.year}-${monthGroup.month}`"
+              :month-group="monthGroup"
+              :group-index="groupIndex"
+              :all-groups="postsByMonth"
+              @post-click="detailTarget = $event"
+              @post-upvote="toggleUpvote($event)"
+              @post-reply="onReplyTap($event)"
+              @post-share="openShare($event)"
+            />
+
+            <!-- End of Timeline -->
+            <TimelineEnd :label="t('page.world.timeline_end')" />
+          </template>
         </view>
       </view>
     </template>
@@ -191,7 +212,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
-import { useI18n } from 'vue-i18n'
+import { useI18nWithFormat } from '@/composables/useI18nWithFormat'
 import { worldApi, type WorldMediaType, type WorldPost, type WorldSort, type WorldTopic } from '@/api/modules/world'
 import { contactApi, type ContactItem } from '@/api/modules/contact'
 import { getApiErrorMessage } from '@/utils/request'
@@ -202,9 +223,12 @@ import WorldPostDetail from '@/components/world/WorldPostDetail.vue'
 import WorldNewPostModal from '@/components/world/WorldNewPostModal.vue'
 import WorldReplyModal from '@/components/world/WorldReplyModal.vue'
 import WorldShareModal from '@/components/world/WorldShareModal.vue'
+import TimelineHeader from '@/components/world/TimelineHeader.vue'
+import MonthGroup from '@/components/world/MonthGroup.vue'
+import TimelineEnd from '@/components/world/TimelineEnd.vue'
 import FgTabbar from '@/tabbar/index.vue'
 
-const { t } = useI18n({ useScope: 'global' })
+const { t, tf } = useI18nWithFormat()
 
 type SortOption = WorldSort
 
@@ -217,7 +241,13 @@ const posts = ref<WorldPost[]>([])
 const topicList = ref<WorldTopic[]>([])
 const topicPosts = ref<WorldPost[]>([])
 const mentionedPosts = ref<WorldPost[]>([])
+const myPosts = ref<WorldPost[]>([])
 const loading = ref(false)
+
+// Timeline state
+const showTimelineIndex = ref(false)
+const expandedYears = ref<Set<string>>(new Set(['2026']))
+const expandedMonths = ref<Set<string>>(new Set(['2026-03']))
 
 const showNewPostModal = ref(false)
 const newPostContent = ref('')
@@ -293,6 +323,48 @@ const sortedPosts = computed(() => {
   })
 })
 
+// Timeline structure: { year: { month: [days] } }
+const timelineStructure = computed(() => {
+  const structure: { [year: string]: { [month: string]: string[] } } = {}
+  myPosts.value.forEach(post => {
+    const date = parseTimestamp(post)
+    const year = String(date.year)
+    const month = date.month
+    const day = String(date.day)
+
+    if (!structure[year]) structure[year] = {}
+    if (!structure[year][month]) structure[year][month] = []
+    if (!structure[year][month].includes(day)) {
+      structure[year][month].push(day)
+    }
+  })
+  return structure
+})
+
+// Group posts by year-month
+const postsByMonth = computed(() => {
+  const grouped: { [key: string]: { year: string; month: string; day: number; posts: WorldPost[] } } = {}
+  
+  myPosts.value.forEach(post => {
+    const date = parseTimestamp(post)
+    const year = String(date.year)
+    const month = date.month
+    const day = date.day
+    const key = `${year}-${month}-${day}`
+    
+    if (!grouped[key]) {
+      grouped[key] = { year, month, day, posts: [] }
+    }
+    grouped[key].posts.push(post)
+  })
+
+  return Object.values(grouped).sort((a, b) => {
+    if (a.year !== b.year) return parseInt(b.year) - parseInt(a.year)
+    const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+    return months.indexOf(b.month) - months.indexOf(a.month)
+  })
+})
+
 const canSubmitPost = computed(() => {
   const text = String(newPostContent.value || '').trim()
   return !!(text || localImagePath.value || localVideoPath.value)
@@ -308,11 +380,60 @@ const mediaTip = computed(() => {
   return t('page.world.media_tip_text')
 })
 
+// Helper: Parse timestamp from createdAt (ISO-8601 format: "2026-04-02T15:35:25")
+function parseTimestamp(post: { timestamp?: string; createdAt?: string }): { year: number; month: string; day: number } {
+  const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+  
+  // Use createdAt directly - it's in ISO-8601 format
+  if (post.createdAt) {
+    // Parse "2026-04-02T15:35:25" directly
+    const datePart = post.createdAt.split('T')[0] // "2026-04-02"
+    const [yearStr, monthStr, dayStr] = datePart.split('-')
+    
+    const year = parseInt(yearStr)
+    const month = parseInt(monthStr) - 1 // JS months are 0-based
+    const day = parseInt(dayStr)
+    
+    return {
+      year: year,
+      month: months[month],
+      day: day,
+    }
+  }
+  
+  // Fallback: use current date if createdAt is missing
+  const now = new Date()
+  return {
+    year: now.getFullYear(),
+    month: months[now.getMonth()],
+    day: now.getDate(),
+  }
+}
+
+function toggleYear(year: string) {
+  const newExpanded = new Set(expandedYears.value)
+  if (newExpanded.has(year)) {
+    newExpanded.delete(year)
+  } else {
+    newExpanded.add(year)
+  }
+  expandedYears.value = newExpanded
+}
+
+function toggleMonth(monthKey: string) {
+  const newExpanded = new Set(expandedMonths.value)
+  if (newExpanded.has(monthKey)) {
+    newExpanded.delete(monthKey)
+  } else {
+    newExpanded.add(monthKey)
+  }
+  expandedMonths.value = newExpanded
+}
+
 function normalizeMediaUrl(url?: string): string | undefined {
   const value = String(url || '').trim()
   if (!value || value === 'null' || value === 'undefined') return undefined
   if (value === '-' || value === '--' || value === 'N/A' || value === 'n/a') return undefined
-  // 明显非 URL 的垃圾值，直接降级避免出现空媒体占位
   if (!/^https?:\/\//i.test(value) && !value.startsWith('/api/') && !value.startsWith('/uploads/')) {
     return undefined
   }
@@ -491,16 +612,13 @@ async function submitReply() {
   try {
     await worldApi.createReply(replyTarget.value.id, {
       content: replyContent.value.trim(),
-      // 简化：目前仅支持对动态本身回复，不在前端区分 parentId，后续如需对评论再回复可在这里加 parentId
     })
-    // 刷新当前列表，确保 replyCount 即时一致
     if (selectedTopic.value) {
       await openTopic(selectedTopic.value)
     } else {
       await loadPosts()
     }
     uni.showToast({ title: t('toast.post_published'), icon: 'success' })
-    // 如果当前在详情页，尝试刷新该动态的回复列表
     if (detailRef.value && typeof detailRef.value.loadReplies === 'function') {
       detailRef.value.loadReplies()
     }
@@ -629,6 +747,15 @@ const loadMentionedPosts = async () => {
   }
 }
 
+const loadMyPosts = async () => {
+  try {
+    const list = await worldApi.listMyPosts({ limit: 100 })
+    myPosts.value = list.map(normalizePost)
+  } catch (err: any) {
+    uni.showToast({ title: getApiErrorMessage(err, t('toast.load_failed')), icon: 'none' })
+  }
+}
+
 const openTopic = async (name: string) => {
   selectedTopic.value = name
   try {
@@ -648,6 +775,7 @@ async function toggleUpvote(post: WorldPost) {
     const update = (p: WorldPost) => ({ ...p, upvoted: nextUpvoted, upvotes: Math.max(0, (p.upvotes || 0) + delta) })
     posts.value = posts.value.map((p) => (p.id === post.id ? update(p) : p))
     topicPosts.value = topicPosts.value.map((p) => (p.id === post.id ? update(p) : p))
+    myPosts.value = myPosts.value.map((p) => (p.id === post.id ? update(p) : p))
   } catch (err: any) {
     uni.showToast({ title: getApiErrorMessage(err, t('toast.load_failed')), icon: 'none' })
   }
@@ -682,7 +810,6 @@ onShow(() => {
   loadPosts()
 })
 
-
 watch(sortBy, () => {
   if (activeTab.value === 'posts') loadPosts()
 })
@@ -693,7 +820,7 @@ watch(activeTab, (v) => {
   } else if (v === 'topics') {
     loadTopics()
   } else if (v === 'my') {
-    loadMentionedPosts()
+    loadMyPosts()
   }
 })
 
@@ -794,7 +921,6 @@ watch(selectedTopic, (v) => {
   color: var(--c-muted);
 }
 
-
 .scroll-feed {
   padding: 24rpx;
   padding-bottom: var(--page-pad-bottom-tabbar);
@@ -817,5 +943,17 @@ watch(selectedTopic, (v) => {
   color: var(--c-muted);
   font-size: 22rpx;
   padding: 8rpx 0 24rpx;
+}
+
+/* My Tab - Timeline Layout */
+.my-tab-wrap {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  padding-bottom: var(--page-pad-bottom-tabbar);
+}
+
+.timeline-content {
+  padding: 24rpx;
 }
 </style>

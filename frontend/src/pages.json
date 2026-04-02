@@ -58,8 +58,8 @@
       "path": "pages/chat/chat-list",
       "type": "page",
       "style": {
-       "navigationBarTitleText": "",
-       "navigationStyle": "custom"
+        "navigationBarTitleText": "",
+        "navigationStyle": "custom"
       }
     },
     {
@@ -86,6 +86,30 @@
       "type": "page",
       "style": {
         "navigationBarTitleText": "%pages.contact.detail.title%"
+      }
+    },
+    {
+      "path": "pages/contact/user-search",
+      "type": "page",
+      "style": {
+        "navigationBarTitleText": "",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/contact/user-profile",
+      "type": "page",
+      "style": {
+        "navigationBarTitleText": "",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/contact/friend-requests",
+      "type": "page",
+      "style": {
+        "navigationBarTitleText": "",
+        "navigationStyle": "custom"
       }
     },
     {

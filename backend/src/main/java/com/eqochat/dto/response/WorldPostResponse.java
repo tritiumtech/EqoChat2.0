@@ -19,6 +19,10 @@ public class WorldPostResponse {
     private String imageUrl;
     private String videoUrl;
     private String timestamp;
+    /**
+     * 完整的时间戳（ISO-8601 格式），用于前端计算年/月/日分组
+     */
+    private String createdAt;
     private int upvotes;
     private int replies;
     private List<String> topics;

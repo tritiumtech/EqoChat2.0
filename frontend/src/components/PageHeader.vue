@@ -2,22 +2,11 @@
   <view class="page-header" :style="customStyle">
     <view class="safe-area-top" />
 
-    <!-- 返回行（详情页模式） -->
-    <view v-if="hasBackRow" class="back-row">
-      <slot name="back">
-        <view v-if="backText" class="back-link" @click="handleBackClick">
-          <text class="back-glyph">←</text>
-          <text class="back-text">{{ backText }}</text>
-        </view>
-      </slot>
-
-      <view class="back-row-actions">
-        <slot name="back-actions" />
+    <!-- 单行模式：返回图标 + 标题 -->
+    <view v-if="title" class="header-row">
+      <view v-if="showBackIcon" class="back-icon-btn" @click="handleBackClick">
+        <text class="back-icon">←</text>
       </view>
-    </view>
-
-    <!-- 标题行 -->
-    <view class="header-row">
       <view class="titles">
         <slot name="title-prefix" />
         <text class="screen-title">{{ title }}</text>
@@ -33,6 +22,14 @@
             @click="handleActionClick"
           />
         </slot>
+      </view>
+    </view>
+
+    <!-- 纯返回行模式（无标题） -->
+    <view v-else-if="showBackIcon" class="back-only-row">
+      <view class="back-link" @click="handleBackClick">
+        <text class="back-glyph">←</text>
+        <text v-if="backText" class="back-text">{{ backText }}</text>
       </view>
     </view>
 
@@ -53,29 +50,29 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
 import IconBtn from './IconBtn.vue'
 
 type ActionVariant = 'default' | 'bordered' | 'primary' | 'ghost'
 type ActionSize = 'sm' | 'md' | 'lg'
 
 const props = withDefaults(defineProps<{
-  title: string
+  title?: string
   subtitle?: string
   actionIcon?: string
   actionVariant?: ActionVariant
   actionSize?: ActionSize
   hasTabs?: boolean
   customStyle?: Record<string, string | number>
-  hasBackRow?: boolean
+  showBackIcon?: boolean
   backText?: string
 }>(), {
+  title: '',
   subtitle: '',
   actionIcon: '',
   actionVariant: 'bordered',
   actionSize: 'md',
   hasTabs: false,
-  hasBackRow: false,
+  showBackIcon: false,
   backText: ''
 })
 
@@ -110,7 +107,7 @@ const handleBackClick = () => {
   display: none;
 }
 
-.back-row {
+.back-only-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -139,19 +136,30 @@ const handleBackClick = () => {
   color: var(--c-primary);
 }
 
-.back-row-actions {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  gap: 10rpx;
-}
-
 .header-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16rpx;
-  margin-bottom: 16rpx;
+  gap: 12rpx;
+   margin-bottom: 16rpx;
+}
+
+.back-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56rpx;
+  height: 56rpx;
+  border-radius: 16rpx;
+  margin-right: 4rpx;
+}
+
+.back-icon-btn:active {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.back-icon {
+  font-size: 32rpx;
+  color: var(--c-ink);
 }
 
 .titles {
@@ -189,6 +197,6 @@ const handleBackClick = () => {
 }
 
 .tabs {
-  margin-top: 4rpx;
+  margin-top: 12rpx;
 }
 </style>

@@ -466,6 +466,21 @@ public class WorldServiceImpl implements WorldService {
         return true;
     }
 
+    @Override
+    public List<WorldPostResponse> listMyPosts(Long viewerId, Long cursorId, Integer limit) {
+        int size = sanitizeLimit(limit, DEFAULT_LIMIT);
+        List<WorldPostMapper.WorldPostRow> rows = worldPostMapper.selectMyPosts(viewerId, cursorId, size);
+        if (rows.isEmpty()) return List.of();
+
+        Map<Long, List<String>> topicsByPostId = rows.stream()
+                .map(WorldPostMapper.WorldPostRow::getId)
+                .collect(Collectors.toMap(id -> id, worldPostMapper::selectTopicNamesByPostId));
+
+        return rows.stream()
+                .map(r -> toPostResponse(r, topicsByPostId.getOrDefault(r.getId(), List.of())))
+                .toList();
+    }
+
     private static int sanitizeLimit(Integer limit, int fallback) {
         if (limit == null) return fallback;
         if (limit <= 0) return fallback;
@@ -497,6 +512,7 @@ public class WorldServiceImpl implements WorldService {
                 .imageUrl(r.getImageUrl())
                 .videoUrl(r.getVideoUrl())
                 .timestamp(WorldPostResponse.formatTime(r.getCreateTime()))
+                .createdAt(r.getCreateTime() != null ? r.getCreateTime().toString() : null)
                 .upvotes(nvl(r.getUpvoteCount()))
                 .replies(nvl(r.getReplyCount()))
                 .topics(topics)
@@ -523,6 +539,7 @@ public class WorldServiceImpl implements WorldService {
                 .imageUrl(post.getImageUrl())
                 .videoUrl(post.getVideoUrl())
                 .timestamp(WorldPostResponse.formatTime(post.getCreateTime()))
+                .createdAt(post.getCreateTime() != null ? post.getCreateTime().toString() : null)
                 .upvotes(0)
                 .replies(0)
                 .topics(topics)
