@@ -1,0 +1,125 @@
+---
+description: EqoChat 后端多模块架构规范：包命名、依赖关系、职责分层、新增模块步骤（新增代码必须遵守）
+globs:
+  - "backend/**/*.java"
+  - "backend/**/pom.xml"
+alwaysApply: true
+---
+
+# EqoChat 后端多模块架构规则
+
+所有新增代码、新增模块必须遵守本规则，如与单块结构有冲突，以本规则为准。
+
+---
+
+## 1. 目录与包名约定
+
+### 三层结构（固定）
+- `eqochat-framework/`：**框架层**，无业务，只提供基础设施（数据源、安全、文件、Redis、短信、WebSocket）。
+- `eqochat-business/`：**业务层**，按业务域拆分，每个域下有两个子模块：
+  - `eqochat-<domain>-parent/`：聚合模块（仅 `pom.xml`，无代码）
+    - `<domain>-api/`：对外契约（Service 接口、DTO、实体、`package-info`）
+    - `<domain>/`：业务实现（`controller`、`service/impl`、`mapper`、可选的 `config`）
+- `eqochat-server/`：**启动层**，仅 `@SpringBootApplication` 类、全局配置、基础设施 Controller（健康检查、文件上传）。
+
+### 包命名规范
+- **业务实体**：`com.eqochat.business.<domain>.entity`（如 `UserProfile` 位于 `user`，`WorldPost` 位于 `world`）
+- **Mapper**：`com.eqochat.business.<domain>.mapper`，统一由 `eqochat-server` 的 `@MapperScan({"com.eqochat.business.*.mapper"})` 扫描。
+- **API 服务**：`com.eqochat.business.<domain>.api.service`（仅接口，不包含实现）。
+- **DTO**：`com.eqochat.business.<domain>.api.dto.request` / `.response`。
+- **实现**：`com.eqochat.business.<domain>.service.impl`、`com.eqochat.business.<domain>.controller`。
+- **框架层**：`com.eqochat.framework.<module>`（如 `framework.file`、`framework.datasource`）。
+- **新包必须加** `package-info.java`，用中文说明该包职责。
+
+---
+
+## 2. 依赖关系规范
+
+### 业务层依赖的“三原则”
+1. **-api 层依赖最小化**：只依赖 `spring-boot-starter-validation`、`lombok`、`mybatis-plus-extension`（provided），不依赖具体实现。
+2. **-impl 层依赖 -api（provided）**：同一个域下，实现模块对 `*-api` 用 `<scope>provided</scope>`，避免重复打包。
+3. **跨域依赖只能依赖对方 -api**：
+   - 例如 `user` 需要调用 `chat` 的会话 → `user` 只依赖 `eqochat-chat-api`，**不要依赖** `eqochat-chat` 实现。
+   - 例如 `project` 需要访问 `agent` 的 `AgentProfile` → `project` 依赖 `eqochat-agent-api` + `eqochat-agent`（或在 `agent-api` 暴露查询接口）。
+
+### 框架层与业务层
+- **framework 层不依赖 business 层**，只提供 SPI 或接口。
+- **business 层可依赖 framework 层**（如 `framework-common`、`framework-datasource` 等）。
+
+### 启动层
+- `eqochat-server` 聚合所有业务实现模块（`eqochat-user`、`eqochat-chat` 等），作为唯一运行入口。
+- `@EnableConfigurationProperties` 放在 `eqochat-server` 的启动类上，不在业务模块做全局启用。
+
+---
+
+## 3. 跨域访问的模式
+
+当模块 A 需要访问模块 B 的数据时，优先按以下顺序选择方案：
+
+### 方案 1：在 B-api 暴露 Service 接口
+在 `eqochat-<B>-api` 中新增 `XxxApi` 接口，在 `eqochat-<B>` 实现该接口。
+- 示例：`user` / `contact` 需要统计世界动态数 → `eqochat-world-api` 提供 `WorldPostStatsApi.countByAuthorId()`。
+
+### 方案 2：在 A 实现模块直接依赖 B 实现（仅用于实体 / Mapper，不推荐）
+- 例如 `agent` 需要读写 `credit` 的 `CreditRecord` → `agent` 依赖 `eqochat-credit`，import `com.eqochat.business.credit.entity.CreditRecord` 与 `mapper`。
+- **注**：仅在数据强耦合且 `credit` 已提供足够细粒度接口不可行时使用；尽量先考虑方案 1。
+
+---
+
+## 4. 新增业务模块的步骤（参考模板）
+
+如需新增业务模块 `<new-domain>`，严格按以下步骤：
+
+### a）创建聚合父模块（`eqochat-business/eqochat-<new-domain>-parent/`）
+```xml
+<!-- pom.xml -->
+<packaging>pom</packaging>
+<modules>
+  <module>eqochat-<new-domain>-api</module>
+  <module>eqochat-<new-domain></module>
+</modules>
+```
+
+### b）在 `eqochat-business/pom.xml` 的 `<modules>` 中加入 `eqochat-<new-domain>-parent`
+
+### c）创建 `*-api` 模块
+- 包结构：
+  - `com.eqochat.business.<new-domain>.api.service/`（接口）
+  - `com.eqochat.business.<new-domain>.api.dto.request/` / `.response/`（DTO）
+  - `com.eqochat.business.<new-domain>.entity/`（实体，如果被其它模块共用，放在 api；不共用则可放在实现）
+  - `com.eqochat.business.<new-domain>.api/package-info.java`
+- `pom.xml` 至少依赖：
+  - `eqochat-framework-common`
+  - `spring-boot-starter-validation`
+  - `lombok`
+  - `mybatis-plus-extension`（`scope` 为 `provided`，如需实体使用 MyBatisPlus 注解）
+
+### d）创建实现模块 `<new-domain>`
+- 包结构：
+  - `com.eqochat.business.<new-domain>.controller/`
+  - `com.eqochat.business.<new-domain>.service.impl/`
+  - `com.eqochat.business.<new-domain>.mapper/`（`@Mapper` 接口）
+  - `com.eqochat.business.<new-domain>.config/`（可选，`@ConfigurationProperties` 等）
+- `pom.xml` 依赖：
+  - `eqochat-<new-domain>-api`（`scope` 为 `provided`）
+  - `eqochat-framework-datasource`、`spring-boot-starter-web` 等
+  - 依赖其它模块时，优先依赖 `-api`，再按需加实现依赖。
+
+### e）最后在 `eqochat-server/pom.xml` 的 `<dependencies>` 中加入 `<new-domain>` 实现模块
+
+---
+
+## 5. 配置与扫描收敛
+
+- **MyBatis Mapper 扫描**：只在 `eqochat-server` 的启动类使用一次 `@MapperScan({"com.eqochat.business.*.mapper"})`；**不要**在 `MyBatisPlusConfig` 等地方重复 `@MapperScan`。
+- **Properties 类**：放在对应模块的 `config` 包（或 `framework.*` / `business.<domain>.config`），在 `eqochat-server` 的启动类用 `@EnableConfigurationProperties(...)` 统一启用。
+- **Redis / Neo4j**：Redis 相关 `@Configuration` 可放在 `framework-redis`，但目前 `eqochat-framework-redis` 只作为 BOM 占位（`package-info` 已说明）；Neo4j 实体目前在 `user.entity.neo4j`，后续如需仓库接口，再决定统一落位。
+
+---
+
+## 6. 禁止事项
+
+1. **不要在 `*-api` 写实现类**：`-api` 只保留对外契约。
+2. **不要让 framework 依赖 business**：保持框架层的可复用性。
+3. **不要跨模块直接 import 对方的 `service.impl`**：只能 import `-api` 的接口。
+4. **不要在根 pom / business pom 加非聚合配置**：保持父子 POM 职责单一。

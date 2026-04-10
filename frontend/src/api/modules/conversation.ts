@@ -1,4 +1,5 @@
 import request from '@/utils/request'
+import type { PageResponse } from '@/types/pagination'
 
 export interface ConversationSummary {
   id: number
@@ -33,12 +34,8 @@ export interface MessageItem {
   }
 }
 
-export interface MessagePageResponse {
-  items: MessageItem[]
-  total: number
-  hasMore: boolean
-  nextLastMessageId?: number
-}
+/** @deprecated 使用 PageResponse<MessageItem> 替代 */
+export type MessagePageResponse = PageResponse<MessageItem>
 
 export interface SendMessageRequest {
   content: string

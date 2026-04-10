@@ -1,11 +1,12 @@
 package com.eqochat.business.world.controller.world;
 
 import com.eqochat.framework.common.ApiResponse;
+import com.eqochat.framework.common.PageResponse;
 import com.eqochat.framework.common.UserContext;
 import com.eqochat.business.world.api.dto.request.CreateWorldPostRequest;
 import com.eqochat.business.world.api.dto.request.CreateWorldPostReplyRequest;
-import com.eqochat.business.world.api.dto.response.WorldPostResponse;
 import com.eqochat.business.world.api.dto.response.WorldPostReplyResponse;
+import com.eqochat.business.world.api.dto.response.WorldPostResponse;
 import com.eqochat.business.world.api.dto.response.WorldShareLinkResponse;
 import com.eqochat.business.world.api.dto.response.WorldTopicResponse;
 import com.eqochat.business.world.WorldService;
@@ -36,7 +37,7 @@ public class WorldController {
     private final WorldUploadService worldUploadService;
 
     @GetMapping("/posts")
-    public ApiResponse<List<WorldPostResponse>> listPosts(@RequestParam(required = false) String sort,
+    public ApiResponse<PageResponse<WorldPostResponse>> listPosts(@RequestParam(required = false) String sort,
                                                          @RequestParam(required = false) Long cursorId,
                                                          @RequestParam(required = false) Integer limit) {
         return ApiResponse.success(worldService.listFeed(UserContext.requireCurrentUser(), sort, cursorId, limit));
@@ -46,7 +47,7 @@ public class WorldController {
      * 某好友最近发布的动态（需互为好友）。
      */
     @GetMapping("/users/{authorId}/posts")
-    public ApiResponse<List<WorldPostResponse>> listPostsByAuthor(@PathVariable Long authorId,
+    public ApiResponse<PageResponse<WorldPostResponse>> listPostsByAuthor(@PathVariable Long authorId,
                                                                    @RequestParam(required = false) Long cursorId,
                                                                    @RequestParam(required = false) Integer limit) {
         return ApiResponse.success(worldService.listPostsByAuthor(UserContext.requireCurrentUser(), authorId, cursorId, limit));
@@ -63,25 +64,26 @@ public class WorldController {
     }
 
     @GetMapping("/topics")
-    public ApiResponse<List<WorldTopicResponse>> listTopics(@RequestParam(required = false) Integer limit) {
-        return ApiResponse.success(worldService.listTopics(UserContext.requireCurrentUser(), limit));
+    public ApiResponse<PageResponse<WorldTopicResponse>> listTopics(@RequestParam(required = false) Integer limit,
+                                                           @RequestParam(required = false) Long cursorId) {
+        return ApiResponse.success(worldService.listTopics(UserContext.requireCurrentUser(), limit, cursorId));
     }
 
     @GetMapping("/topics/{name}/posts")
-    public ApiResponse<List<WorldPostResponse>> listTopicPosts(@PathVariable String name,
+    public ApiResponse<PageResponse<WorldPostResponse>> listTopicPosts(@PathVariable String name,
                                                                @RequestParam(required = false) Long cursorId,
                                                                @RequestParam(required = false) Integer limit) {
         return ApiResponse.success(worldService.listTopicPosts(UserContext.requireCurrentUser(), name, cursorId, limit));
     }
 
     @GetMapping("/mentions")
-    public ApiResponse<List<WorldPostResponse>> listMentionedMe(@RequestParam(required = false) Long cursorId,
+    public ApiResponse<PageResponse<WorldPostResponse>> listMentionedMe(@RequestParam(required = false) Long cursorId,
                                                                 @RequestParam(required = false) Integer limit) {
         return ApiResponse.success(worldService.listMentionedMe(UserContext.requireCurrentUser(), cursorId, limit));
     }
 
     @GetMapping("/my-posts")
-    public ApiResponse<List<WorldPostResponse>> listMyPosts(@RequestParam(required = false) Long cursorId,
+    public ApiResponse<PageResponse<WorldPostResponse>> listMyPosts(@RequestParam(required = false) Long cursorId,
                                                             @RequestParam(required = false) Integer limit) {
         return ApiResponse.success(worldService.listMyPosts(UserContext.requireCurrentUser(), cursorId, limit));
     }

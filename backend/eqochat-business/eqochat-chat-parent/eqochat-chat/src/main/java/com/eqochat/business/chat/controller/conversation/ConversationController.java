@@ -1,12 +1,12 @@
 package com.eqochat.business.chat.controller.conversation;
 
 import com.eqochat.framework.common.ApiResponse;
+import com.eqochat.framework.common.PageResponse;
 import com.eqochat.framework.common.UserContext;
 import com.eqochat.business.chat.api.dto.request.CreateConversationRequest;
 import com.eqochat.business.chat.api.dto.request.MarkConversationReadRequest;
 import com.eqochat.business.chat.api.dto.request.SendMessageRequest;
 import com.eqochat.business.chat.api.dto.response.ConversationSummaryResponse;
-import com.eqochat.business.chat.api.dto.response.MessagePageResponse;
 import com.eqochat.business.chat.api.dto.response.MessageResponse;
 import com.eqochat.business.chat.api.service.ConversationService;
 import com.eqochat.business.chat.api.service.ConversationParticipantService;
@@ -56,7 +56,7 @@ public class ConversationController {
     }
     
     @GetMapping("/{conversationId}/messages")
-    public ApiResponse<MessagePageResponse> getMessages(
+    public ApiResponse<PageResponse<MessageResponse>> getMessages(
             @PathVariable Long conversationId,
             @RequestParam(required = false) Long lastMessageId,
             @RequestParam(required = false) Integer limit) {

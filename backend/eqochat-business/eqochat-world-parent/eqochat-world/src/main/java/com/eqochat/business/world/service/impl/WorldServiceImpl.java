@@ -2,6 +2,7 @@ package com.eqochat.business.world.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.eqochat.framework.common.BizException;
+import com.eqochat.framework.common.PageResponse;
 import com.eqochat.business.world.config.WorldModuleProperties;
 import com.eqochat.business.notification.entity.Notification;
 import com.eqochat.business.user.entity.UserProfile;
@@ -68,24 +69,36 @@ public class WorldServiceImpl implements WorldService {
     private final WorldModuleProperties worldModuleProperties;
 
     @Override
-    public List<WorldPostResponse> listFeed(Long viewerId, String sortBy, Long cursorId, Integer limit) {
+    public PageResponse<WorldPostResponse> listFeed(Long viewerId, String sortBy, Long cursorId, Integer limit) {
         int size = sanitizeLimit(limit, DEFAULT_LIMIT);
         String sort = normalizeSort(sortBy);
 
-        List<WorldPostMapper.WorldPostRow> rows = worldPostMapper.selectFeed(viewerId, sort, cursorId, size);
-        if (rows.isEmpty()) return List.of();
+        // 查询多一条用于判断是否有更多
+        List<WorldPostMapper.WorldPostRow> rows = worldPostMapper.selectFeed(viewerId, sort, cursorId, size + 1);
+        boolean hasMore = rows.size() > size;
+        if (hasMore) {
+            rows = rows.subList(0, size);
+        }
+
+        if (rows.isEmpty()) {
+            return PageResponse.empty();
+        }
 
         Map<Long, List<String>> topicsByPostId = rows.stream()
                 .map(WorldPostMapper.WorldPostRow::getId)
                 .collect(Collectors.toMap(id -> id, worldPostMapper::selectTopicNamesByPostId));
 
-        return rows.stream()
+        List<WorldPostResponse> items = rows.stream()
                 .map(r -> toPostResponse(r, topicsByPostId.getOrDefault(r.getId(), List.of())))
                 .toList();
+
+        Long nextCursorId = hasMore ? rows.get(rows.size() - 1).getId() : null;
+
+        return PageResponse.of(items, hasMore, nextCursorId);
     }
 
     @Override
-    public List<WorldPostResponse> listPostsByAuthor(Long viewerId, Long authorId, Long cursorId, Integer limit) {
+    public PageResponse<WorldPostResponse> listPostsByAuthor(Long viewerId, Long authorId, Long cursorId, Integer limit) {
         if (authorId == null) {
             throw BizException.of("world.author.required");
         }
@@ -94,16 +107,22 @@ public class WorldServiceImpl implements WorldService {
         }
         int size = sanitizeLimit(limit, DEFAULT_LIMIT);
         List<WorldPostMapper.WorldPostRow> rows =
-                worldPostMapper.selectPostsByAuthor(viewerId, authorId, cursorId, size);
+                worldPostMapper.selectPostsByAuthor(viewerId, authorId, cursorId, size + 1);
+        boolean hasMore = rows.size() > size;
+        if (hasMore) {
+            rows = rows.subList(0, size);
+        }
         if (rows.isEmpty()) {
-            return List.of();
+            return PageResponse.empty();
         }
         Map<Long, List<String>> topicsByPostId = rows.stream()
                 .map(WorldPostMapper.WorldPostRow::getId)
                 .collect(Collectors.toMap(id -> id, worldPostMapper::selectTopicNamesByPostId));
-        return rows.stream()
+        List<WorldPostResponse> items = rows.stream()
                 .map(r -> toPostResponse(r, topicsByPostId.getOrDefault(r.getId(), List.of())))
                 .toList();
+        Long nextCursorId = hasMore ? rows.get(rows.size() - 1).getId() : null;
+        return PageResponse.of(items, hasMore, nextCursorId);
     }
 
     @Override
@@ -240,9 +259,14 @@ public class WorldServiceImpl implements WorldService {
     }
 
     @Override
-    public List<WorldTopicResponse> listTopics(Long viewerId, Integer limit) {
+    public PageResponse<WorldTopicResponse> listTopics(Long viewerId, Integer limit, Long cursorId) {
         int size = sanitizeLimit(limit, 50);
-        return worldTopicMapper.selectTopTopics(viewerId, size).stream()
+        List<WorldTopicMapper.WorldTopicRow> rows = worldTopicMapper.selectTopTopicsWithCursor(viewerId, cursorId, size + 1);
+        boolean hasMore = rows.size() > size;
+        if (hasMore) {
+            rows = rows.subList(0, size);
+        }
+        List<WorldTopicResponse> items = rows.stream()
                 .map(r -> WorldTopicResponse.builder()
                         .id(String.valueOf(r.getId()))
                         .name(r.getName())
@@ -251,40 +275,57 @@ public class WorldServiceImpl implements WorldService {
                         .favorite(r.getIsFollowing() != null && r.getIsFollowing() == 1)
                         .build())
                 .toList();
+        return PageResponse.of(items, hasMore);
     }
 
     @Override
-    public List<WorldPostResponse> listTopicPosts(Long viewerId, String topicName, Long cursorId, Integer limit) {
+    public PageResponse<WorldPostResponse> listTopicPosts(Long viewerId, String topicName, Long cursorId, Integer limit) {
         if (topicName == null || topicName.isBlank()) {
             throw BizException.of("world.topic.required");
         }
         int size = sanitizeLimit(limit, DEFAULT_LIMIT);
         List<WorldPostMapper.WorldPostRow> rows =
-                worldPostMapper.selectTopicPosts(viewerId, topicName.trim(), cursorId, size);
-        if (rows.isEmpty()) return List.of();
+                worldPostMapper.selectTopicPosts(viewerId, topicName.trim(), cursorId, size + 1);
+        boolean hasMore = rows.size() > size;
+        if (hasMore) {
+            rows = rows.subList(0, size);
+        }
+        if (rows.isEmpty()) {
+            return PageResponse.empty();
+        }
 
         Map<Long, List<String>> topicsByPostId = rows.stream()
                 .map(WorldPostMapper.WorldPostRow::getId)
                 .collect(Collectors.toMap(id -> id, worldPostMapper::selectTopicNamesByPostId));
 
-        return rows.stream()
+        List<WorldPostResponse> items = rows.stream()
                 .map(r -> toPostResponse(r, topicsByPostId.getOrDefault(r.getId(), List.of())))
                 .toList();
+        Long nextCursorId = hasMore ? rows.get(rows.size() - 1).getId() : null;
+        return PageResponse.of(items, hasMore, nextCursorId);
     }
 
     @Override
-    public List<WorldPostResponse> listMentionedMe(Long viewerId, Long cursorId, Integer limit) {
+    public PageResponse<WorldPostResponse> listMentionedMe(Long viewerId, Long cursorId, Integer limit) {
         int size = sanitizeLimit(limit, DEFAULT_LIMIT);
-        List<WorldPostMapper.WorldPostRow> rows = worldPostMapper.selectMentionFeed(viewerId, cursorId, size);
-        if (rows.isEmpty()) return List.of();
+        List<WorldPostMapper.WorldPostRow> rows = worldPostMapper.selectMentionFeed(viewerId, cursorId, size + 1);
+        boolean hasMore = rows.size() > size;
+        if (hasMore) {
+            rows = rows.subList(0, size);
+        }
+        if (rows.isEmpty()) {
+            return PageResponse.empty();
+        }
 
         Map<Long, List<String>> topicsByPostId = rows.stream()
                 .map(WorldPostMapper.WorldPostRow::getId)
                 .collect(Collectors.toMap(id -> id, worldPostMapper::selectTopicNamesByPostId));
 
-        return rows.stream()
+        List<WorldPostResponse> items = rows.stream()
                 .map(r -> toPostResponse(r, topicsByPostId.getOrDefault(r.getId(), List.of())))
                 .toList();
+        Long nextCursorId = hasMore ? rows.get(rows.size() - 1).getId() : null;
+        return PageResponse.of(items, hasMore, nextCursorId);
     }
 
     @Override
@@ -467,18 +508,26 @@ public class WorldServiceImpl implements WorldService {
     }
 
     @Override
-    public List<WorldPostResponse> listMyPosts(Long viewerId, Long cursorId, Integer limit) {
+    public PageResponse<WorldPostResponse> listMyPosts(Long viewerId, Long cursorId, Integer limit) {
         int size = sanitizeLimit(limit, DEFAULT_LIMIT);
-        List<WorldPostMapper.WorldPostRow> rows = worldPostMapper.selectMyPosts(viewerId, cursorId, size);
-        if (rows.isEmpty()) return List.of();
+        List<WorldPostMapper.WorldPostRow> rows = worldPostMapper.selectMyPosts(viewerId, cursorId, size + 1);
+        boolean hasMore = rows.size() > size;
+        if (hasMore) {
+            rows = rows.subList(0, size);
+        }
+        if (rows.isEmpty()) {
+            return PageResponse.empty();
+        }
 
         Map<Long, List<String>> topicsByPostId = rows.stream()
                 .map(WorldPostMapper.WorldPostRow::getId)
                 .collect(Collectors.toMap(id -> id, worldPostMapper::selectTopicNamesByPostId));
 
-        return rows.stream()
+        List<WorldPostResponse> items = rows.stream()
                 .map(r -> toPostResponse(r, topicsByPostId.getOrDefault(r.getId(), List.of())))
                 .toList();
+        Long nextCursorId = hasMore ? rows.get(rows.size() - 1).getId() : null;
+        return PageResponse.of(items, hasMore, nextCursorId);
     }
 
     private static int sanitizeLimit(Integer limit, int fallback) {
@@ -642,4 +691,3 @@ public class WorldServiceImpl implements WorldService {
         }
     }
 }
-

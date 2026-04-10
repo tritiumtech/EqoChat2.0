@@ -1,0 +1,86 @@
+---
+description: React(Tailwind/DOM) 到 uni-app(Vue3) 的 UI/间距/宽度转换规则（用于 Project 等页面高还原度复刻）
+globs:
+  - "frontend/src/pages/**/*.vue"
+  - "frontend/src/pages/**/components/**/*.vue"
+alwaysApply: false
+---
+
+当参考实现来自 React（`div` + Tailwind + motion/portal）但目标实现是 uni-app（`view/scroll-view` + rpx + 多端样式隔离）时，禁止“照搬 JSX/类名”，必须做机制转换。
+
+## 1) 结构转换（DOM → uni-app 组件树）
+
+- **容器**：React 的 `div` → uni-app 用 `view`；可滚动区域优先 `scroll-view`（要求明确高度）。
+- **列表间距**：React `space-y-*` → uni-app 用父容器 `display:flex; flex-direction:column; gap:*`（或用子项 `margin-bottom`）。
+- **Modal/Drawer**：React portal/AnimatePresence → uni-app 用 `position:fixed` + mask + sheet/drawer（注意 `z-index`、`safe-area-inset-bottom`）。
+
+## 2) 间距与节奏（先对齐项目 tokens，再局部拟合 Tailwind）
+
+- **结论（来自本次迭代教训）**：不要做“全局 Tailwind→rpx 强映射”然后把整页统一替换，这会在 uni-app 的真实组件结构下造成节奏割裂，页面更丑。
+- **优先策略**：
+  - 先对齐项目的 `tokens.css` 间距阶梯（例如 `--space-*`）保持整体协调；
+  - 再在“局部区域”针对 React 参考做微调（按钮高度、badge 大小、卡片 head 的 padding 等）。
+- **落地方式**：
+  - 统一在页面样式文件（如 `project.styles.css`）做节奏控制；
+  - 组件模板只负责结构与 class，避免散落数值。
+
+## 3) 宽度与断点（sm/md → 多端自适应）
+
+- React 的 `sm:w-[480px]` 这类断点在 uni-app 里不能直接复刻。
+- 经验做法：
+  - 移动端优先使用 `vw`（例如 `width: 88vw`）
+  - 同时用 `max-width: XXXrpx` 限制抽屉宽度，避免平板过宽
+  - **全屏抽屉需求**：直接 `width: 100vw; max-width: 100vw; border-left: none; height: 100%`，mask 全屏覆盖。
+
+## 4) 自定义 BottomNav 与主滚动区底部留白（统一规则）
+
+- 项目使用 `components/BottomNav.vue`（`position: fixed; bottom: 0`），`.nav-inner` 高度为 `96rpx`，并叠加 `env(safe-area-inset-bottom)`。
+- **凡带主滚动区（`scroll-view` / 全屏 `.page`）且页面底部有 `BottomNav` 的页面**，主容器必须设置：
+  - `padding-bottom: var(--page-pad-bottom-tabbar);`（定义在 `frontend/src/styles/tokens.css`）
+  - 聊天列表等需要略多留白时：`var(--page-pad-bottom-tabbar-loose)`
+- **不要**只加 `env(safe-area-inset-bottom)` 而忽略 `96rpx` 导航条高度，否则底部仍会被遮挡。
+
+## 5) 样式隔离（避免“样式没生效”）
+
+uni-app 的组件默认样式隔离会导致“页面 CSS 不作用于子组件”。
+
+推荐稳定方案：
+- **每个子组件都使用** `<style scoped src=".../project.styles.css"></style>` 显式引入
+- 页面本身同样用 `<style scoped src="./project.styles.css"></style>`
+- 不依赖 `styleIsolation: 'shared'` 来做跨组件样式下发（多端稳定性差，容易踩坑）
+
+## 6) uni-app 常见对齐坑（必须遵守）
+
+- **链接式返回不要用 button**：
+  - React 里返回是 `button` + `text-primary text-sm`，但在 uni-app 里 `button` 很容易带默认样式/点击态，视觉像“按钮”。
+  - 用 `view`/`text` 做“返回链接”，并用 padding 扩大点击区域（例如 `padding: 10rpx 12rpx; border-radius: 16rpx; :active` 给浅底）。
+- **标题区域两行结构**（对齐 React 参考）：
+  - 第 1 行：左返回链接，右 `Tasks` 按钮
+  - 第 2 行：左彩色点 + 标题，右 `Share` 小按钮（不放在第一行 actions 里）
+- **card-head 右侧按钮不靠右**（uni-app flex 的坑）：
+  - `.card-head { width: 100%; }`
+  - `.card-title { flex: 1; min-width: 0; }`
+  - 右侧按钮加 `margin-left: auto;` 才能稳定贴右
+- **列表内部间距**：
+  - 优先用父容器 `gap` 控制（如 `.member-list { gap: 14rpx }`），避免每个 item `margin-bottom` 导致尾部多空白。
+- **Detail 分区节奏**：
+  - `.detail-wrap .content` 建议 `flex-direction: column; gap: 18rpx;`，让 stats/progress/alert/cards 不贴一起。
+
+## 7) 参考样式“组件化复刻”的落点（从本次落地总结）
+
+- **Tasks 按钮（参考 React 渐变 + badge）**：
+  - `display:flex; gap`，渐变底色 + 阴影；badge 用固定圆点尺寸（例如 28rpx）+ 白描边 + 小字号（例如 16rpx）。
+- **Project Details 的 Update Bid 小按钮**：
+  - 使用小号变体类（如 `btn-outline-sm`）调整 `padding/圆角/字号/图标字号`，不要直接复用大按钮样式。
+
+## 8) 还原度检查清单（每次精修必须对照）
+
+- **BottomNav 遮挡**：主滚动区是否已设 `padding-bottom: var(--page-pad-bottom-tabbar)`（或 loose）
+- **外层 padding**：是否等价于 React 的 `px-4/py-4`
+- **卡片内 padding**：是否等价于 React `p-4`
+- **列表项间距**：是否等价于 `space-y-3`
+- **进度条高度**：是否等价于 `h-1.5`
+- **Drawer**：头部 `px-6 py-4`、tab 区 `px-6 py-3`、内容 `p-6` 是否对应
+ - **Header 两行**：返回链接/Tasks 在上行；Share 在标题行右侧
+ - **card-head 对齐**：右侧按钮必须稳定靠右（见第 6 节）
+

@@ -1,0 +1,110 @@
+---
+description: 前端页面与文案的国际化（vue-i18n）约定
+globs: frontend/src/**/*.vue,*.ts
+alwaysApply: false
+---
+
+# 前端国际化（i18n）
+
+## 适用范围
+
+- 所有面向用户的可见文案：模板中的标题、按钮、占位、筛选标签、空状态、Toast 等。
+- 例外：纯图标/emoji、品牌名、技术字段名（如 API 类型）、日志 `console` 可保持英文。
+
+## 实现方式
+
+### 基础国际化（无占位符）
+
+```vue
+<script setup>
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n({ useScope: 'global' })
+</script>
+
+<template>
+  <text>{{ t('page.profile.title') }}</text>
+</template>
+```
+
+### 带占位符的国际化（必须使用 useI18nWithFormat）
+
+当文案包含动态参数（如 `{n}`、`{name}`、`{count}` 等）时，必须使用 `useI18nWithFormat` 提供的 `tf` 函数：
+
+```vue
+<script setup>
+import { useI18nWithFormat } from '@/composables/useI18nWithFormat'
+const { t, tf } = useI18nWithFormat()
+</script>
+
+<template>
+  <!-- 普通文案用 t -->
+  <text>{{ t('page.profile.title') }}</text>
+  
+  <!-- 带占位符的文案必须用 tf -->
+  <text>{{ tf('page.profile.level_abbr', { n: level }) }}</text>
+  <text>{{ tf('page.project.detail_subtitle', { humans: 2, agents: 3, deadline: '2024-01-01' }) }}</text>
+</template>
+```
+
+### 为什么需要 tf？
+
+项目使用的 `vue-i18n@9.1.9` 在 composition 模式下，直接使用 `t(key, { param })` 传递对象参数时，插值替换可能不工作。`tf` 函数通过 `formatTemplate` 手动处理 `{key}` 格式的占位符替换，确保兼容性。
+
+## 文案维护
+
+- 文案集中维护在 `frontend/src/locale/en.json` 与 `frontend/src/locale/zh-Hans.json` 中。
+- **同一 key 两套语言必须同时补齐**。
+- Key 命名：`common.*`（通用）、`page.<页面名>.*`（页面级）、`toast.*`、`nav.*`、`action.*` 等，与现有结构保持一致。
+
+## 禁止
+
+- ❌ 在模板或脚本中直接写死中文或英文的用户可见文案（标题、按钮文字、副标题、占位、说明文案等），**必须通过 `t()` 或 `tf()` 使用国际化 key**。
+- ❌ 仅改中文不改英文（或反之），会导致切换语言后缺文案或 fallback 异常。
+- ❌ 在新页面中混用「部分用 i18n、部分写死英文/中文」的做法，所有面向用户的字符串都要统一走 i18n。
+- ❌ **带占位符的国际化使用 `t()` 而不是 `tf()`** - 这是常见错误！
+
+## 新增文案流程
+
+1. 在 `zh-Hans.json` 与 `en.json` 下增加相同路径的 key。
+2. 若与现有页面语义一致，优先复用已有 key（例如 `page.contact.filter_all` 表示「全部」）。
+3. 占位符使用 `{n}`、`{name}`、`{count}` 等驼峰命名。
+4. **根据是否需要占位符选择函数**：
+   - 无占位符 → `t('key')`
+   - 有占位符 → `tf('key', { param: value })`
+
+## 示例
+
+### 普通文案（无占位符）
+
+```vue
+<text>{{ t('page.profile.title') }}</text>
+```
+
+```ts
+uni.showToast({ title: t('toast.load_failed'), icon: 'none' })
+```
+
+### 带占位符的文案
+
+```vue
+<!-- ✅ 正确：使用 tf -->
+<text>{{ tf('page.profile.level_abbr', { n: level }) }}</text>
+<text>{{ tf('page.project.detail_subtitle', { humans, agents, deadline }) }}</text>
+<text>{{ tf('page.project.pending_bid_alert.subtitle', { newBid, currentBid }) }}</text>
+
+<!-- ❌ 错误：t 函数无法正确处理占位符 -->
+<text>{{ t('page.profile.level_abbr', { n: level }) }}</text>
+```
+
+```ts
+// ✅ 正确：使用 tf
+const message = tf('toast.delete_success', { count: deletedCount })
+uni.showToast({ title: message, icon: 'none' })
+```
+
+## 快速检查清单
+
+- [ ] 是否使用了正确的函数？（无占位符用 `t`，有占位符用 `tf`）
+- [ ] 是否在 `en.json` 和 `zh-Hans.json` 中都添加了对应 key？
+- [ ] 占位符命名是否一致？（如 `{n}`、`{memberName}`）
+- [ ] 是否通过 `useI18nWithFormat()` 获取 `tf` 函数？

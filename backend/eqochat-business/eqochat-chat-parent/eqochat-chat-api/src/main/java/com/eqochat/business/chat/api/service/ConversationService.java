@@ -5,8 +5,8 @@ import com.eqochat.business.chat.entity.Conversation;
 import com.eqochat.business.chat.api.dto.request.CreateConversationRequest;
 import com.eqochat.business.chat.api.dto.request.SendMessageRequest;
 import com.eqochat.business.chat.api.dto.response.ConversationSummaryResponse;
-import com.eqochat.business.chat.api.dto.response.MessagePageResponse;
 import com.eqochat.business.chat.api.dto.response.MessageResponse;
+import com.eqochat.framework.common.PageResponse;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -19,7 +19,7 @@ public interface ConversationService extends IService<Conversation> {
     
     ConversationSummaryResponse createConversation(Long userId, CreateConversationRequest request);
 
-    MessagePageResponse getMessages(Long userId, Long conversationId, Long lastMessageId, Integer limit);
+    PageResponse<MessageResponse> getMessages(Long userId, Long conversationId, Long lastMessageId, Integer limit);
 
     MessageResponse sendMessage(Long userId, Long conversationId, SendMessageRequest request);
 

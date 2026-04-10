@@ -1,4 +1,5 @@
 import request, { forceLogoutAndGoLogin, shouldForceReloginPayload } from '@/utils/request'
+import type { PageResponse } from '@/types/pagination'
 
 const API_BASE =
   import.meta.env.VITE_API_BASE_URL === undefined || import.meta.env.VITE_API_BASE_URL === ''
@@ -119,12 +120,12 @@ function uploadWorldFile(filePath: string): Promise<string> {
 
 export const worldApi = {
   listPosts(params?: { sort?: WorldSort; cursorId?: number | string; limit?: number }) {
-    return request.get<WorldPost[]>('/api/v1/world/posts', params)
+    return request.get<PageResponse<WorldPost>>('/api/v1/world/posts', params)
   },
 
   /** 指定好友最近发布的动态（需互为好友） */
   listPostsByAuthor(authorId: number, params?: { cursorId?: number | string; limit?: number }) {
-    return request.get<WorldPost[]>(`/api/v1/world/users/${authorId}/posts`, params)
+    return request.get<PageResponse<WorldPost>>(`/api/v1/world/users/${authorId}/posts`, params)
   },
 
   createPost(data: CreateWorldPostPayload) {
@@ -151,20 +152,20 @@ export const worldApi = {
     return uploadWorldFile(filePath)
   },
 
-  listTopics(params?: { limit?: number }) {
-    return request.get<WorldTopic[]>('/api/v1/world/topics', params)
+  listTopics(params?: { limit?: number; cursorId?: number | string }) {
+    return request.get<PageResponse<WorldTopic>>('/api/v1/world/topics', params)
   },
 
   listTopicPosts(topicName: string, params?: { cursorId?: number | string; limit?: number }) {
-    return request.get<WorldPost[]>(`/api/v1/world/topics/${encodeURIComponent(topicName)}/posts`, params)
+    return request.get<PageResponse<WorldPost>>(`/api/v1/world/topics/${encodeURIComponent(topicName)}/posts`, params)
   },
 
   listMentionedMe(params?: { cursorId?: number | string; limit?: number }) {
-    return request.get<WorldPost[]>('/api/v1/world/mentions', params)
+    return request.get<PageResponse<WorldPost>>('/api/v1/world/mentions', params)
   },
 
   listMyPosts(params?: { cursorId?: number | string; limit?: number }) {
-    return request.get<WorldPost[]>('/api/v1/world/my-posts', params)
+    return request.get<PageResponse<WorldPost>>('/api/v1/world/my-posts', params)
   },
 
   toggleUpvote(postId: string | number) {

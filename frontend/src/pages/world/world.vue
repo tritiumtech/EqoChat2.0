@@ -1,156 +1,61 @@
 <template>
   <view class="page">
     <!-- 话题详情 -->
-    <template v-if="selectedTopic">
-      <PageHeader
-        :title="'#' + selectedTopic"
-        :subtitle="topicMeta ? `${topicMeta.posts} ${t('page.world.posts')} · ${topicMeta.followers} ${t('page.world.followers')}` : ''"
-        :has-back-row="true"
-        @back-click="selectedTopic = null"
-      />
-      <view class="scroll-feed">
-        <WorldPostCard
-          v-for="post in topicPosts"
-          :key="post.id"
-          :post="post"
-          @open-detail="detailTarget = post"
-          @upvote="() => toggleUpvote(post)"
-          @reply="() => onReplyTap(post)"
-          @share="openShare(post)"
-        />
-      </view>
-    </template>
+    <TopicDetail
+      v-if="selectedTopic"
+      ref="topicDetailRef"
+      :topic-name="selectedTopic"
+      :topic-list="topicList"
+      :normalize-post="normalizePost"
+      @back="selectedTopic = null"
+      @open-detail="detailTarget = $event"
+      @upvote="toggleUpvote"
+      @reply="onReplyTap"
+      @share="openShare"
+    />
 
-    <template v-else>
-      <PageHeader
-        :title="t('page.world.title')"
-        action-icon="⌕"
-        action-variant="bordered"
-        action-size="md"
-        :has-tabs="true"
-        @action-click="onSearchTap"
-      >
-        <template #tabs>
-          <u-tabs
-            :list="tabOptions"
-            :current="activeTabIndex"
-            key-name="name"
-            :scrollable="false"
-            :line-color="'#030213'"
-            :active-style="{ color: '#030213', fontWeight: 600 }"
-            :inactive-style="{ color: '#717182' }"
-            :item-style="{ height: '88rpx' }"
-            @change="onTabChange"
-          />
-        </template>
-      </PageHeader>
+    <!-- Posts Tab -->
+    <PostList
+      v-else-if="activeTab === 'posts'"
+      ref="postListRef"
+      :tab-options="tabOptions"
+      :active-tab-index="activeTabIndex"
+      :sort-options="sortOptions"
+      :normalize-post="normalizePost"
+      @tab-change="onTabChange"
+      @new-post="openNewPost"
+      @open-detail="detailTarget = $event"
+      @upvote="toggleUpvote"
+      @reply="onReplyTap"
+      @share="openShare"
+    />
 
-      <template v-if="activeTab === 'posts'">
-        <view class="sort-row">
-          <view class="sort-row-inner">
-            <view class="sort-wrap">
-              <button class="sort-btn" @click="showSortDropdown = !showSortDropdown">
-                <text>{{ sortLabel }}</text>
-                <text class="chev">▼</text>
-              </button>
-              <view v-if="showSortDropdown" class="sort-menu">
-                <view
-                  v-for="opt in sortOptions"
-                  :key="opt.value"
-                  class="sort-item"
-                  :class="{ current: sortBy === opt.value }"
-                  @click="onSortDropdownSelect(opt.value)"
-                >
-                  <text>{{ opt.label }}</text>
-                </view>
-              </view>
-            </view>
-            <button class="new-post-btn" @click="openNewPost">
-              <text class="new-post-plus">＋</text>
-              <text>{{ t('page.world.new_post_short') }}</text>
-            </button>
-          </view>
-        </view>
-        <view class="scroll-feed">
-          <view v-if="sortedPosts.length === 0" class="feed-empty">
-            <text>{{ t('common.empty_conversation') }}</text>
-          </view>
-          <WorldPostCard
-            v-for="post in sortedPosts"
-            :key="post.id"
-            :post="post"
-            @open-detail="detailTarget = post"
-            @upvote="() => toggleUpvote(post)"
-            @reply="() => onReplyTap(post)"
-            @share="openShare(post)"
-          />
-          <view v-if="sortedPosts.length > 0" class="feed-end">
-            <text>没有更多内容了</text>
-          </view>
-        </view>
-      </template>
+    <!-- Topics Tab -->
+    <TopicList
+      v-else-if="activeTab === 'topics'"
+      ref="topicListRef"
+      :tab-options="tabOptions"
+      :active-tab-index="activeTabIndex"
+      @tab-change="onTabChange"
+      @open-topic="openTopic"
+      @toggle-follow="toggleFollow"
+    />
 
-      <view v-else-if="activeTab === 'topics'" class="scroll-feed scroll-topics">
-        <view v-if="topicList.length === 0" class="feed-empty">
-          <text>{{ t('common.empty_conversation') }}</text>
-        </view>
-        <WorldTopicCard
-          v-for="topic in topicList"
-          :key="topic.id"
-          :topic="topic"
-          :posts-label="t('page.world.posts')"
-          :followers-label="t('page.world.followers')"
-          :follow-text="t('page.world.follow')"
-          :followed-text="t('page.world.followed')"
-          @open="openTopic"
-          @toggle-follow="toggleFollow"
-        />
-        <view v-if="topicList.length > 0" class="feed-end">
-          <text>没有更多内容了</text>
-        </view>
-      </view>
+    <!-- My Tab -->
+    <MyPostList
+      v-else
+      ref="myPostListRef"
+      :tab-options="tabOptions"
+      :active-tab-index="activeTabIndex"
+      :normalize-post="normalizePost"
+      @tab-change="onTabChange"
+      @open-detail="detailTarget = $event"
+      @upvote="toggleUpvote"
+      @reply="onReplyTap"
+      @share="openShare"
+    />
 
-      <!-- "我的" Tab：个人时间线，支持时间索引和按月分组 -->
-      <view v-else class="my-tab-wrap">
-        <!-- Timeline Header with Index -->
-        <TimelineHeader
-          :title="t('page.world.timeline_title')"
-          :total-posts="myPosts.length"
-          :show-index="showTimelineIndex"
-          :timeline-structure="timelineStructure"
-          :expanded-years="expandedYears"
-          :expanded-months="expandedMonths"
-          @update:show-index="showTimelineIndex = $event"
-          @toggle-year="toggleYear"
-          @toggle-month="toggleMonth"
-        />
-
-        <!-- Month-Segmented Posts -->
-        <view class="timeline-content">
-          <view v-if="myPosts.length === 0" class="feed-empty">
-            <text>{{ t('page.world.timeline_empty') }}</text>
-          </view>
-
-          <template v-else>
-            <MonthGroup
-              v-for="(monthGroup, groupIndex) in postsByMonth"
-              :key="`${monthGroup.year}-${monthGroup.month}`"
-              :month-group="monthGroup"
-              :group-index="groupIndex"
-              :all-groups="postsByMonth"
-              @post-click="detailTarget = $event"
-              @post-upvote="toggleUpvote($event)"
-              @post-reply="onReplyTap($event)"
-              @post-share="openShare($event)"
-            />
-
-            <!-- End of Timeline -->
-            <TimelineEnd :label="t('page.world.timeline_end')" />
-          </template>
-        </view>
-      </view>
-    </template>
-
+    <!-- Modals -->
     <WorldNewPostModal
       :visible="showNewPostModal"
       :content="newPostContent"
@@ -194,7 +99,7 @@
       @update:share-note="(v) => (shareNote = v)"
     />
 
-    <!-- 详情层：覆盖时隐藏底部导航 -->
+    <!-- 详情层 -->
     <WorldPostDetail
       v-if="detailTarget"
       ref="detailRef"
@@ -216,39 +121,25 @@ import { useI18nWithFormat } from '@/composables/useI18nWithFormat'
 import { worldApi, type WorldMediaType, type WorldPost, type WorldSort, type WorldTopic } from '@/api/modules/world'
 import { contactApi, type ContactItem } from '@/api/modules/contact'
 import { getApiErrorMessage } from '@/utils/request'
-import PageHeader from '@/components/PageHeader.vue'
-import WorldPostCard from '@/components/world/WorldPostCard.vue'
-import WorldTopicCard from '@/components/world/WorldTopicCard.vue'
+import PostList from '@/components/world/PostList.vue'
+import TopicList from '@/components/world/TopicList.vue'
+import MyPostList from '@/components/world/MyPostList.vue'
+import TopicDetail from '@/components/world/TopicDetail.vue'
 import WorldPostDetail from '@/components/world/WorldPostDetail.vue'
 import WorldNewPostModal from '@/components/world/WorldNewPostModal.vue'
 import WorldReplyModal from '@/components/world/WorldReplyModal.vue'
 import WorldShareModal from '@/components/world/WorldShareModal.vue'
-import TimelineHeader from '@/components/world/TimelineHeader.vue'
-import MonthGroup from '@/components/world/MonthGroup.vue'
-import TimelineEnd from '@/components/world/TimelineEnd.vue'
 import FgTabbar from '@/tabbar/index.vue'
 
-const { t, tf } = useI18nWithFormat()
+const { t } = useI18nWithFormat()
 
 type SortOption = WorldSort
 
 const activeTab = ref<'posts' | 'topics' | 'my'>('posts')
-const sortBy = ref<SortOption>('friends')
-const showSortDropdown = ref(false)
 const selectedTopic = ref<string | null>(null)
-
-const posts = ref<WorldPost[]>([])
 const topicList = ref<WorldTopic[]>([])
-const topicPosts = ref<WorldPost[]>([])
-const mentionedPosts = ref<WorldPost[]>([])
-const myPosts = ref<WorldPost[]>([])
-const loading = ref(false)
 
-// Timeline state
-const showTimelineIndex = ref(false)
-const expandedYears = ref<Set<string>>(new Set(['2026']))
-const expandedMonths = ref<Set<string>>(new Set(['2026-03']))
-
+// New Post Modal
 const showNewPostModal = ref(false)
 const newPostContent = ref('')
 const mentionFriends = ref<ContactItem[]>([])
@@ -258,111 +149,45 @@ const localVideoPath = ref('')
 const videoError = ref('')
 const posting = ref(false)
 
+// Reply Modal
 const showReplyModal = ref(false)
 const replyTarget = ref<WorldPost | null>(null)
 const replyContent = ref('')
 const replyPosting = ref(false)
 
+// Share Modal
 const showShareModal = ref(false)
 const shareTarget = ref<WorldPost | null>(null)
 const shareLinkUrl = ref('')
 const shareNote = ref('')
 const shareCopied = ref(false)
 
+// Detail
 const detailTarget = ref<WorldPost | null>(null)
 const detailRef = ref<InstanceType<typeof WorldPostDetail> | null>(null)
+
+// Refs
+const postListRef = ref<InstanceType<typeof PostList> | null>(null)
+const topicListRef = ref<InstanceType<typeof TopicList> | null>(null)
+const myPostListRef = ref<InstanceType<typeof MyPostList> | null>(null)
+const topicDetailRef = ref<InstanceType<typeof TopicDetail> | null>(null)
 
 const sortOptions = computed(() => [
   { value: 'friends' as SortOption, label: t('page.world.sort_friends') },
   { value: 'upvotes' as SortOption, label: t('page.world.sort_upvotes') },
   { value: 'topics' as SortOption, label: t('page.world.sort_topics') },
 ])
+
 const tabOptions = computed(() => ([
   { name: t('page.world.tab_posts'), value: 'posts' },
   { name: t('page.world.tab_topics'), value: 'topics' },
   { name: t('page.world.tab_my'), value: 'my' },
 ]))
+
 const activeTabIndex = computed(() => {
   if (activeTab.value === 'topics') return 1
   if (activeTab.value === 'my') return 2
   return 0
-})
-
-const sortLabel = computed(() => sortOptions.value.find((o) => o.value === sortBy.value)?.label ?? '')
-
-const topicMeta = computed(() => topicList.value.find((x) => x.name === selectedTopic.value))
-const sortedPosts = computed(() => {
-  const list = posts.value.slice()
-  if (!list.length) return list
-
-  if (sortBy.value === 'friends') {
-    return list.sort((a, b) => {
-      const af = a.friend ? 1 : 0
-      const bf = b.friend ? 1 : 0
-      if (af !== bf) return bf - af
-      if (a.upvotes !== b.upvotes) return b.upvotes - a.upvotes
-      return b.replies - a.replies
-    })
-  }
-
-  if (sortBy.value === 'upvotes') {
-    return list.sort((a, b) => {
-      if (a.upvotes !== b.upvotes) return b.upvotes - a.upvotes
-      return b.replies - a.replies
-    })
-  }
-
-  // sortBy === 'topics'，优先展示关联收藏话题的动态
-  const favoriteTopics = topicList.value.filter((t) => t.favorite).map((t) => t.name)
-  return list.sort((a, b) => {
-    const aFav = a.topics?.some((t) => favoriteTopics.includes(t)) ? 1 : 0
-    const bFav = b.topics?.some((t) => favoriteTopics.includes(t)) ? 1 : 0
-    if (aFav !== bFav) return bFav - aFav
-    if (a.upvotes !== b.upvotes) return b.upvotes - a.upvotes
-    return b.replies - a.replies
-  })
-})
-
-// Timeline structure: { year: { month: [days] } }
-const timelineStructure = computed(() => {
-  const structure: { [year: string]: { [month: string]: string[] } } = {}
-  myPosts.value.forEach(post => {
-    const date = parseTimestamp(post)
-    const year = String(date.year)
-    const month = date.month
-    const day = String(date.day)
-
-    if (!structure[year]) structure[year] = {}
-    if (!structure[year][month]) structure[year][month] = []
-    if (!structure[year][month].includes(day)) {
-      structure[year][month].push(day)
-    }
-  })
-  return structure
-})
-
-// Group posts by year-month
-const postsByMonth = computed(() => {
-  const grouped: { [key: string]: { year: string; month: string; day: number; posts: WorldPost[] } } = {}
-  
-  myPosts.value.forEach(post => {
-    const date = parseTimestamp(post)
-    const year = String(date.year)
-    const month = date.month
-    const day = date.day
-    const key = `${year}-${month}-${day}`
-    
-    if (!grouped[key]) {
-      grouped[key] = { year, month, day, posts: [] }
-    }
-    grouped[key].posts.push(post)
-  })
-
-  return Object.values(grouped).sort((a, b) => {
-    if (a.year !== b.year) return parseInt(b.year) - parseInt(a.year)
-    const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
-    return months.indexOf(b.month) - months.indexOf(a.month)
-  })
 })
 
 const canSubmitPost = computed(() => {
@@ -380,56 +205,44 @@ const mediaTip = computed(() => {
   return t('page.world.media_tip_text')
 })
 
-// Helper: Parse timestamp from createdAt (ISO-8601 format: "2026-04-02T15:35:25")
-function parseTimestamp(post: { timestamp?: string; createdAt?: string }): { year: number; month: string; day: number } {
-  const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
-  
-  // Use createdAt directly - it's in ISO-8601 format
-  if (post.createdAt) {
-    // Parse "2026-04-02T15:35:25" directly
-    const datePart = post.createdAt.split('T')[0] // "2026-04-02"
-    const [yearStr, monthStr, dayStr] = datePart.split('-')
-    
-    const year = parseInt(yearStr)
-    const month = parseInt(monthStr) - 1 // JS months are 0-based
-    const day = parseInt(dayStr)
-    
-    return {
-      year: year,
-      month: months[month],
-      day: day,
-    }
-  }
-  
-  // Fallback: use current date if createdAt is missing
-  const now = new Date()
-  return {
-    year: now.getFullYear(),
-    month: months[now.getMonth()],
-    day: now.getDate(),
-  }
-}
-
-function toggleYear(year: string) {
-  const newExpanded = new Set(expandedYears.value)
-  if (newExpanded.has(year)) {
-    newExpanded.delete(year)
+// Tab change handler
+function onTabChange(index: number) {
+  if (index === 1) {
+    activeTab.value = 'topics'
+  } else if (index === 2) {
+    activeTab.value = 'my'
   } else {
-    newExpanded.add(year)
+    activeTab.value = 'posts'
   }
-  expandedYears.value = newExpanded
 }
 
-function toggleMonth(monthKey: string) {
-  const newExpanded = new Set(expandedMonths.value)
-  if (newExpanded.has(monthKey)) {
-    newExpanded.delete(monthKey)
-  } else {
-    newExpanded.add(monthKey)
+// Watch tab changes to reload
+watch(activeTab, (v) => {
+  if (v === 'posts') {
+    postListRef.value?.reload()
+  } else if (v === 'topics') {
+    topicListRef.value?.reload()
+  } else if (v === 'my') {
+    myPostListRef.value?.reload()
   }
-  expandedMonths.value = newExpanded
+})
+
+// Topic handlers
+function openTopic(topic: WorldTopic) {
+  selectedTopic.value = topic.name
 }
 
+async function toggleFollow(topic: WorldTopic) {
+  try {
+    await worldApi.followTopic(topic.name, !topic.followed)
+    topic.followed = !topic.followed
+    topic.followers += topic.followed ? 1 : -1
+  } catch (err: any) {
+    uni.showToast({ title: getApiErrorMessage(err, t('toast.error')), icon: 'none' })
+  }
+}
+
+// Post handlers
 function normalizeMediaUrl(url?: string): string | undefined {
   const value = String(url || '').trim()
   if (!value || value === 'null' || value === 'undefined') return undefined
@@ -456,44 +269,80 @@ function normalizePost(post: WorldPost): WorldPost {
   }
 }
 
-function openExternalUrl(url: string) {
-  // #ifdef H5
-  if (typeof window !== 'undefined' && window.open) {
-    window.open(url, '_blank')
-    return
+async function toggleUpvote(post: WorldPost) {
+  try {
+    await worldApi.upvotePost(post.id)
+    post.upvoted = !post.upvoted
+    post.upvotes += post.upvoted ? 1 : -1
+  } catch (err: any) {
+    uni.showToast({ title: getApiErrorMessage(err, t('toast.error')), icon: 'none' })
   }
-  // #endif
-  if (typeof plus !== 'undefined' && plus.runtime?.openURL) {
-    plus.runtime.openURL(url)
-    return
+}
+
+// Reply handlers
+function onReplyTap(post: WorldPost) {
+  replyTarget.value = post
+  showReplyModal.value = true
+}
+
+function closeReply() {
+  showReplyModal.value = false
+  replyTarget.value = null
+  replyContent.value = ''
+}
+
+async function submitReply() {
+  if (!replyTarget.value || !replyContent.value.trim()) return
+  replyPosting.value = true
+  try {
+    await worldApi.replyToPost(replyTarget.value.id, replyContent.value.trim())
+    replyTarget.value.replies++
+    closeReply()
+    uni.showToast({ title: t('toast.success'), icon: 'success' })
+  } catch (err: any) {
+    uni.showToast({ title: getApiErrorMessage(err, t('toast.error')), icon: 'none' })
+  } finally {
+    replyPosting.value = false
   }
+}
+
+// Share handlers
+function openShare(post: WorldPost) {
+  shareTarget.value = post
+  showShareModal.value = true
+}
+
+function closeShare() {
+  showShareModal.value = false
+  shareTarget.value = null
+  shareLinkUrl.value = ''
+  shareNote.value = ''
+}
+
+function shareChannel(channel: string) {
+  uni.showToast({ title: `${t('page.world.share_to')} ${channel}`, icon: 'none' })
+  closeShare()
+}
+
+function copyShareLink() {
+  const post = shareTarget.value
+  if (!post) return
+  const link = shareLinkUrl.value || `https://eqochat.app/world/post/${post.id}`
+  const text = `${post.content?.slice(0, 80) || ''}${(post.content?.length || 0) > 80 ? '...' : ''}\n${link}`
   uni.setClipboardData({
-    data: url,
-    success: () => uni.showToast({ title: t('page.world.open_browser_tip'), icon: 'none' }),
+    data: text,
+    success: () => {
+      shareCopied.value = true
+      setTimeout(() => {
+        shareCopied.value = false
+      }, 2000)
+    },
   })
 }
 
+// New Post handlers
 function openNewPost() {
-  showSortDropdown.value = false
   showNewPostModal.value = true
-}
-
-function onTabChange(item: any, index?: number) {
-  const idx = typeof item?.index === 'number' ? item.index : (typeof index === 'number' ? index : 0)
-  if (idx === 1) {
-    activeTab.value = 'topics'
-  } else if (idx === 2) {
-    activeTab.value = 'my'
-  } else {
-    activeTab.value = 'posts'
-  }
-}
-
-function onSortDropdownSelect(value: SortOption) {
-  showSortDropdown.value = false
-  if (value === 'friends' || value === 'upvotes' || value === 'topics') {
-    sortBy.value = value
-  }
 }
 
 function closeNewPost() {
@@ -505,231 +354,83 @@ function closeNewPost() {
   videoError.value = ''
 }
 
+function onNewPostContentChange(value: string) {
+  newPostContent.value = value
+}
+
+function onMentionedIdsChange(ids: number[]) {
+  mentionedUserIds.value = ids
+}
+
+async function pickImage() {
+  try {
+    const res = await uni.chooseImage({ count: 1, sizeType: ['compressed'], sourceType: ['album', 'camera'] })
+    const tempPath = (res as any).tempFilePaths?.[0]
+    if (tempPath) {
+      const uploadRes = await uni.uploadFile({
+        url: '/api/files/upload',
+        filePath: tempPath,
+        name: 'file',
+      })
+      const data = JSON.parse((uploadRes as any).data)
+      localImagePath.value = data.url
+      localVideoPath.value = ''
+      videoError.value = ''
+    }
+  } catch {
+    uni.showToast({ title: t('toast.error'), icon: 'none' })
+  }
+}
+
+async function pickVideo() {
+  try {
+    const res = await uni.chooseVideo({ sourceType: ['album', 'camera'], maxDuration: 60 })
+    const tempPath = (res as any).tempFilePath
+    if (tempPath) {
+      const uploadRes = await uni.uploadFile({
+        url: '/api/files/upload',
+        filePath: tempPath,
+        name: 'file',
+      })
+      const data = JSON.parse((uploadRes as any).data)
+      localVideoPath.value = data.url
+      localImagePath.value = ''
+      videoError.value = ''
+    }
+  } catch {
+    uni.showToast({ title: t('toast.error'), icon: 'none' })
+  }
+}
+
 function clearMedia() {
   localImagePath.value = ''
   localVideoPath.value = ''
   videoError.value = ''
 }
 
-function onNewPostContentChange(value: string) {
-  newPostContent.value = String(value || '')
-}
-
-function onMentionedIdsChange(value: number[]) {
-  mentionedUserIds.value = Array.isArray(value) ? value : []
-}
-
-function pickImage() {
-  videoError.value = ''
-  uni.chooseImage({
-    count: 1,
-    sizeType: ['compressed'],
-    success: (res) => {
-      const p = res.tempFilePaths?.[0]
-      if (p) {
-        localImagePath.value = p
-        localVideoPath.value = ''
-      }
-    },
-  })
-}
-
-function pickVideo() {
-  videoError.value = ''
-  uni.chooseVideo({
-    maxDuration: 15,
-    sourceType: ['album', 'camera'],
-    success: (res) => {
-      const d = typeof res.duration === 'number' ? res.duration : Number(res.duration)
-      if (d > 15) {
-        videoError.value = t('page.world.video_too_long')
-        return
-      }
-      const p = res.tempFilePath
-      if (p) {
-        localVideoPath.value = p
-        localImagePath.value = ''
-      }
-    },
-    fail: (err: any) => {
-      const msg = String(err?.errMsg || '')
-      if (msg.includes('cancel') || msg.includes('取消')) return
-    },
-  })
-}
-
 async function submitNewPost() {
-  if (!canSubmitPost.value || posting.value) return
+  if (!canSubmitPost.value) return
   posting.value = true
   try {
-    let imageUrl: string | undefined
-    let videoUrl: string | undefined
-    let mediaType: WorldMediaType = 'TEXT'
-    if (localImagePath.value) {
-      uni.showLoading({ title: t('page.world.posting'), mask: true })
-      imageUrl = await worldApi.uploadMedia(localImagePath.value)
-      mediaType = 'IMAGE'
-    } else if (localVideoPath.value) {
-      uni.showLoading({ title: t('page.world.posting'), mask: true })
-      videoUrl = await worldApi.uploadMedia(localVideoPath.value)
-      mediaType = 'VIDEO'
-    }
-    const created = await worldApi.createPost({
+    const mediaType: WorldMediaType = localVideoPath.value ? 'VIDEO' : localImagePath.value ? 'IMAGE' : 'TEXT'
+    await worldApi.createPost({
       content: newPostContent.value.trim(),
       mediaType,
+      imageUrl: localImagePath.value || undefined,
+      videoUrl: localVideoPath.value || undefined,
       mentionedUserIds: mentionedUserIds.value,
-      imageUrl,
-      videoUrl,
     })
-    posts.value = [normalizePost(created), ...posts.value]
     closeNewPost()
-    uni.showToast({ title: t('toast.post_published'), icon: 'success' })
+    postListRef.value?.reload()
+    uni.showToast({ title: t('toast.success'), icon: 'success' })
   } catch (err: any) {
-    uni.showToast({ title: getApiErrorMessage(err, t('toast.create_failed')), icon: 'none' })
+    uni.showToast({ title: getApiErrorMessage(err, t('toast.error')), icon: 'none' })
   } finally {
     posting.value = false
-    uni.hideLoading()
   }
 }
 
-function onReplyTap(post: WorldPost) {
-  showReplyModal.value = true
-  replyTarget.value = post
-  replyContent.value = ''
-  replyPosting.value = false
-}
-
-function closeReply() {
-  showReplyModal.value = false
-  replyTarget.value = null
-  replyContent.value = ''
-  replyPosting.value = false
-}
-
-async function submitReply() {
-  if (!replyTarget.value || !canSubmitReply.value || replyPosting.value) return
-  replyPosting.value = true
-  try {
-    await worldApi.createReply(replyTarget.value.id, {
-      content: replyContent.value.trim(),
-    })
-    if (selectedTopic.value) {
-      await openTopic(selectedTopic.value)
-    } else {
-      await loadPosts()
-    }
-    uni.showToast({ title: t('toast.post_published'), icon: 'success' })
-    if (detailRef.value && typeof detailRef.value.loadReplies === 'function') {
-      detailRef.value.loadReplies()
-    }
-  } catch (err: any) {
-    uni.showToast({ title: getApiErrorMessage(err, t('toast.create_failed')), icon: 'none' })
-  } finally {
-    replyPosting.value = false
-    closeReply()
-  }
-}
-
-async function openShare(post: WorldPost) {
-  showSortDropdown.value = false
-  shareTarget.value = post
-  shareNote.value = ''
-  shareCopied.value = false
-  shareLinkUrl.value = ''
-  showShareModal.value = true
-  try {
-    const { url } = await worldApi.getShareLink(post.id)
-    shareLinkUrl.value = url
-  } catch (err: any) {
-    uni.showToast({ title: getApiErrorMessage(err, t('toast.load_failed')), icon: 'none' })
-  }
-}
-
-function closeShare() {
-  showShareModal.value = false
-  shareTarget.value = null
-  shareNote.value = ''
-  shareLinkUrl.value = ''
-  shareCopied.value = false
-}
-
-function shareBodyText() {
-  const note = shareNote.value.trim()
-  if (note) return note
-  return (shareTarget.value?.content || '').trim()
-}
-
-function shareChannel(channel: string) {
-  const link = shareLinkUrl.value
-  if (!link) {
-    uni.showToast({ title: t('page.world.share_link_loading'), icon: 'none' })
-    return
-  }
-  const text = shareBodyText()
-  let url = ''
-  switch (channel) {
-    case 'twitter':
-      url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(link)}`
-      break
-    case 'linkedin':
-      url = `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(link)}`
-      break
-    case 'facebook':
-      url = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(link)}`
-      break
-    case 'email':
-      url = `mailto:?subject=${encodeURIComponent('EqoChat')}&body=${encodeURIComponent(`${text}\n\n${link}`)}`
-      openExternalUrl(url)
-      return
-    case 'whatsapp':
-      url = `https://wa.me/?text=${encodeURIComponent(`${text} ${link}`)}`
-      break
-    case 'telegram':
-      url = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`
-      break
-    default:
-      return
-  }
-  openExternalUrl(url)
-}
-
-function copyShareLink() {
-  const link = shareLinkUrl.value
-  if (!link) {
-    uni.showToast({ title: t('page.world.share_link_loading'), icon: 'none' })
-    return
-  }
-  uni.setClipboardData({
-    data: link,
-    success: () => {
-      shareCopied.value = true
-      setTimeout(() => {
-        shareCopied.value = false
-      }, 2000)
-    },
-  })
-}
-
-const loadPosts = async () => {
-  loading.value = true
-  try {
-    const list = await worldApi.listPosts({ sort: sortBy.value, limit: 30 })
-    posts.value = list.map(normalizePost)
-  } catch (err: any) {
-    uni.showToast({ title: getApiErrorMessage(err, t('toast.load_failed')), icon: 'none' })
-  } finally {
-    loading.value = false
-  }
-}
-
-const loadTopics = async () => {
-  try {
-    topicList.value = await worldApi.listTopics({ limit: 50 })
-  } catch (err: any) {
-    uni.showToast({ title: getApiErrorMessage(err, t('toast.load_failed')), icon: 'none' })
-  }
-}
-
+// Lifecycle
 const loadMentionFriends = async () => {
   try {
     mentionFriends.value = await contactApi.listContacts()
@@ -738,103 +439,9 @@ const loadMentionFriends = async () => {
   }
 }
 
-const loadMentionedPosts = async () => {
-  try {
-    const list = await worldApi.listMentionedMe({ limit: 30 })
-    mentionedPosts.value = list.map(normalizePost)
-  } catch (err: any) {
-    uni.showToast({ title: getApiErrorMessage(err, t('toast.load_failed')), icon: 'none' })
-  }
-}
-
-const loadMyPosts = async () => {
-  try {
-    const list = await worldApi.listMyPosts({ limit: 100 })
-    myPosts.value = list.map(normalizePost)
-  } catch (err: any) {
-    uni.showToast({ title: getApiErrorMessage(err, t('toast.load_failed')), icon: 'none' })
-  }
-}
-
-const openTopic = async (name: string) => {
-  selectedTopic.value = name
-  try {
-    const list = await worldApi.listTopicPosts(name, { limit: 30 })
-    topicPosts.value = list.map(normalizePost)
-  } catch (err: any) {
-    uni.showToast({ title: getApiErrorMessage(err, t('toast.load_failed')), icon: 'none' })
-    topicPosts.value = []
-  }
-}
-
-async function toggleUpvote(post: WorldPost) {
-  try {
-    const res = await worldApi.toggleUpvote(post.id)
-    const nextUpvoted = !!res?.upvoted
-    const delta = nextUpvoted === post.upvoted ? 0 : (nextUpvoted ? 1 : -1)
-    const update = (p: WorldPost) => ({ ...p, upvoted: nextUpvoted, upvotes: Math.max(0, (p.upvotes || 0) + delta) })
-    posts.value = posts.value.map((p) => (p.id === post.id ? update(p) : p))
-    topicPosts.value = topicPosts.value.map((p) => (p.id === post.id ? update(p) : p))
-    myPosts.value = myPosts.value.map((p) => (p.id === post.id ? update(p) : p))
-    if (detailTarget.value?.id === post.id) {
-      detailTarget.value = update(detailTarget.value)
-    }
-    if (replyTarget.value?.id === post.id) {
-      replyTarget.value = update(replyTarget.value)
-    }
-    if (shareTarget.value?.id === post.id) {
-      shareTarget.value = update(shareTarget.value)
-    }
-  } catch (err: any) {
-    uni.showToast({ title: getApiErrorMessage(err, t('toast.load_failed')), icon: 'none' })
-  }
-}
-
-async function toggleFollow(topic: WorldTopic) {
-  try {
-    const res = await worldApi.toggleFollow(topic.name)
-    const nextFollowing = !!res?.following
-    topicList.value = topicList.value.map((row) => {
-      if (row.id !== topic.id) return row
-      const delta = nextFollowing === row.favorite ? 0 : (nextFollowing ? 1 : -1)
-      return {
-        ...row,
-        favorite: nextFollowing,
-        followers: Math.max(0, (row.followers || 0) + delta),
-      }
-    })
-  } catch (err: any) {
-    uni.showToast({ title: getApiErrorMessage(err, t('toast.load_failed')), icon: 'none' })
-  }
-}
-
-function onSearchTap() {
-  uni.showToast({ title: t('toast.coming_soon'), icon: 'none' })
-}
-
 onShow(() => {
   uni.setNavigationBarTitle({ title: t('page.world.title') })
   loadMentionFriends()
-  loadTopics()
-  loadPosts()
-})
-
-watch(sortBy, () => {
-  if (activeTab.value === 'posts') loadPosts()
-})
-
-watch(activeTab, (v) => {
-  if (v === 'posts') {
-    loadPosts()
-  } else if (v === 'topics') {
-    loadTopics()
-  } else if (v === 'my') {
-    loadMyPosts()
-  }
-})
-
-watch(selectedTopic, (v) => {
-  if (v) showSortDropdown.value = false
 })
 </script>
 
@@ -847,122 +454,5 @@ watch(selectedTopic, (v) => {
   flex-direction: column;
   background: linear-gradient(165deg, var(--c-bg) 0%, var(--c-bg-2) 100%);
   box-sizing: border-box;
-}
-
-.sort-row {
-  padding: 20rpx 24rpx;
-  border-bottom: 1rpx solid var(--c-border);
-  background: rgba(255, 255, 255, 0.9);
-}
-
-.sort-row-inner {
-  display: flex;
-  align-items: center;
-  gap: 16rpx;
-}
-
-.sort-wrap {
-  position: relative;
-  flex: 1;
-  min-width: 0;
-}
-
-.sort-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 12rpx;
-  padding: 6rpx 24rpx;
-  border-radius: var(--radius-md);
-  background: var(--c-surface);
-  border: 1rpx solid var(--c-border);
-  font-size: 26rpx;
-  color: var(--c-ink);
-}
-
-.sort-menu {
-  position: absolute;
-  left: 0;
-  top: calc(100% + 8rpx);
-  min-width: 280rpx;
-  background: var(--c-surface);
-  border: 1rpx solid var(--c-border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--c-shadow-soft);
-  z-index: 30;
-  overflow: hidden;
-}
-
-.sort-item {
-  padding: 22rpx 26rpx;
-  font-size: 26rpx;
-  color: var(--c-ink);
-}
-
-.sort-item.current {
-  background: rgba(3, 2, 19, 0.08);
-  color: var(--c-primary);
-  font-weight: 600;
-}
-
-.new-post-btn {
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 8rpx;
-  padding: 6rpx 22rpx;
-  border-radius: var(--radius-md);
-  background: var(--c-primary);
-  color: #fff;
-  font-size: 24rpx;
-  font-weight: 600;
-  border: none;
-  box-shadow: 0 10rpx 20rpx rgba(3, 2, 19, 0.24);
-}
-
-.new-post-plus {
-  font-size: 28rpx;
-  font-weight: 400;
-  line-height: 1;
-}
-
-.chev {
-  font-size: 20rpx;
-  color: var(--c-muted);
-}
-
-.scroll-feed {
-  padding: 24rpx;
-  padding-bottom: var(--page-pad-bottom-tabbar);
-  box-sizing: border-box;
-}
-
-.scroll-topics {
-  padding-top: 16rpx;
-}
-
-.feed-empty {
-  text-align: center;
-  color: var(--c-muted);
-  font-size: 24rpx;
-  padding: 80rpx 0 24rpx;
-}
-
-.feed-end {
-  text-align: center;
-  color: var(--c-muted);
-  font-size: 22rpx;
-  padding: 8rpx 0 24rpx;
-}
-
-/* My Tab - Timeline Layout */
-.my-tab-wrap {
-  display: flex;
-  flex-direction: column;
-  min-height: 100vh;
-  padding-bottom: var(--page-pad-bottom-tabbar);
-}
-
-.timeline-content {
-  padding: 24rpx;
 }
 </style>

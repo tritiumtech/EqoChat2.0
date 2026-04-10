@@ -10,8 +10,8 @@ import com.eqochat.business.chat.api.dto.request.CreateConversationRequest;
 import com.eqochat.business.chat.api.dto.request.SendMessageRequest;
 import com.eqochat.business.chat.api.dto.response.ConversationSummaryResponse;
 import com.eqochat.business.chat.api.dto.response.MessageAttachmentResponse;
-import com.eqochat.business.chat.api.dto.response.MessagePageResponse;
 import com.eqochat.business.chat.api.dto.response.MessageResponse;
+import com.eqochat.framework.common.PageResponse;
 import com.eqochat.business.chat.mapper.ConversationMapper;
 import com.eqochat.business.chat.mapper.MessageMapper;
 import com.eqochat.business.chat.api.service.ConversationParticipantService;
@@ -279,7 +279,7 @@ public class ConversationServiceImpl extends ServiceImpl<ConversationMapper, Con
     }
     
     @Override
-    public MessagePageResponse getMessages(Long userId, Long conversationId, Long lastMessageId, Integer limit) {
+    public PageResponse<MessageResponse> getMessages(Long userId, Long conversationId, Long lastMessageId, Integer limit) {
         Optional<ConversationParticipant> participant = participantService
                 .findByConversationAndParticipant(conversationId, userId);
         if (participant.isEmpty()) {
@@ -310,12 +310,7 @@ public class ConversationServiceImpl extends ServiceImpl<ConversationMapper, Con
         Long nextLastMessageId = messages.isEmpty() ? null : messages.get(messages.size() - 1).getId();
         boolean hasMore = nextLastMessageId != null && messageMapper.countOlderMessages(conversationId, nextLastMessageId) > 0;
 
-        return MessagePageResponse.builder()
-                .items(items)
-                .total(total)
-                .hasMore(hasMore)
-                .nextLastMessageId(nextLastMessageId)
-                .build();
+        return PageResponse.of(items, hasMore, nextLastMessageId);
     }
 
     @Override

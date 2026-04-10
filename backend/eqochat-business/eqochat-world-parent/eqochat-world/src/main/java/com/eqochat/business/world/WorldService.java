@@ -6,17 +6,18 @@ import com.eqochat.business.world.api.dto.response.WorldPostResponse;
 import com.eqochat.business.world.api.dto.response.WorldPostReplyResponse;
 import com.eqochat.business.world.api.dto.response.WorldShareLinkResponse;
 import com.eqochat.business.world.api.dto.response.WorldTopicResponse;
+import com.eqochat.framework.common.PageResponse;
 
 import java.util.List;
 
 public interface WorldService {
 
-    List<WorldPostResponse> listFeed(Long viewerId, String sortBy, Long cursorId, Integer limit);
+    PageResponse<WorldPostResponse> listFeed(Long viewerId, String sortBy, Long cursorId, Integer limit);
 
     /**
      * 查看某用户发布的动态（需与作者为好友，用于联系人详情等）。
      */
-    List<WorldPostResponse> listPostsByAuthor(Long viewerId, Long authorId, Long cursorId, Integer limit);
+    PageResponse<WorldPostResponse> listPostsByAuthor(Long viewerId, Long authorId, Long cursorId, Integer limit);
 
     WorldPostResponse createPost(Long authorId, CreateWorldPostRequest request);
 
@@ -24,11 +25,11 @@ public interface WorldService {
 
     WorldShareLinkResponse shareLink(Long postId);
 
-    List<WorldTopicResponse> listTopics(Long viewerId, Integer limit);
+    PageResponse<WorldTopicResponse> listTopics(Long viewerId, Integer limit, Long cursorId);
 
-    List<WorldPostResponse> listTopicPosts(Long viewerId, String topicName, Long cursorId, Integer limit);
+    PageResponse<WorldPostResponse> listTopicPosts(Long viewerId, String topicName, Long cursorId, Integer limit);
 
-    List<WorldPostResponse> listMentionedMe(Long viewerId, Long cursorId, Integer limit);
+    PageResponse<WorldPostResponse> listMentionedMe(Long viewerId, Long cursorId, Integer limit);
 
     boolean toggleUpvote(Long viewerId, Long postId);
 
@@ -47,6 +48,5 @@ public interface WorldService {
     /**
      * 当前用户自己发布的动态（用于 My Tab 时间线展示）。
      */
-    List<WorldPostResponse> listMyPosts(Long viewerId, Long cursorId, Integer limit);
+    PageResponse<WorldPostResponse> listMyPosts(Long viewerId, Long cursorId, Integer limit);
 }
-
