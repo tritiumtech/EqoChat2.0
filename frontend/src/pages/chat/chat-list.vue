@@ -12,7 +12,14 @@
       </template>
     </PageHeader>
 
-    <view class="list-scroll">
+    <!-- 连接状态栏 -->
+    <view v-if="showConnectionStatus" class="connection-bar" :class="connectionStatusClass" @click="handleConnectionBarClick">
+      <view class="connection-indicator" />
+      <text class="connection-text">{{ connectionStatusText }}</text>
+      <text v-if="canReconnect" class="connection-action">点击重连</text>
+    </view>
+
+    <view class="list-scroll" :class="{ 'with-connection-bar': showConnectionStatus }">
       <view v-if="loading" class="state">{{ t('common.loading') }}</view>
       <view v-else-if="filteredSorted.length === 0" class="state">
         <EmptyState :title="t('common.empty_conversation')" icon="💬" />
@@ -206,6 +213,66 @@ const onCompose = () => {
   uni.showToast({ title: t('toast.coming_soon'), icon: 'none' })
 }
 
+// 连接状态计算属性
+const showConnectionStatus = computed(() => {
+  // 未登录不显示
+  if (!userStore.isLoggedIn) return false
+  // 连接中或已连接不显示
+  if (chatStore.isRealtimeConnected) return false
+  return true
+})
+
+const connectionStatusClass = computed(() => {
+  if (chatStore.isSessionKicked) return 'kicked'
+  return 'disconnected'
+})
+
+const connectionStatusText = computed(() => {
+  if (chatStore.isSessionKicked) return '已在其他设备登录'
+  return '连接已断开'
+})
+
+const canReconnect = computed(() => {
+  return !chatStore.isSessionKicked && userStore.isLoggedIn
+})
+
+// 处理连接状态栏点击
+const handleConnectionBarClick = () => {
+  if (chatStore.isSessionKicked) {
+    // 被踢下线，需要重新登录
+    uni.showModal({
+      title: '登录提示',
+      content: '您的账号已在其他设备登录，请重新登录',
+      showCancel: false,
+      confirmText: '重新登录',
+      success: () => {
+        userStore.logout()
+        uni.reLaunch({ url: '/pages/auth/login' })
+      }
+    })
+    return
+  }
+
+  if (!canReconnect.value) return
+
+  // 手动重连
+  uni.showLoading({ title: '连接中...', mask: true })
+  const success = chatStore.reconnect()
+  if (success) {
+    setTimeout(() => {
+      uni.hideLoading()
+      if (chatStore.isRealtimeConnected) {
+        uni.showToast({ title: '连接成功', icon: 'success' })
+      } else {
+        uni.showToast({ title: '连接中...', icon: 'none' })
+      }
+    }, 800)
+  } else {
+    uni.hideLoading()
+    uni.showToast({ title: '连接失败', icon: 'none' })
+  }
+}
+
 onShow(() => {
   if (!userStore.isLoggedIn) {
     uni.reLaunch({ url: '/pages/auth/login' })
@@ -244,6 +311,69 @@ watch(
   overflow: hidden;
 }
 
+/* 连接状态栏 */
+.connection-bar {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  padding: 16rpx 24rpx;
+  background: rgba(239, 68, 68, 0.1);
+  border-bottom: 1rpx solid rgba(239, 68, 68, 0.2);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.connection-bar:active {
+  opacity: 0.8;
+}
+
+.connection-bar.kicked {
+  background: rgba(245, 158, 11, 0.1);
+  border-bottom-color: rgba(245, 158, 11, 0.2);
+}
+
+.connection-indicator {
+  width: 16rpx;
+  height: 16rpx;
+  border-radius: 50%;
+  background: #ef4444;
+  animation: pulse 2s infinite;
+}
+
+.connection-bar.kicked .connection-indicator {
+  background: #f59e0b;
+  animation: none;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.connection-text {
+  flex: 1;
+  font-size: 28rpx;
+  color: #ef4444;
+  font-weight: 500;
+}
+
+.connection-bar.kicked .connection-text {
+  color: #f59e0b;
+}
+
+.connection-action {
+  font-size: 26rpx;
+  color: #3b82f6;
+  font-weight: 500;
+  padding: 8rpx 16rpx;
+  background: rgba(59, 130, 246, 0.1);
+  border-radius: 8rpx;
+}
+
 .list-scroll {
   flex: 1;
   min-height: 0;
@@ -251,6 +381,10 @@ watch(
   -webkit-overflow-scrolling: touch;
   padding: 12rpx 16rpx var(--page-pad-bottom-tabbar-loose);
   box-sizing: border-box;
+}
+
+.list-scroll.with-connection-bar {
+  padding-top: 0;
 }
 
 .native-scroll {

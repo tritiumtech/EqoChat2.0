@@ -1,0 +1,142 @@
+package com.eqochat.business.world.controller.world;
+
+import com.eqochat.framework.common.ApiResponse;
+import com.eqochat.framework.common.UserContext;
+import com.eqochat.business.world.api.dto.request.CreateWorldPostRequest;
+import com.eqochat.business.world.api.dto.request.CreateWorldPostReplyRequest;
+import com.eqochat.business.world.api.dto.response.WorldPostResponse;
+import com.eqochat.business.world.api.dto.response.WorldPostReplyResponse;
+import com.eqochat.business.world.api.dto.response.WorldShareLinkResponse;
+import com.eqochat.business.world.api.dto.response.WorldTopicResponse;
+import com.eqochat.business.world.WorldService;
+import com.eqochat.business.world.WorldUploadService;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.core.io.FileSystemResource;
+import org.springframework.core.io.Resource;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
+
+@RestController
+@RequestMapping("/api/v1/world")
+@RequiredArgsConstructor
+public class WorldController {
+
+    private final WorldService worldService;
+    private final WorldUploadService worldUploadService;
+
+    @GetMapping("/posts")
+    public ApiResponse<List<WorldPostResponse>> listPosts(@RequestParam(required = false) String sort,
+                                                         @RequestParam(required = false) Long cursorId,
+                                                         @RequestParam(required = false) Integer limit) {
+        return ApiResponse.success(worldService.listFeed(UserContext.requireCurrentUser(), sort, cursorId, limit));
+    }
+
+    /**
+     * 某好友最近发布的动态（需互为好友）。
+     */
+    @GetMapping("/users/{authorId}/posts")
+    public ApiResponse<List<WorldPostResponse>> listPostsByAuthor(@PathVariable Long authorId,
+                                                                   @RequestParam(required = false) Long cursorId,
+                                                                   @RequestParam(required = false) Integer limit) {
+        return ApiResponse.success(worldService.listPostsByAuthor(UserContext.requireCurrentUser(), authorId, cursorId, limit));
+    }
+
+    @PostMapping("/posts")
+    public ApiResponse<WorldPostResponse> createPost(@Valid @RequestBody CreateWorldPostRequest request) {
+        return ApiResponse.success(worldService.createPost(UserContext.requireCurrentUser(), request));
+    }
+
+    @GetMapping("/posts/{postId}/share-link")
+    public ApiResponse<WorldShareLinkResponse> shareLink(@PathVariable Long postId) {
+        return ApiResponse.success(worldService.shareLink(postId));
+    }
+
+    @GetMapping("/topics")
+    public ApiResponse<List<WorldTopicResponse>> listTopics(@RequestParam(required = false) Integer limit) {
+        return ApiResponse.success(worldService.listTopics(UserContext.requireCurrentUser(), limit));
+    }
+
+    @GetMapping("/topics/{name}/posts")
+    public ApiResponse<List<WorldPostResponse>> listTopicPosts(@PathVariable String name,
+                                                               @RequestParam(required = false) Long cursorId,
+                                                               @RequestParam(required = false) Integer limit) {
+        return ApiResponse.success(worldService.listTopicPosts(UserContext.requireCurrentUser(), name, cursorId, limit));
+    }
+
+    @GetMapping("/mentions")
+    public ApiResponse<List<WorldPostResponse>> listMentionedMe(@RequestParam(required = false) Long cursorId,
+                                                                @RequestParam(required = false) Integer limit) {
+        return ApiResponse.success(worldService.listMentionedMe(UserContext.requireCurrentUser(), cursorId, limit));
+    }
+
+    @GetMapping("/my-posts")
+    public ApiResponse<List<WorldPostResponse>> listMyPosts(@RequestParam(required = false) Long cursorId,
+                                                            @RequestParam(required = false) Integer limit) {
+        return ApiResponse.success(worldService.listMyPosts(UserContext.requireCurrentUser(), cursorId, limit));
+    }
+
+    @PostMapping("/posts/{postId}/upvote")
+    public ApiResponse<Map<String, Object>> toggleUpvote(@PathVariable Long postId) {
+        boolean upvoted = worldService.toggleUpvote(UserContext.requireCurrentUser(), postId);
+        return ApiResponse.success(Map.of("upvoted", upvoted));
+    }
+
+    @PostMapping("/topics/{name}/follow")
+    public ApiResponse<Map<String, Object>> toggleFollow(@PathVariable String name) {
+        boolean following = worldService.toggleTopicFollow(UserContext.requireCurrentUser(), name);
+        return ApiResponse.success(Map.of("following", following));
+    }
+
+    @PostMapping("/posts/{postId}/replies")
+    public ApiResponse<Map<String, Object>> createReply(@PathVariable Long postId,
+                                                         @Valid @RequestBody CreateWorldPostReplyRequest request) {
+        int replyCount = worldService.createReply(UserContext.requireCurrentUser(), postId, request);
+        return ApiResponse.success(Map.of("replyCount", replyCount));
+    }
+
+    @PostMapping("/replies/{replyId}/upvote")
+    public ApiResponse<Map<String, Object>> toggleReplyUpvote(@PathVariable Long replyId) {
+        boolean upvoted = worldService.toggleReplyUpvote(UserContext.requireCurrentUser(), replyId);
+        return ApiResponse.success(Map.of("upvoted", upvoted));
+    }
+
+    @GetMapping("/posts/{postId}/replies")
+    public ApiResponse<List<WorldPostReplyResponse>> listReplies(@PathVariable Long postId,
+                                                                 @RequestParam(required = false) Long cursorId,
+                                                                 @RequestParam(required = false) Integer limit) {
+        return ApiResponse.success(worldService.listReplies(UserContext.requireCurrentUser(), postId, cursorId, limit));
+    }
+
+    @PostMapping(value = "/uploads", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ApiResponse<Map<String, String>> upload(@RequestPart("file") MultipartFile file,
+                                                     HttpServletRequest request) throws IOException {
+        String url = worldUploadService.storeAndBuildAbsoluteUrl(file, request);
+        return ApiResponse.success(Map.of("url", url));
+    }
+
+    @GetMapping("/uploads/{filename}")
+    public ResponseEntity<Resource> download(@PathVariable String filename) throws IOException {
+        Path path = worldUploadService.resolveStoredFile(filename);
+        if (!Files.exists(path)) {
+            return ResponseEntity.notFound().build();
+        }
+        Resource resource = new FileSystemResource(path);
+        String ct = Files.probeContentType(path);
+        MediaType mediaType = ct != null ? MediaType.parseMediaType(ct) : MediaType.APPLICATION_OCTET_STREAM;
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CACHE_CONTROL, "public, max-age=86400")
+                .contentType(mediaType)
+                .body(resource);
+    }
+}

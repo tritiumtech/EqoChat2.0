@@ -1,0 +1,73 @@
+package com.eqochat.business.project.entity;
+
+import com.baomidou.mybatisplus.annotation.*;
+import lombok.*;
+
+import java.time.LocalDateTime;
+
+/**
+ * 项目任务表。
+ */
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+@TableName(value = "project_task", autoResultMap = true)
+public class ProjectTask {
+
+    @TableId(type = IdType.AUTO)
+    private Long id;
+
+    @TableField("project_id")
+    private Long projectId;
+
+    @TableField("title")
+    private String title;
+
+    @TableField("assignee_id")
+    private Long assigneeId;
+
+    @TableField("assignee_type")
+    private AssigneeType assigneeType;
+
+    @TableField("assignee_name")
+    private String assigneeName;
+
+    @TableField("deadline")
+    private String deadline;
+
+    @TableField("status")
+    private TaskStatus status;
+
+    @TableField("priority")
+    private TaskPriority priority;
+
+    // ========== 审计字段 ==========
+    @TableField(value = "create_time", fill = FieldFill.INSERT)
+    private LocalDateTime createTime;
+
+    @TableField(value = "update_time", fill = FieldFill.INSERT_UPDATE)
+    private LocalDateTime updateTime;
+
+    @TableField(value = "create_by", fill = FieldFill.INSERT)
+    private Long createBy;
+
+    @TableField(value = "update_by", fill = FieldFill.INSERT_UPDATE)
+    private Long updateBy;
+
+    @TableLogic
+    private Long delToken;
+
+    public enum AssigneeType {
+        HUMAN, AGENT
+    }
+
+    public enum TaskStatus {
+        PENDING, IN_PROGRESS, COMPLETED
+    }
+
+    public enum TaskPriority {
+        LOW, MEDIUM, HIGH
+    }
+}
+

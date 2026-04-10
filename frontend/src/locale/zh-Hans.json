@@ -537,6 +537,9 @@
       "toasts": {
         "create_success": "创建成功",
         "update_success": "更新成功",
+        "bid_change_rejected": "已拒绝变更",
+        "owner_only": "仅项目负责人可执行该操作",
+        "no_pending_bid_update": "当前没有待处理的报价变更",
         "transfer_success": "转让成功",
         "share_copied": "已复制",
         "task_created": "任务创建成功"

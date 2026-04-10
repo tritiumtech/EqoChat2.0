@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.eqochat</groupId>
+        <artifactId>backend</artifactId>
+        <version>1.0.0</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>eqochat-business</artifactId>
+    <packaging>pom</packaging>
+    <name>EqoChat Business</name>
+    <description>业务功能层 - 8 个业务模块</description>
+
+    <modules>
+
+        <module>eqochat-agent-parent</module>
+        <module>eqochat-user-parent</module>
+        <module>eqochat-world-parent</module>
+        <module>eqochat-chat-parent</module>
+        <module>eqochat-contact-parent</module>
+        <module>eqochat-project-parent</module>
+        <module>eqochat-credit-parent</module>
+        <module>eqochat-notification-parent</module>
+    </modules>
+</project>

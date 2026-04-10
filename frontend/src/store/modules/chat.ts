@@ -149,6 +149,24 @@ export const useChatStore = defineStore('chat', () => {
     wsClient.close()
   }
 
+  /**
+   * 手动重连 WebSocket
+   */
+  const reconnect = () => {
+    if (isSessionKicked.value) {
+      return false
+    }
+    const token = useUserStore().token
+    if (!token) {
+      return false
+    }
+    stopRealtime()
+    setTimeout(() => {
+      startRealtime(token)
+    }, 300)
+    return true
+  }
+
   return {
     conversations,
     unreadCount,
@@ -163,6 +181,7 @@ export const useChatStore = defineStore('chat', () => {
     markConversationRead,
     startRealtime,
     stopRealtime,
+    reconnect,
     handleSessionKicked,
   }
 })

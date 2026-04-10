@@ -537,6 +537,9 @@
       "toasts": {
         "create_success": "Created successfully",
         "update_success": "Updated successfully",
+        "bid_change_rejected": "Bid change rejected",
+        "owner_only": "Only the project owner can perform this action",
+        "no_pending_bid_update": "No pending bid change to handle",
         "transfer_success": "Transferred successfully",
         "share_copied": "Copied",
         "task_created": "Task created successfully"

@@ -785,83 +785,90 @@ const send = async () => {
 
   // 加锁
   isSending = true
-  console.log('[send] 开始发送消息:', { text, hasAttachment })
+  try {
+    console.log('[send] 开始发送消息:', { text, hasAttachment })
 
-  // 发送消息前，通知对方你已停止输入
-  stopLocalTyping()
+    // 发送消息前，通知对方你已停止输入
+    stopLocalTyping()
 
-  const pendingAttachment = attachments.value[0]
-  const messageType = hasAttachment ? pendingAttachment.messageType : 'TEXT'
+    const pendingAttachment = attachments.value[0]
+    const messageType = hasAttachment ? pendingAttachment.messageType : 'TEXT'
 
-  let metadata: Record<string, unknown> | undefined = undefined
-  if (messageType !== 'TEXT' && pendingAttachment) {
-    const tempFilePath = pendingAttachment.attachment.tempFilePath
-    if (!tempFilePath) {
-      isSending = false
-      uni.showToast({ title: t('toast.load_failed'), icon: 'none' })
-      return
-    }
-
-    uni.showLoading({ title: t('common.loading'), mask: true })
-    try {
-      const downloadUrl = await filesApi.uploadChatFile(tempFilePath)
-      pendingAttachment.attachment.downloadUrl = downloadUrl
-      metadata = {
-        fileName: pendingAttachment.attachment.fileName,
-        fileSize: pendingAttachment.attachment.fileSize,
-        fileType: pendingAttachment.attachment.fileType,
-        downloadUrl,
+    let metadata: Record<string, unknown> | undefined = undefined
+    if (messageType !== 'TEXT' && pendingAttachment) {
+      const tempFilePath = pendingAttachment.attachment.tempFilePath
+      if (!tempFilePath) {
+        uni.showToast({ title: t('toast.load_failed'), icon: 'none' })
+        return
       }
-    } finally {
-      uni.hideLoading()
+
+      uni.showLoading({ title: t('common.loading'), mask: true })
+      try {
+        const downloadUrl = await filesApi.uploadChatFile(tempFilePath)
+        pendingAttachment.attachment.downloadUrl = downloadUrl
+        metadata = {
+          fileName: pendingAttachment.attachment.fileName,
+          fileSize: pendingAttachment.attachment.fileSize,
+          fileType: pendingAttachment.attachment.fileType,
+          downloadUrl,
+        }
+      } catch (err: any) {
+        uni.showToast({ title: err?.message || t('toast.message_failed'), icon: 'none' })
+        return
+      } finally {
+        uni.hideLoading()
+      }
     }
-  }
 
-  const localId = `local-${Date.now()}`
-  const now = new Date()
-  const localMessage: ChatMessage = {
-    id: localId,
-    senderId: currentUserId.value,
-    senderType: 'USER',
-    isAgent: false,
-    content: hasText ? text : '',
-    // 使用 ISO 字符串格式，与后端保持一致（UTC 时间）
-    createTime: now.toISOString(),
-    isSelf: true,
-    local: true,
-    messageType,
-    attachment: pendingAttachment?.attachment,
-  }
-  appendChatMessage(localMessage)
-
-  const wsContent = hasText ? text : ''
-  const ok =
-    isConnected.value &&
-    sendMessage(
-      String(conversationId.value),
-      wsContent,
+    const localId = `local-${Date.now()}`
+    const now = new Date()
+    const localMessage: ChatMessage = {
+      id: localId,
+      senderId: currentUserId.value,
+      senderType: 'USER',
+      isAgent: false,
+      content: hasText ? text : '',
+      // 使用 ISO 字符串格式，与后端保持一致（UTC 时间）
+      createTime: now.toISOString(),
+      isSelf: true,
+      local: true,
       messageType,
-      metadata ? { metadata } : undefined
-    )
+      attachment: pendingAttachment?.attachment,
+    }
+    appendChatMessage(localMessage)
 
-  if (ok) {
-    const timer = setTimeout(() => {
-      const target = messages.value.find(item => item.id === localId && item.local)
-      if (target) {
-        sendHttpMessage(localId, wsContent, messageType, metadata)
-      }
-    }, 4000) as unknown as number
-    pendingTimers.set(localId, timer)
-  } else {
-    await sendHttpMessage(localId, wsContent, messageType, metadata)
+    const wsContent = hasText ? text : ''
+    const ok =
+      isConnected.value &&
+      sendMessage(
+        String(conversationId.value),
+        wsContent,
+        messageType,
+        metadata ? { metadata } : undefined
+      )
+
+    if (ok) {
+      const timer = setTimeout(() => {
+        const target = messages.value.find(item => item.id === localId && item.local)
+        if (target) {
+          sendHttpMessage(localId, wsContent, messageType, metadata)
+        }
+      }, 4000) as unknown as number
+      pendingTimers.set(localId, timer)
+    } else {
+      await sendHttpMessage(localId, wsContent, messageType, metadata)
+    }
+
+    // 清空输入
+    inputText.value = ''
+    attachments.value = []
+    showEmoji.value = false
+    showAttachMenu.value = false
+  } catch (err: any) {
+    uni.showToast({ title: err?.message || t('toast.message_failed'), icon: 'none' })
+  } finally {
+    isSending = false
   }
-
-  // 清空输入并释放锁
-  inputText.value = ''
-  attachments.value = []
-  showEmoji.value = false
-  showAttachMenu.value = false
-  isSending = false
 }
 
 const sendHttpMessage = async (
@@ -889,6 +896,11 @@ const clearPendingTimer = (localId: string) => {
     clearTimeout(timer)
     pendingTimers.delete(localId)
   }
+}
+
+const clearAllPendingTimers = () => {
+  pendingTimers.forEach((timer) => clearTimeout(timer))
+  pendingTimers.clear()
 }
 
 const parseAttachmentFromPayload = (payload: ChatMessagePayload) => {
@@ -1187,10 +1199,23 @@ onShow(() => {
 
 onHide(() => {
   isPageVisible.value = false
+  stopLocalTyping()
+  if (otherTypingClearTimer.value) {
+    clearTimeout(otherTypingClearTimer.value)
+    otherTypingClearTimer.value = null
+  }
+  otherTypingUserId.value = null
   chatStore.setActiveConversation(null)
 })
 
 onUnload(() => {
+  stopLocalTyping()
+  if (otherTypingClearTimer.value) {
+    clearTimeout(otherTypingClearTimer.value)
+    otherTypingClearTimer.value = null
+  }
+  otherTypingUserId.value = null
+  clearAllPendingTimers()
   chatStore.setActiveConversation(null)
 })
 

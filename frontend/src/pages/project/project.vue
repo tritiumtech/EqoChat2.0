@@ -127,7 +127,6 @@ import CreateTaskModal from './components/modals/CreateTaskModal.vue'
 import UpdateBidModal from './components/modals/UpdateBidModal.vue'
 import TransferOwnershipModal from './components/modals/TransferOwnershipModal.vue'
 import ShareProjectModal from './components/modals/ShareProjectModal.vue'
-import { useChatStore } from '@/store/modules/chat'
 import { useUserStore } from '@/store/modules/user'
 import {
   projectApi,
@@ -140,7 +139,6 @@ import {
 } from '@/api/modules/project'
 
 const { t, tf } = useI18nWithFormat()
-const chatStore = useChatStore()
 const userStore = useUserStore()
 
 // 页面层同样设置为 shared，避免子组件样式隔离导致布局丢失（小程序端尤其明显）
@@ -209,15 +207,22 @@ const pendingBidUpdate = computed(() => {
 
 const selectedTransferMember = computed(() => {
   if (!projectDetail.value?.members?.length) return null
-  return projectDetail.value.members.find((m) => m.id === selectedTransferMemberId.value) || null
+  const targetId = Number(selectedTransferMemberId.value)
+  if (!Number.isFinite(targetId)) return null
+  return projectDetail.value.members.find((m) => Number(m.id) === targetId) || null
 })
 
 const currentUserIsOwner = computed(() => {
   if (!projectDetail.value) return false
-  const currentUserId = userStore.userInfo?.id
-  if (currentUserId == null) return false
-  return projectDetail.value.ownerId === currentUserId
+  const currentUserId = Number(userStore.userInfo?.id)
+  const ownerId = Number(projectDetail.value.ownerId)
+  if (!Number.isFinite(currentUserId) || !Number.isFinite(ownerId)) return false
+  return ownerId === currentUserId
 })
+
+const isAgentMemberType = (type: unknown) => {
+  return String(type || '').trim().toLowerCase() === 'agent'
+}
 
 type RecentActivityItem = {
   id: string
@@ -304,6 +309,10 @@ function paymentStatusLabel(status: any) {
 
 function formatBidK(bid: number) {
   const safe = Number.isFinite(bid) ? Math.max(0, bid) : 0
+  if (safe < 1000) {
+    const decimals = Number.isInteger(safe) ? 0 : 2
+    return `$${safe.toFixed(decimals)}`
+  }
   const k = safe / 1000
   const decimals = Math.abs(k - Math.round(k)) < 0.000001 ? 0 : 1
   return `$${k.toFixed(decimals)}K`
@@ -325,16 +334,66 @@ function onQuickAction(action: 'new_task' | 'invite') {
   if (action === 'new_task') {
     openCreateTaskModal()
   } else {
-    uni.showToast({ title: t('toast.coming_soon'), icon: 'none' })
+    if (!selectedProjectId.value) {
+      uni.showToast({ title: t('toast.load_failed'), icon: 'none' })
+      return
+    }
+    openShareModal()
   }
 }
 
-function onApproveBidUpdate() {
-  uni.showToast({ title: t('toast.coming_soon'), icon: 'none' })
+async function onApproveBidUpdate() {
+  if (selectedProjectId.value == null || !pendingBidUpdate.value) {
+    uni.showToast({ title: t('page.project.toasts.no_pending_bid_update'), icon: 'none' })
+    return
+  }
+  if (!currentUserIsOwner.value) {
+    uni.showToast({ title: t('page.project.toasts.owner_only'), icon: 'none' })
+    return
+  }
+  const nextBid = Math.round(Number(pendingBidUpdate.value.newBid))
+  if (!Number.isFinite(nextBid) || nextBid <= 0) {
+    uni.showToast({ title: t('toast.load_failed'), icon: 'none' })
+    return
+  }
+
+  try {
+    uni.showLoading({ title: t('common.loading'), mask: true })
+    await projectApi.requestBidUpdate(selectedProjectId.value, { newBid: nextBid })
+    await loadProjectAll(selectedProjectId.value)
+    uni.showToast({ title: t('page.project.toasts.update_success'), icon: 'none' })
+  } catch (err: any) {
+    uni.showToast({ title: err?.message || t('toast.load_failed'), icon: 'none' })
+  } finally {
+    uni.hideLoading()
+  }
 }
 
-function onRejectBidUpdate() {
-  uni.showToast({ title: t('toast.coming_soon'), icon: 'none' })
+async function onRejectBidUpdate() {
+  if (selectedProjectId.value == null || !pendingBidUpdate.value) {
+    uni.showToast({ title: t('page.project.toasts.no_pending_bid_update'), icon: 'none' })
+    return
+  }
+  if (!currentUserIsOwner.value) {
+    uni.showToast({ title: t('page.project.toasts.owner_only'), icon: 'none' })
+    return
+  }
+  const currentBid = Math.round(Number(projectDetail.value?.bid))
+  if (!Number.isFinite(currentBid) || currentBid <= 0) {
+    uni.showToast({ title: t('toast.load_failed'), icon: 'none' })
+    return
+  }
+
+  try {
+    uni.showLoading({ title: t('common.loading'), mask: true })
+    await projectApi.requestBidUpdate(selectedProjectId.value, { newBid: currentBid })
+    await loadProjectAll(selectedProjectId.value)
+    uni.showToast({ title: t('page.project.toasts.bid_change_rejected'), icon: 'none' })
+  } catch (err: any) {
+    uni.showToast({ title: err?.message || t('toast.load_failed'), icon: 'none' })
+  } finally {
+    uni.hideLoading()
+  }
 }
 
 function formatMoney(amount: number) {
@@ -532,11 +591,16 @@ function openTransferModal(member?: ProjectMember) {
 
 async function submitTransferOwnership() {
   if (!selectedProjectId.value || !selectedTransferMember.value) return
+  const toMemberId = Number(selectedTransferMember.value.id)
+  if (!Number.isFinite(toMemberId) || toMemberId <= 0) {
+    uni.showToast({ title: t('toast.load_failed'), icon: 'none' })
+    return
+  }
   try {
     uni.showLoading({ title: t('common.loading'), mask: true })
-    const toMemberType = selectedTransferMember.value.type === 'agent' ? 'AGENT' : 'HUMAN'
+    const toMemberType = isAgentMemberType(selectedTransferMember.value.type) ? 'AGENT' : 'HUMAN'
     await projectApi.transferOwnership(selectedProjectId.value, {
-      toMemberId: selectedTransferMember.value.id,
+      toMemberId,
       toMemberType: toMemberType as 'AGENT' | 'HUMAN',
     })
     showTransferModal.value = false
@@ -607,6 +671,7 @@ function closeProject() {
 }
 
 onLoad((query) => {
+  if (!userStore.isLoggedIn) return
   const raw = (query as any)?.projectId ?? (query as any)?.id
   const id = Number(raw)
   if (!Number.isNaN(id) && id > 0) {
@@ -618,6 +683,10 @@ onLoad((query) => {
 })
 
 onShow(async () => {
+  if (!userStore.isLoggedIn) {
+    uni.reLaunch({ url: '/pages/auth/login' })
+    return
+  }
   await loadProjects()
   // 如果从分享链接带参进入，则在项目详情加载失败时退回列表
   if (selectedProjectId.value != null && projectDetail.value == null) {

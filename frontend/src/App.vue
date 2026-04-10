@@ -4,9 +4,14 @@ import { t } from '@/utils/i18n'
 import { needHideNativeTabbar } from '@/tabbar/config'
 import { useUserStore } from '@/store/modules/user'
 import { useChatStore } from '@/store/modules/chat'
+import { useFriendRequestStore } from '@/store/modules/friendRequest'
+import { useNotificationStore } from '@/store/modules/notification'
+import { conversationApi } from '@/api/modules/conversation'
 
 const userStore = useUserStore()
 const chatStore = useChatStore()
+const friendRequestStore = useFriendRequestStore()
+const notificationStore = useNotificationStore()
 
 const parseUserIdFromToken = (token?: string | null): number | null => {
   if (!token) return null
@@ -34,11 +39,14 @@ const ensureRealtime = () => {
   }
   if (!userStore.token) {
     chatStore.stopRealtime()
+    notificationStore.stopRealtime()
     return
   }
   const userId = parseUserIdFromToken(userStore.token)
   chatStore.setCurrentUserId(userId)
   chatStore.startRealtime(userStore.token)
+  // 启动通知实时监听
+  notificationStore.startRealtime()
 }
 
 /**
@@ -98,7 +106,38 @@ onLaunch(() => {
       fail() {},
     })
   // #endif
+
+  // 预加载角标数据，确保 tabbar 角标在 app 启动时就显示
+  if (userStore.token) {
+    preloadBadgeData()
+  }
 })
+
+/**
+ * 预加载 tabbar 角标所需数据
+ */
+const preloadBadgeData = async () => {
+  // 并行加载会话列表、好友申请、通知
+  await Promise.all([
+    // 加载会话列表用于计算未读消息数
+    conversationApi
+      .listConversations()
+      .then((list) => {
+        chatStore.setConversations(list)
+      })
+      .catch(() => {
+        // 忽略错误，保持 UX 流畅
+      }),
+    // 加载好友申请列表
+    friendRequestStore.loadReceivedRequests(true).catch(() => {
+      // 忽略错误
+    }),
+    // 加载通知列表
+    notificationStore.loadNotifications(30).catch(() => {
+      // 忽略错误
+    }),
+  ])
+}
 
 onShow(() => {
   userStore.syncFromStorage()

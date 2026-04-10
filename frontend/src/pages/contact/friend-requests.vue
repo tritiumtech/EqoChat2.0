@@ -141,15 +141,20 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { onShow } from '@dcloudio/uni-app'
+import { onShow, onHide } from '@dcloudio/uni-app'
 import { useI18nWithFormat } from '@/composables/useI18nWithFormat'
 import { friendRequestApi, type FriendRequestItem } from '@/api/modules/friendRequest'
 import { useUserStore } from '@/store/modules/user'
 import { getApiErrorMessage } from '@/utils/request'
+import { wsClient } from '@/utils/websocket'
+import type { BaseMessage } from '@/types/websocket'
 import PageHeader from '@/components/PageHeader.vue'
 
 const { t, tf } = useI18nWithFormat()
 const userStore = useUserStore()
+
+// WebSocket 监听 ID
+let wsListenerId: string | null = null
 
 // Tab 状态
 const activeTab = ref<'received' | 'sent'>('received')
@@ -287,6 +292,37 @@ const handleReject = async (id: number) => {
   }
 }
 
+// 处理 WebSocket 通知
+const handleNotification = (payload: unknown, message: BaseMessage) => {
+  const data = payload as { type?: string; requestId?: number }
+  if (data?.type === 'FRIEND_REQUEST') {
+    // 收到新的好友请求，刷新列表
+    loadReceivedRequests()
+    // 显示提示
+    uni.showToast({
+      title: '收到新的好友请求',
+      icon: 'none',
+      duration: 2000,
+    })
+  }
+}
+
+// 启动 WebSocket 监听
+const startWsListener = () => {
+  if (wsListenerId) return
+  wsListenerId = wsClient.addListener({
+    onNotification: handleNotification,
+  })
+}
+
+// 停止 WebSocket 监听
+const stopWsListener = () => {
+  if (wsListenerId) {
+    wsClient.removeListener(wsListenerId)
+    wsListenerId = null
+  }
+}
+
 onShow(() => {
   if (!userStore.isLoggedIn) {
     uni.reLaunch({ url: '/pages/auth/login' })
@@ -295,6 +331,11 @@ onShow(() => {
   uni.setNavigationBarTitle({ title: t('page.contact.new_friends') })
   loadReceivedRequests()
   loadSentRequests()
+  startWsListener()
+})
+
+onHide(() => {
+  stopWsListener()
 })
 </script>
 

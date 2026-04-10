@@ -185,7 +185,7 @@
                   {{ t('page.project.member_owner_label') }}
                 </view>
                 <view v-else class="chip chip-type">
-                  {{ m.type === 'agent' ? t('page.project.member_type_ai') : t('page.project.member_type_human') }}
+                  {{ isAgentType(m.type) ? t('page.project.member_type_ai') : t('page.project.member_type_human') }}
                 </view>
               </view>
               <view class="member-bottom">
@@ -284,7 +284,8 @@ const onOpenTransferModal = props.onOpenTransferModal
 const formatBidK = props.formatBidK
 const formatDepositAmount = props.formatDepositAmount
 const getMemberInitial = props.getMemberInitial
+
+const isAgentType = (type: unknown) => String(type || '').trim().toLowerCase() === 'agent'
 </script>
 
 <style scoped src="../project.styles.css"></style>
-

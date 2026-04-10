@@ -145,8 +145,10 @@ const tagFilter = ref('all')
 const pageScrollTop = ref(0)
 let queryTimer: number | null = null
 
-// 待处理的好友申请数量
-const pendingRequestCount = computed(() => receivedRequests.value.length)
+// 待处理的好友申请数量（仅统计 PENDING）
+const pendingRequestCount = computed(() =>
+  receivedRequests.value.filter((item) => String(item.status || '').toUpperCase() === 'PENDING').length
+)
 
 const avatarHue = (s: string) => {
   const hues = ['#14B8A6', '#3B82F6', '#8B5CF6', '#EC4899', '#F59E0B', '#10B981', '#6366F1', '#EF4444']

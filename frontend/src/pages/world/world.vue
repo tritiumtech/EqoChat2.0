@@ -776,6 +776,15 @@ async function toggleUpvote(post: WorldPost) {
     posts.value = posts.value.map((p) => (p.id === post.id ? update(p) : p))
     topicPosts.value = topicPosts.value.map((p) => (p.id === post.id ? update(p) : p))
     myPosts.value = myPosts.value.map((p) => (p.id === post.id ? update(p) : p))
+    if (detailTarget.value?.id === post.id) {
+      detailTarget.value = update(detailTarget.value)
+    }
+    if (replyTarget.value?.id === post.id) {
+      replyTarget.value = update(replyTarget.value)
+    }
+    if (shareTarget.value?.id === post.id) {
+      shareTarget.value = update(shareTarget.value)
+    }
   } catch (err: any) {
     uni.showToast({ title: getApiErrorMessage(err, t('toast.load_failed')), icon: 'none' })
   }

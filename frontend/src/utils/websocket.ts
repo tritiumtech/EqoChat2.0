@@ -65,10 +65,20 @@ class WebSocketClient {
     
     // 从token解析userId
     try {
-      const base64 = token.split('.')[1]
-      const json = JSON.parse(atob(base64))
-      this.userId = json.userId || json.sub || ''
+      const parts = token.split('.')
+      if (parts.length < 2) {
+        this.userId = ''
+        return
+      }
+      const base64Url = parts[1] || ''
+      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/')
+      const pad = base64.length % 4 === 0 ? '' : '='.repeat(4 - (base64.length % 4))
+      const payloadStr = atob(base64 + pad)
+      const payload = JSON.parse(payloadStr)
+      const raw = payload.userId ?? payload.sub ?? payload.id ?? payload.uid
+      this.userId = raw == null ? '' : String(raw)
     } catch (e) {
+      this.userId = ''
       console.warn('解析token失败:', e)
     }
   }
@@ -470,11 +480,14 @@ class WebSocketClient {
     }
 
     this.reconnectCount++
-    console.log(`计划${this.config.reconnectInterval}ms后重连(第${this.reconnectCount}次)...`)
+    // 指数退避：第一次 3s，第二次 6s，第三次 12s，最多 30s
+    const baseInterval = this.config.reconnectInterval || 3000
+    const delay = Math.min(baseInterval * Math.pow(2, this.reconnectCount - 1), 30000)
+    console.log(`计划${delay}ms后重连(第${this.reconnectCount}次)...`)
 
     this.reconnectTimer = setTimeout(() => {
       this.connect()
-    }, this.config.reconnectInterval) as unknown as number
+    }, delay) as unknown as number
   }
 
   /**
