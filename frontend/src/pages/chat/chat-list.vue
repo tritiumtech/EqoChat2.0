@@ -16,7 +16,7 @@
     <view v-if="showConnectionStatus" class="connection-bar" :class="connectionStatusClass" @click="handleConnectionBarClick">
       <view class="connection-indicator" />
       <text class="connection-text">{{ connectionStatusText }}</text>
-      <text v-if="canReconnect" class="connection-action">点击重连</text>
+      <text v-if="canReconnect" class="connection-action">{{ t('page.chat.click_to_reconnect') }}</text>
     </view>
 
     <view class="list-scroll" :class="{ 'with-connection-bar': showConnectionStatus }">
@@ -228,8 +228,8 @@ const connectionStatusClass = computed(() => {
 })
 
 const connectionStatusText = computed(() => {
-  if (chatStore.isSessionKicked) return '已在其他设备登录'
-  return '连接已断开'
+  if (chatStore.isSessionKicked) return t('page.chat.session_kicked')
+  return t('page.chat.connection_disconnected')
 })
 
 const canReconnect = computed(() => {
@@ -241,10 +241,10 @@ const handleConnectionBarClick = () => {
   if (chatStore.isSessionKicked) {
     // 被踢下线，需要重新登录
     uni.showModal({
-      title: '登录提示',
-      content: '您的账号已在其他设备登录，请重新登录',
+      title: t('page.chat.login_prompt'),
+      content: t('page.chat.session_kicked_message'),
       showCancel: false,
-      confirmText: '重新登录',
+      confirmText: t('page.chat.relogin'),
       success: () => {
         userStore.logout()
         uni.reLaunch({ url: '/pages/auth/login' })
@@ -256,20 +256,20 @@ const handleConnectionBarClick = () => {
   if (!canReconnect.value) return
 
   // 手动重连
-  uni.showLoading({ title: '连接中...', mask: true })
+  uni.showLoading({ title: t('page.chat.connecting'), mask: true })
   const success = chatStore.reconnect()
   if (success) {
     setTimeout(() => {
       uni.hideLoading()
       if (chatStore.isRealtimeConnected) {
-        uni.showToast({ title: '连接成功', icon: 'success' })
+        uni.showToast({ title: t('page.chat.connection_success'), icon: 'success' })
       } else {
-        uni.showToast({ title: '连接中...', icon: 'none' })
+        uni.showToast({ title: t('page.chat.connecting'), icon: 'none' })
       }
     }, 800)
   } else {
     uni.hideLoading()
-    uni.showToast({ title: '连接失败', icon: 'none' })
+    uni.showToast({ title: t('page.chat.connection_failed'), icon: 'none' })
   }
 }
 
