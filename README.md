@@ -1,8 +1,8 @@
 # EqoChat 2.0
 
-人与数字生命协同社交平台
+A Collaborative Social Platform for Humans and Digital Life
 
-## 项目结构
+## Project Structure
 
 ```
 EqoChat2.0/
@@ -32,28 +32,28 @@ EqoChat2.0/
 └── README.md
 ```
 
-## 技术栈
+## Tech Stack
 
-- **后端**: Spring Boot 3.2 + Java 21 + PostgreSQL + Redis + Neo4j
-- **前端**: UniApp 3 + Vue 3 + TypeScript + Pinia
+- **Backend**: Spring Boot 3.2 + Java 21 + PostgreSQL + Redis + Neo4j
+- **Frontend**: UniApp 3 + Vue 3 + TypeScript + Pinia
 
-## 启动项目
+## Getting Started
 
-### 后端
+### Backend
 ```bash
 cd backend
 mvn spring-boot:run
 ```
 
-### 前端
+### Frontend
 ```bash
 cd frontend
 npm install
 npm run dev:h5
 ```
 
-## 开发团队
+## Dev Team
 
-- 产品：Amos
-- 后端：游克海
-- 前端：开发中
+- PM：Amos
+- Backend：Kehai You
+- Frontend：Kehai You & Amos
