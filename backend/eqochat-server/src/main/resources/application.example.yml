@@ -1,0 +1,78 @@
+spring:
+  application:
+    name: eqochat-backend
+
+  servlet:
+    multipart:
+      max-file-size: 60MB
+      max-request-size: 60MB
+
+  datasource:
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/${MYSQL_DATABASE:eqochat2}?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    username: ${MYSQL_USERNAME:root}
+    password: ${MYSQL_PASSWORD:change-me}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      database: ${REDIS_DATABASE:5}
+      lettuce:
+        pool:
+          max-active: 10
+          max-idle: 8
+    neo4j:
+      uri: ${NEO4J_URI:bolt://localhost:7687}
+      authentication:
+        username: ${NEO4J_USERNAME:neo4j}
+        password: ${NEO4J_PASSWORD:change-me}
+  main:
+    allow-bean-definition-overriding: true
+
+mybatis-plus:
+  configuration:
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      id-type: auto
+      logic-delete-field: delToken
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+  mapper-locations: classpath*:/mapper/**/*.xml
+
+server:
+  port: ${SERVER_PORT:8080}
+
+jwt:
+  secret: ${JWT_SECRET:change-me-in-local-env}
+  expiration: 432000000
+
+eqochat:
+  world:
+    upload-dir: ${EQOCHAT_WORLD_UPLOAD_DIR:./data/world-uploads}
+    max-image-bytes: 5242880
+    max-video-bytes: 52428800
+    share-url-template: ${EQOCHAT_WORLD_SHARE_URL_TEMPLATE:http://127.0.0.1:5173/#/pages/world/world?postId={postId}}
+  file:
+    s3:
+      endpoint: ${EQOCHAT_FILE_S3_ENDPOINT:localhost:9000}
+      bucket: ${EQOCHAT_FILE_S3_BUCKET:eqochat-dev}
+      access-key: ${EQOCHAT_FILE_S3_ACCESS_KEY:change-me}
+      access-secret: ${EQOCHAT_FILE_S3_ACCESS_SECRET:change-me}
+      domain: ${EQOCHAT_FILE_S3_DOMAIN:http://localhost:9000/eqochat-dev}
+    max-file-bytes: 20971520
+    path-prefix: ${EQOCHAT_FILE_PATH_PREFIX:eqochat/dev/}
+
+logging:
+  level:
+    com.eqochat: DEBUG
+    org.springframework.security: DEBUG
