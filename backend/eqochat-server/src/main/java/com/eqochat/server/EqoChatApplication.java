@@ -13,6 +13,7 @@ import org.springframework.context.annotation.ComponentScan;
 
 @SpringBootApplication
 @ComponentScan({
+    "com.eqochat.server",
     "com.eqochat.framework",
     "com.eqochat.business"
 })

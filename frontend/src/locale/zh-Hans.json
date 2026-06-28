@@ -184,7 +184,9 @@
       "pin": "置顶",
       "pinned": "已置顶",
       "typing_label_default": "对方",
-      "typing_text": "{label} 正在输入…"
+      "typing_text": "{label} 正在输入…",
+      "connection_disconnected": "连接已断开",
+      "click_to_reconnect": "点击重新连接"
     },
     "contact": {
       "title": "联系人",

@@ -184,7 +184,9 @@
       "pin": "Pin",
       "pinned": "Pinned",
       "typing_label_default": "Someone",
-      "typing_text": "{label} is typing…"
+      "typing_text": "{label} is typing…",
+      "connection_disconnected": "Connection disconnected",
+      "click_to_reconnect": "Click to reconnect"
     },
     "contact": {
       "title": "Contacts",

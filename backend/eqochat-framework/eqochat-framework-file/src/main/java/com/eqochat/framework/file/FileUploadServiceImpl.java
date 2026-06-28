@@ -6,7 +6,7 @@ import com.eqochat.framework.file.client.FileClientFactory;
 import com.eqochat.framework.file.client.s3.FilePresignedUrlRespDTO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
@@ -18,7 +18,7 @@ import java.util.UUID;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-@ConditionalOnBean(FileClientFactory.class)
+@ConditionalOnProperty(prefix = "eqochat.file.s3", name = "endpoint")
 public class FileUploadServiceImpl implements FileUploadService {
 
     private static final Set<String> IMAGE_EXT =

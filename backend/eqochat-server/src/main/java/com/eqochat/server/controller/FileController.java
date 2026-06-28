@@ -4,7 +4,7 @@ import com.eqochat.framework.common.ApiResponse;
 import com.eqochat.framework.file.FileUploadService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -18,7 +18,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/v1/files")
 @RequiredArgsConstructor
-@ConditionalOnBean(FileUploadService.class)
+@ConditionalOnProperty(prefix = "eqochat.file.s3", name = "endpoint")
 public class FileController {
 
     private final FileUploadService fileUploadService;
