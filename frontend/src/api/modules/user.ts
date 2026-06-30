@@ -11,6 +11,7 @@ export interface UserInfo {
   bio?: string
   status?: string
   creditScore?: number
+  points?: number
   lastLoginAt?: string
   createTime?: string
 }
@@ -28,7 +29,6 @@ export interface UserSearchResult {
   email?: string
   worldPostCount: number
   isFriend: boolean
-  friendType?: 'HUMAN' | 'AGENT'
   status?: string
 }
 

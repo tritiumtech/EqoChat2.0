@@ -10,7 +10,7 @@ export const useChatStore = defineStore('chat', () => {
   const conversations = ref<ConversationSummary[]>([])
   const unreadCount = ref(0)
   const activeConversationId = ref<number | null>(null)
-  const currentUserId = ref<number | null>(null)
+  const currentPrincipalHumanId = ref<number | null>(null)
   const isRealtimeConnected = ref(false)
   const wsListenerId = ref<string | null>(null)
   const isSessionKicked = ref(false)
@@ -27,8 +27,8 @@ export const useChatStore = defineStore('chat', () => {
     unreadCount.value = count
   }
 
-  const setCurrentUserId = (id: number | null) => {
-    currentUserId.value = id
+  const setCurrentPrincipalHumanId = (id: number | null) => {
+    currentPrincipalHumanId.value = id
   }
 
   const setActiveConversation = (conversationId: number | null) => {
@@ -53,8 +53,10 @@ export const useChatStore = defineStore('chat', () => {
   const handleIncomingMessage = (payload: ChatMessagePayload, message: BaseMessage) => {
     const conversationId = Number(payload.conversationId)
     if (!conversationId || Number.isNaN(conversationId)) return
-    const senderId = Number(message.senderId)
-    const fromSelf = currentUserId.value != null && senderId === currentUserId.value
+    const senderSubjectId = Number(message.senderSubjectId)
+    const fromSelf = currentPrincipalHumanId.value != null
+      && senderSubjectId === currentPrincipalHumanId.value
+      && message.senderSubjectType === 'HUMAN'
     const isActive = activeConversationId.value != null && Number(activeConversationId.value) === conversationId
 
     const idx = conversations.value.findIndex((x) => Number(x.id) === conversationId)
@@ -176,7 +178,7 @@ export const useChatStore = defineStore('chat', () => {
     isSessionKicked,
     setConversations,
     updateUnreadCount,
-    setCurrentUserId,
+    setCurrentPrincipalHumanId,
     setActiveConversation,
     markConversationRead,
     startRealtime,
@@ -185,4 +187,3 @@ export const useChatStore = defineStore('chat', () => {
     handleSessionKicked,
   }
 })
-

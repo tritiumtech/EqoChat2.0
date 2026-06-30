@@ -190,7 +190,7 @@ const clearHistory = () => {
 
 // 跳转到用户资料页
 const goToUserProfile = (userId: number) => {
-  uni.navigateTo({ url: `/pages/contact/user-profile?id=${userId}` })
+  uni.navigateTo({ url: `/pages/contact/user-profile?targetSubjectType=HUMAN&targetSubjectId=${userId}` })
 }
 
 // 加载搜索历史

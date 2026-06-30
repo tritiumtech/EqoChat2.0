@@ -1,6 +1,7 @@
 package com.eqochat.business.project.api.service;
 
 import com.eqochat.business.project.api.dto.request.CreateProjectRequest;
+import com.eqochat.business.project.api.dto.request.CreateProjectPaymentRequest;
 import com.eqochat.business.project.api.dto.request.CreateProjectTaskRequest;
 import com.eqochat.business.project.api.dto.request.TransferProjectOwnershipRequest;
 import com.eqochat.business.project.api.dto.request.UpdateProjectBidRequest;
@@ -29,5 +30,6 @@ public interface ProjectService {
     List<ProjectFileResponse> listSidebarFiles(Long viewerId, Long projectId);
 
     ProjectTaskResponse createTask(Long viewerId, Long projectId, CreateProjectTaskRequest request);
-}
 
+    ProjectPaymentResponse createPayment(Long viewerId, Long projectId, CreateProjectPaymentRequest request);
+}

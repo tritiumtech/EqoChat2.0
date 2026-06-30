@@ -12,18 +12,23 @@ public interface WorldPostReplyUpvoteMapper extends BaseMapper<WorldPostReplyUpv
     @Select("""
             SELECT * FROM world_post_reply_upvote
             WHERE reply_id = #{replyId}
-              AND user_id = #{userId}
+              AND voter_id = #{voterId}
+              AND voter_type = #{voterType}
               AND del_token = '0'
             LIMIT 1
             """)
-    WorldPostReplyUpvote findActive(@Param("replyId") Long replyId, @Param("userId") Long userId);
+    WorldPostReplyUpvote findActive(@Param("replyId") Long replyId,
+                                    @Param("voterId") Long voterId,
+                                    @Param("voterType") String voterType);
 
     @Select("""
             SELECT * FROM world_post_reply_upvote
             WHERE reply_id = #{replyId}
-              AND user_id = #{userId}
+              AND voter_id = #{voterId}
+              AND voter_type = #{voterType}
             LIMIT 1
             """)
-    WorldPostReplyUpvote findAny(@Param("replyId") Long replyId, @Param("userId") Long userId);
+    WorldPostReplyUpvote findAny(@Param("replyId") Long replyId,
+                                 @Param("voterId") Long voterId,
+                                 @Param("voterType") String voterType);
 }
-

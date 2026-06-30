@@ -51,9 +51,8 @@ public class WebSocketMessage {
     public static class BaseMessage {
         private String id;                      // 消息唯一 ID
         private MessageType type;               // 消息类型
-        private String senderId;                // 发送者 ID
-        private String senderType;              // USER/AGENT/SYSTEM
-        private String recipientId;             // 接收者 ID（用户或会话）
+        private String senderSubjectId;         // 发送主体 ID
+        private String senderSubjectType;       // HUMAN/AGENT/SYSTEM
         private LocalDateTime timestamp;        // 时间戳
         private Object payload;                 // 消息内容
     }
@@ -84,7 +83,8 @@ public class WebSocketMessage {
     public static class ReadReceiptPayload {
         private String conversationId;          // 会话 ID
         private String messageId;               // 消息 ID
-        private String readerId;                // 阅读者 ID
+        private String readerSubjectId;         // 阅读主体 ID
+        private String readerSubjectType;       // HUMAN/AGENT/SYSTEM
     }
     
     /**
@@ -96,7 +96,8 @@ public class WebSocketMessage {
     @AllArgsConstructor
     public static class TypingPayload {
         private String conversationId;          // 会话 ID
-        private String userId;                  // 用户 ID
+        private String subjectId;               // 输入主体 ID
+        private String subjectType;             // HUMAN/AGENT/SYSTEM
         private boolean isTyping;               // 是否正在输入
     }
     
@@ -108,7 +109,8 @@ public class WebSocketMessage {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class PresencePayload {
-        private String userId;                  // 用户 ID
+        private String subjectId;               // 在线主体 ID
+        private String subjectType;             // HUMAN/AGENT/SYSTEM
         private String status;                  // ONLINE/OFFLINE/BUSY
         private Long lastSeenAt;                // 最后在线时间
     }
@@ -121,7 +123,7 @@ public class WebSocketMessage {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class ConnectAckPayload {
-        private String userId;                  // 当前用户 ID
+        private String principalHumanId;        // 当前登录人类主体 ID
         private String connectionId;            // 连接 ID
         private Long serverTime;                // 服务器时间
     }

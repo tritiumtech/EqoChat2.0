@@ -3,23 +3,32 @@ package com.eqochat.business.world.service.impl;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.eqochat.framework.common.BizException;
 import com.eqochat.framework.common.PageResponse;
+import com.eqochat.business.actor.api.dto.response.SubjectSummaryResponse;
+import com.eqochat.business.actor.api.model.LiabilityChain;
+import com.eqochat.business.actor.api.model.SubjectRef;
+import com.eqochat.business.actor.api.model.SubjectType;
+import com.eqochat.business.actor.api.model.WalletCapability;
+import com.eqochat.business.actor.api.service.LiabilityPolicyApi;
+import com.eqochat.business.actor.api.service.SubjectDirectoryApi;
+import com.eqochat.business.actor.api.service.WalletPolicyApi;
 import com.eqochat.business.world.config.WorldModuleProperties;
-import com.eqochat.business.notification.entity.Notification;
+import com.eqochat.business.user.entity.UserFriend;
 import com.eqochat.business.user.entity.UserProfile;
 import com.eqochat.business.world.entity.WorldPost;
 import com.eqochat.business.world.entity.WorldPostReply;
 import com.eqochat.business.world.entity.WorldPostMention;
+import com.eqochat.business.world.entity.WorldPostReplyUpvote;
 import com.eqochat.business.world.entity.WorldPostTopic;
 import com.eqochat.business.world.entity.WorldPostUpvote;
 import com.eqochat.business.world.entity.WorldTopic;
 import com.eqochat.business.world.entity.WorldTopicFollow;
+import com.eqochat.business.notification.api.service.NotificationService;
 import com.eqochat.business.world.api.dto.request.CreateWorldPostRequest;
 import com.eqochat.business.world.api.dto.request.CreateWorldPostReplyRequest;
 import com.eqochat.business.world.api.dto.response.WorldPostResponse;
 import com.eqochat.business.world.api.dto.response.WorldPostReplyResponse;
 import com.eqochat.business.world.api.dto.response.WorldShareLinkResponse;
 import com.eqochat.business.world.api.dto.response.WorldTopicResponse;
-import com.eqochat.business.notification.mapper.NotificationMapper;
 import com.eqochat.business.user.mapper.UserFriendMapper;
 import com.eqochat.business.user.mapper.UserProfileMapper;
 import com.eqochat.business.world.mapper.WorldPostMentionMapper;
@@ -50,6 +59,7 @@ import java.util.stream.Collectors;
 public class WorldServiceImpl implements WorldService {
 
     private static final int DEFAULT_LIMIT = 20;
+    private static final String MESSAGE_MENTION_NOTIFICATION_TYPE = "MESSAGE_MENTION";
     /**
      * 支持中文/英文/数字/下划线/短横线话题：#话题 #topic #topic_1 #主题-a
      */
@@ -65,8 +75,11 @@ public class WorldServiceImpl implements WorldService {
     private final WorldPostReplyUpvoteMapper worldPostReplyUpvoteMapper;
     private final UserProfileMapper userProfileMapper;
     private final UserFriendMapper userFriendMapper;
-    private final NotificationMapper notificationMapper;
+    private final NotificationService notificationService;
     private final WorldModuleProperties worldModuleProperties;
+    private final SubjectDirectoryApi subjectDirectoryApi;
+    private final LiabilityPolicyApi liabilityPolicyApi;
+    private final WalletPolicyApi walletPolicyApi;
 
     @Override
     public PageResponse<WorldPostResponse> listFeed(Long viewerId, String sortBy, Long cursorId, Integer limit) {
@@ -98,16 +111,23 @@ public class WorldServiceImpl implements WorldService {
     }
 
     @Override
-    public PageResponse<WorldPostResponse> listPostsByAuthor(Long viewerId, Long authorId, Long cursorId, Integer limit) {
+    public PageResponse<WorldPostResponse> listPostsByAuthor(
+            Long viewerId,
+            Long authorId,
+            String authorType,
+            Long cursorId,
+            Integer limit
+    ) {
         if (authorId == null) {
             throw BizException.of("world.author.required");
         }
-        if (!userFriendMapper.areFriends(viewerId, authorId)) {
+        SubjectType type = parseAuthorType(authorType);
+        if (!areFriends(viewerId, authorId, type)) {
             throw BizException.of("contact.not_friend");
         }
         int size = sanitizeLimit(limit, DEFAULT_LIMIT);
         List<WorldPostMapper.WorldPostRow> rows =
-                worldPostMapper.selectPostsByAuthor(viewerId, authorId, cursorId, size + 1);
+                worldPostMapper.selectPostsByAuthor(viewerId, authorId, type.name(), cursorId, size + 1);
         boolean hasMore = rows.size() > size;
         if (hasMore) {
             rows = rows.subList(0, size);
@@ -127,10 +147,15 @@ public class WorldServiceImpl implements WorldService {
 
     @Override
     @Transactional
-    public WorldPostResponse createPost(Long authorId, CreateWorldPostRequest request) {
-        if (authorId == null) {
+    public WorldPostResponse createPost(Long principalHumanId, CreateWorldPostRequest request) {
+        if (principalHumanId == null) {
             throw BizException.of("auth.user.not_found");
         }
+        SubjectRef actor = resolvePostingActor(
+                principalHumanId,
+                request != null ? request.getActorSubjectId() : null,
+                request != null ? request.getActorSubjectType() : null
+        );
         String content = request.getContent() != null ? request.getContent().trim() : "";
         String imageUrl = request.getImageUrl() != null ? request.getImageUrl().trim() : "";
         String videoUrl = request.getVideoUrl() != null ? request.getVideoUrl().trim() : "";
@@ -139,7 +164,8 @@ public class WorldServiceImpl implements WorldService {
             throw BizException.of("world.post.body_required");
         }
         WorldPost post = WorldPost.builder()
-                .authorId(authorId)
+                .authorId(actor.id())
+                .authorType(actor.type().name())
                 .content(content)
                 .mediaType(mediaType)
                 .imageUrl(StringUtils.hasText(imageUrl) ? imageUrl : null)
@@ -152,11 +178,12 @@ public class WorldServiceImpl implements WorldService {
         if (post.getId() == null) {
             throw BizException.of("error.system");
         }
-        Set<Long> mentionUserIds = sanitizeMentionUserIds(authorId, request.getMentionedUserIds());
-        for (Long mentionedUserId : mentionUserIds) {
+        Set<SubjectRef> mentionSubjects = sanitizeMentionSubjects(actor, request.getMentionedSubjects());
+        for (SubjectRef mentionedSubject : mentionSubjects) {
             worldPostMentionMapper.insert(WorldPostMention.builder()
                     .postId(post.getId())
-                    .mentionedUserId(mentionedUserId)
+                    .mentionedSubjectId(mentionedSubject.id())
+                    .mentionedSubjectType(mentionedSubject.type().name())
                     .build());
         }
         Set<String> topics = extractTopics(content);
@@ -178,37 +205,38 @@ public class WorldServiceImpl implements WorldService {
                     .setSql("post_count = post_count + 1")
                     .eq(WorldTopic::getId, topic.getId()));
         }
-        if (!mentionUserIds.isEmpty()) {
+        if (!mentionSubjects.isEmpty()) {
             String title = "You were mentioned in a post";
             String shortContent = content;
             if (shortContent.length() > 120) {
                 shortContent = shortContent.substring(0, 120) + "...";
             }
-            for (Long mentionedUserId : mentionUserIds) {
-                notificationMapper.insert(Notification.builder()
-                        .recipientId(mentionedUserId)
-                        .recipientType(Notification.RecipientType.USER)
-                        .notificationType(Notification.NotificationType.MESSAGE_MENTION)
-                        .title(title)
-                        .content(shortContent)
-                        .data("{\"postId\":" + post.getId() + "}")
-                        .senderId(authorId)
-                        .senderType(Notification.SenderType.USER)
-                        .isRead(false)
-                        .priority(Notification.Priority.NORMAL)
-                        .build());
+            for (SubjectRef mentionedSubject : mentionSubjects) {
+                notificationService.sendNotification(
+                        mentionedSubject,
+                        MESSAGE_MENTION_NOTIFICATION_TYPE,
+                        title,
+                        shortContent,
+                        "{\"postId\":" + post.getId() + "}",
+                        actor
+                );
             }
         }
-        UserProfile profile = userProfileMapper.selectById(authorId);
+        UserProfile profile = actor.type() == SubjectType.HUMAN ? userProfileMapper.selectById(actor.id()) : null;
         return toNewPostResponse(post, profile, List.copyOf(topics));
     }
 
     @Override
     @Transactional
-    public int createReply(Long authorId, Long postId, CreateWorldPostReplyRequest request) {
-        if (authorId == null) {
+    public int createReply(Long principalHumanId, Long postId, CreateWorldPostReplyRequest request) {
+        if (principalHumanId == null) {
             throw BizException.of("auth.user.not_found");
         }
+        SubjectRef actor = resolvePostingActor(
+                principalHumanId,
+                request != null ? request.getActorSubjectId() : null,
+                request != null ? request.getActorSubjectType() : null
+        );
         if (postId == null) {
             throw BizException.of("world.post.required");
         }
@@ -226,7 +254,8 @@ public class WorldServiceImpl implements WorldService {
         WorldPostReply reply = WorldPostReply.builder()
                 .postId(postId)
                 .parentId(request.getParentId())
-                .authorId(authorId)
+                .authorId(actor.id())
+                .authorType(actor.type().name())
                 .content(content)
                 .upvoteCount(0)
                 .build();
@@ -252,7 +281,7 @@ public class WorldServiceImpl implements WorldService {
         }
         String tpl = worldModuleProperties.getShareUrlTemplate();
         if (!StringUtils.hasText(tpl) || !tpl.contains("{postId}")) {
-            tpl = "http://127.0.0.1:5173/#/pages/world/world?postId={postId}";
+            throw BizException.of("world.share_url_template.invalid");
         }
         String url = tpl.replace("{postId}", String.valueOf(postId));
         return WorldShareLinkResponse.builder().url(url).build();
@@ -267,13 +296,17 @@ public class WorldServiceImpl implements WorldService {
             rows = rows.subList(0, size);
         }
         List<WorldTopicResponse> items = rows.stream()
-                .map(r -> WorldTopicResponse.builder()
-                        .id(String.valueOf(r.getId()))
-                        .name(r.getName())
-                        .posts(nvl(r.getPostCount()))
-                        .followers(nvl(r.getFollowerCount()))
-                        .favorite(r.getIsFollowing() != null && r.getIsFollowing() == 1)
-                        .build())
+                .map(r -> {
+                    boolean following = r.getIsFollowing() != null && r.getIsFollowing() == 1;
+                    return WorldTopicResponse.builder()
+                            .id(String.valueOf(r.getId()))
+                            .name(r.getName())
+                            .posts(nvl(r.getPostCount()))
+                            .followers(nvl(r.getFollowerCount()))
+                            .favorite(following)
+                            .followed(following)
+                            .build();
+                })
                 .toList();
         return PageResponse.of(items, hasMore);
     }
@@ -336,7 +369,8 @@ public class WorldServiceImpl implements WorldService {
         if (post == null || (post.getDelToken() != null && post.getDelToken() != 0L)) {
             throw BizException.of("world.post.not_found");
         }
-        WorldPostUpvote existing = worldPostUpvoteMapper.findActive(postId, viewerId);
+        String viewerType = SubjectType.HUMAN.name();
+        WorldPostUpvote existing = worldPostUpvoteMapper.findActive(postId, viewerId, viewerType);
         if (existing != null) {
             // 软删除 upvote 记录 + 回写计数
             worldPostUpvoteMapper.update(null, new LambdaUpdateWrapper<WorldPostUpvote>()
@@ -347,16 +381,17 @@ public class WorldServiceImpl implements WorldService {
                     .eq(WorldPost::getId, postId));
             return false;
         }
-        WorldPostUpvote any = worldPostUpvoteMapper.findAny(postId, viewerId);
+        WorldPostUpvote any = worldPostUpvoteMapper.findAny(postId, viewerId, viewerType);
         if (any != null) {
-            // 复用历史记录，避免唯一键(post_id,user_id)冲突
+            // 复用历史记录，避免同一投票主体的唯一键冲突
             worldPostUpvoteMapper.update(null, new LambdaUpdateWrapper<WorldPostUpvote>()
-                    .set(WorldPostUpvote::getDelToken, "0")
+                    .set(WorldPostUpvote::getDelToken, 0L)
                     .eq(WorldPostUpvote::getId, any.getId()));
         } else {
             worldPostUpvoteMapper.insert(WorldPostUpvote.builder()
                     .postId(postId)
-                    .userId(viewerId)
+                    .voterId(viewerId)
+                    .voterType(viewerType)
                     .build());
         }
         worldPostMapper.update(null, new LambdaUpdateWrapper<WorldPost>()
@@ -372,7 +407,8 @@ public class WorldServiceImpl implements WorldService {
         WorldTopic topic = worldTopicMapper.selectByName(topicName.trim());
         if (topic == null) throw BizException.of("world.topic.not_found");
 
-        WorldTopicFollow existing = worldTopicFollowMapper.findActive(topic.getId(), viewerId);
+        String viewerType = SubjectType.HUMAN.name();
+        WorldTopicFollow existing = worldTopicFollowMapper.findActive(topic.getId(), viewerId, viewerType);
         if (existing != null) {
             worldTopicFollowMapper.update(null, new LambdaUpdateWrapper<WorldTopicFollow>()
                     .set(WorldTopicFollow::getDelToken, System.currentTimeMillis())
@@ -382,16 +418,17 @@ public class WorldServiceImpl implements WorldService {
                     .eq(WorldTopic::getId, topic.getId()));
             return false;
         }
-        WorldTopicFollow any = worldTopicFollowMapper.findAny(topic.getId(), viewerId);
+        WorldTopicFollow any = worldTopicFollowMapper.findAny(topic.getId(), viewerId, viewerType);
         if (any != null) {
-            // 复用历史记录，避免唯一键(topic_id,user_id)冲突
+            // 复用历史记录，避免同一关注主体的唯一键冲突
             worldTopicFollowMapper.update(null, new LambdaUpdateWrapper<WorldTopicFollow>()
-                    .set(WorldTopicFollow::getDelToken, "0")
+                    .set(WorldTopicFollow::getDelToken, 0L)
                     .eq(WorldTopicFollow::getId, any.getId()));
         } else {
             worldTopicFollowMapper.insert(WorldTopicFollow.builder()
                     .topicId(topic.getId())
-                    .userId(viewerId)
+                    .followerId(viewerId)
+                    .followerType(viewerType)
                     .build());
         }
         worldTopicMapper.update(null, new LambdaUpdateWrapper<WorldTopic>()
@@ -417,32 +454,23 @@ public class WorldServiceImpl implements WorldService {
             return List.of();
         }
 
-        // 作者信息
-        Set<Long> authorIds = rows.stream()
-                .map(WorldPostReply::getAuthorId)
-                .filter(id -> id != null && id > 0)
-                .collect(Collectors.toSet());
-        Map<Long, UserProfile> profiles = authorIds.isEmpty()
-                ? Map.of()
-                : userProfileMapper.selectBatchIds(authorIds).stream()
-                .collect(Collectors.toMap(UserProfile::getId, p -> p));
-
         // 当前用户点赞的回复
         Set<Long> likedIds = worldPostReplyUpvoteMapper.selectList(
-                        new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.eqochat.business.world.entity.WorldPostReplyUpvote>()
-                                .eq(com.eqochat.business.world.entity.WorldPostReplyUpvote::getUserId, viewerId)
-                                .eq(com.eqochat.business.world.entity.WorldPostReplyUpvote::getDelToken, 0L)
-                                .in(com.eqochat.business.world.entity.WorldPostReplyUpvote::getReplyId,
+                        new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<WorldPostReplyUpvote>()
+                                .eq(WorldPostReplyUpvote::getVoterId, viewerId)
+                                .eq(WorldPostReplyUpvote::getVoterType, SubjectType.HUMAN.name())
+                                .eq(WorldPostReplyUpvote::getDelToken, 0L)
+                                .in(WorldPostReplyUpvote::getReplyId,
                                         rows.stream().map(WorldPostReply::getId).toList())
                 ).stream()
-                .map(com.eqochat.business.world.entity.WorldPostReplyUpvote::getReplyId)
+                .map(WorldPostReplyUpvote::getReplyId)
                 .collect(Collectors.toSet());
 
         // 先扁平化，再组装树
         Map<Long, WorldPostReplyResponse> nodeMap = rows.stream()
                 .collect(Collectors.toMap(
                         WorldPostReply::getId,
-                        r -> toReplyResponse(r, profiles.get(r.getAuthorId()), likedIds.contains(r.getId()))
+                        r -> toReplyResponse(r, likedIds.contains(r.getId()))
                 ));
 
         List<WorldPostReplyResponse> roots = new java.util.ArrayList<>();
@@ -477,28 +505,30 @@ public class WorldServiceImpl implements WorldService {
             throw BizException.of("world.reply.not_found");
         }
 
-        com.eqochat.business.world.entity.WorldPostReplyUpvote existing =
-                worldPostReplyUpvoteMapper.findActive(replyId, viewerId);
+        String viewerType = SubjectType.HUMAN.name();
+        WorldPostReplyUpvote existing =
+                worldPostReplyUpvoteMapper.findActive(replyId, viewerId, viewerType);
         if (existing != null) {
-            worldPostReplyUpvoteMapper.update(null, new LambdaUpdateWrapper<com.eqochat.business.world.entity.WorldPostReplyUpvote>()
-                    .set(com.eqochat.business.world.entity.WorldPostReplyUpvote::getDelToken, System.currentTimeMillis())
-                    .eq(com.eqochat.business.world.entity.WorldPostReplyUpvote::getId, existing.getId()));
+            worldPostReplyUpvoteMapper.update(null, new LambdaUpdateWrapper<WorldPostReplyUpvote>()
+                    .set(WorldPostReplyUpvote::getDelToken, System.currentTimeMillis())
+                    .eq(WorldPostReplyUpvote::getId, existing.getId()));
             worldPostReplyMapper.update(null, new LambdaUpdateWrapper<WorldPostReply>()
                     .setSql("upvote_count = GREATEST(upvote_count - 1, 0)")
                     .eq(WorldPostReply::getId, replyId));
             return false;
         }
 
-        com.eqochat.business.world.entity.WorldPostReplyUpvote any =
-                worldPostReplyUpvoteMapper.findAny(replyId, viewerId);
+        WorldPostReplyUpvote any =
+                worldPostReplyUpvoteMapper.findAny(replyId, viewerId, viewerType);
         if (any != null) {
-            worldPostReplyUpvoteMapper.update(null, new LambdaUpdateWrapper<com.eqochat.business.world.entity.WorldPostReplyUpvote>()
-                    .set(com.eqochat.business.world.entity.WorldPostReplyUpvote::getDelToken, 0L)
-                    .eq(com.eqochat.business.world.entity.WorldPostReplyUpvote::getId, any.getId()));
+            worldPostReplyUpvoteMapper.update(null, new LambdaUpdateWrapper<WorldPostReplyUpvote>()
+                    .set(WorldPostReplyUpvote::getDelToken, 0L)
+                    .eq(WorldPostReplyUpvote::getId, any.getId()));
         } else {
-            worldPostReplyUpvoteMapper.insert(com.eqochat.business.world.entity.WorldPostReplyUpvote.builder()
+            worldPostReplyUpvoteMapper.insert(WorldPostReplyUpvote.builder()
                     .replyId(replyId)
-                    .userId(viewerId)
+                    .voterId(viewerId)
+                    .voterType(viewerType)
                     .build());
         }
         worldPostReplyMapper.update(null, new LambdaUpdateWrapper<WorldPostReply>()
@@ -546,20 +576,35 @@ public class WorldServiceImpl implements WorldService {
         return v == null ? 0 : v;
     }
 
-    private static WorldPostResponse toPostResponse(WorldPostMapper.WorldPostRow r, List<String> topics) {
-        String name = r.getAuthorName() != null ? r.getAuthorName() : "User";
-        String color = ColorUtil.pick(name + "#" + r.getAuthorId());
+    private WorldPostResponse toPostResponse(WorldPostMapper.WorldPostRow r, List<String> topics) {
+        SubjectType type = parseAuthorType(r.getAuthorType());
+        SubjectRef authorRef = new SubjectRef(r.getAuthorId(), type);
+        SubjectSummaryResponse author = subjectDirectoryApi.getSubject(authorRef);
+        String name = author != null && StringUtils.hasText(author.getDisplayName())
+                ? author.getDisplayName()
+                : (r.getAuthorName() != null ? r.getAuthorName() : "User");
+        String avatar = author != null && StringUtils.hasText(author.getAvatarUrl())
+                ? author.getAvatarUrl()
+                : (StringUtils.hasText(r.getAuthorAvatarUrl()) ? r.getAuthorAvatarUrl() : ColorUtil.pick(name + "#" + r.getAuthorId()));
+        boolean authorAi = type == SubjectType.AGENT;
+        WalletCapability wallet = authorAi ? walletPolicyApi.resolveWallet(authorRef) : null;
         return WorldPostResponse.builder()
                 .id(String.valueOf(r.getId()))
                 .author(WorldPostResponse.Author.builder()
+                        .id(r.getAuthorId())
                         .name(name)
-                        .avatar(color)
-                        .ai(false)
+                        .type(type.jsonValue())
+                        .avatar(avatar)
+                        .ai(authorAi)
+                        .associatedHumanId(author != null ? author.getAssociatedHumanId() : r.getAuthorOwnerId())
+                        .associatedHumanName(author != null ? author.getAssociatedHumanName() : r.getAuthorOwnerName())
+                        .walletRouting(wallet != null ? wallet.routing() : null)
                         .build())
                 .content(r.getContent())
                 .mediaType(StringUtils.hasText(r.getMediaType()) ? r.getMediaType() : "TEXT")
                 .imageUrl(r.getImageUrl())
                 .videoUrl(r.getVideoUrl())
+                .sharedProject(toSharedProject(r))
                 .timestamp(WorldPostResponse.formatTime(r.getCreateTime()))
                 .createdAt(r.getCreateTime() != null ? r.getCreateTime().toString() : null)
                 .upvotes(nvl(r.getUpvoteCount()))
@@ -570,18 +615,26 @@ public class WorldServiceImpl implements WorldService {
                 .build();
     }
 
-    private static WorldPostResponse toNewPostResponse(WorldPost post, UserProfile profile, List<String> topics) {
+    private WorldPostResponse toNewPostResponse(WorldPost post, UserProfile profile, List<String> topics) {
         Long aid = post.getAuthorId();
-        String name = profile != null && StringUtils.hasText(profile.getNickname()) ? profile.getNickname() : "User";
-        String color = profile != null && StringUtils.hasText(profile.getAvatarUrl())
+        SubjectType type = parseAuthorType(post.getAuthorType());
+        SubjectSummaryResponse author = subjectDirectoryApi.getSubject(new SubjectRef(aid, type));
+        String name = author != null && StringUtils.hasText(author.getDisplayName())
+                ? author.getDisplayName()
+                : (profile != null && StringUtils.hasText(profile.getNickname()) ? profile.getNickname() : "User");
+        String color = author != null && StringUtils.hasText(author.getAvatarUrl())
+                ? author.getAvatarUrl()
+                : (profile != null && StringUtils.hasText(profile.getAvatarUrl())
                 ? profile.getAvatarUrl()
-                : ColorUtil.pick(name + "#" + aid);
+                : ColorUtil.pick(name + "#" + aid));
         return WorldPostResponse.builder()
                 .id(String.valueOf(post.getId()))
                 .author(WorldPostResponse.Author.builder()
+                        .id(aid)
                         .name(name)
+                        .type(type.jsonValue())
                         .avatar(color)
-                        .ai(false)
+                        .ai(type == SubjectType.AGENT)
                         .build())
                 .content(post.getContent())
                 .mediaType(StringUtils.hasText(post.getMediaType()) ? post.getMediaType() : "TEXT")
@@ -597,19 +650,25 @@ public class WorldServiceImpl implements WorldService {
                 .build();
     }
 
-    private static WorldPostReplyResponse toReplyResponse(WorldPostReply reply, UserProfile profile, boolean upvoted) {
-        String name = profile != null && StringUtils.hasText(profile.getNickname())
-                ? profile.getNickname()
-                : "User";
-        String color = profile != null && StringUtils.hasText(profile.getAvatarUrl())
-                ? profile.getAvatarUrl()
-                : ColorUtil.pick(name + "#" + (profile != null ? profile.getId() : reply.getAuthorId()));
+    private WorldPostReplyResponse toReplyResponse(WorldPostReply reply, boolean upvoted) {
+        SubjectType type = parseAuthorType(reply.getAuthorType());
+        SubjectRef authorRef = new SubjectRef(reply.getAuthorId(), type);
+        SubjectSummaryResponse author = subjectDirectoryApi.getSubject(authorRef);
+        String fallbackName = type == SubjectType.AGENT ? "Agent" : "User";
+        String name = author != null && StringUtils.hasText(author.getDisplayName())
+                ? author.getDisplayName()
+                : fallbackName;
+        String color = author != null && StringUtils.hasText(author.getAvatarUrl())
+                ? author.getAvatarUrl()
+                : ColorUtil.pick(name + "#" + reply.getAuthorId());
         return WorldPostReplyResponse.builder()
                 .id(String.valueOf(reply.getId()))
                 .author(WorldPostReplyResponse.Author.builder()
+                        .id(reply.getAuthorId())
                         .name(name)
+                        .type(type.jsonValue())
                         .avatar(color)
-                        .ai(false)
+                        .ai(type == SubjectType.AGENT)
                         .build())
                 .content(reply.getContent())
                 .timestamp(WorldPostResponse.formatTime(reply.getCreateTime()))
@@ -617,6 +676,23 @@ public class WorldServiceImpl implements WorldService {
                 .upvoted(upvoted)
                 .parentId(reply.getParentId() == null ? null : String.valueOf(reply.getParentId()))
                 .replies(java.util.List.of())
+                .build();
+    }
+
+    private static WorldPostResponse.SharedProject toSharedProject(WorldPostMapper.WorldPostRow r) {
+        if (r == null || r.getSharedProjectId() == null) {
+            return null;
+        }
+        return WorldPostResponse.SharedProject.builder()
+                .id(String.valueOf(r.getSharedProjectId()))
+                .name(r.getSharedProjectName())
+                .ownerName(r.getSharedProjectOwnerName())
+                .ownerAi(Boolean.TRUE.equals(r.getSharedProjectOwnerAi()))
+                .associatedHumanName(r.getSharedProjectAssociatedHumanName())
+                .budget(r.getSharedProjectBudget())
+                .teamMix(r.getSharedProjectTeamMix())
+                .deadline(r.getSharedProjectDeadline())
+                .status(r.getSharedProjectStatus())
                 .build();
     }
 
@@ -632,23 +708,54 @@ public class WorldServiceImpl implements WorldService {
         return out;
     }
 
-    private Set<Long> sanitizeMentionUserIds(Long authorId, List<Long> mentionedUserIds) {
-        if (mentionedUserIds == null || mentionedUserIds.isEmpty()) {
+    private Set<SubjectRef> sanitizeMentionSubjects(
+            SubjectRef author,
+            List<CreateWorldPostRequest.MentionedSubject> mentionedSubjects
+    ) {
+        if (mentionedSubjects == null || mentionedSubjects.isEmpty()) {
             return Set.of();
         }
-        Set<Long> dedup = mentionedUserIds.stream()
-                .filter(id -> id != null && id > 0 && !id.equals(authorId))
+        for (CreateWorldPostRequest.MentionedSubject item : mentionedSubjects) {
+            if (item != null && item.getSubjectType() == SubjectType.SYSTEM) {
+                throw BizException.of("world.mention.subject_type.invalid");
+            }
+        }
+        Set<SubjectRef> dedup = mentionedSubjects.stream()
+                .filter(item -> item != null
+                        && item.getSubjectId() != null
+                        && item.getSubjectId() > 0
+                        && item.getSubjectType() != null)
+                .map(item -> new SubjectRef(item.getSubjectId(), item.getSubjectType()))
+                .filter(ref -> !ref.equals(author))
                 .collect(Collectors.toCollection(LinkedHashSet::new));
         if (dedup.isEmpty()) {
             return Set.of();
         }
-        Set<Long> exists = userProfileMapper.selectBatchIds(dedup).stream()
-                .map(UserProfile::getId)
-                .collect(Collectors.toSet());
-        if (exists.isEmpty()) {
+        Map<SubjectRef, SubjectSummaryResponse> subjects = subjectDirectoryApi.batchGetSubjects(dedup);
+        if (subjects == null || subjects.isEmpty()) {
             return Set.of();
         }
-        return dedup.stream().filter(exists::contains).collect(Collectors.toCollection(LinkedHashSet::new));
+        return dedup.stream()
+                .filter(subjects::containsKey)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+    }
+
+    private SubjectRef resolvePostingActor(Long principalHumanId, Long actorSubjectId, SubjectType actorSubjectType) {
+        if (actorSubjectId == null || actorSubjectId <= 0 || actorSubjectType == null || actorSubjectType == SubjectType.SYSTEM) {
+            throw BizException.of("world.actor.invalid");
+        }
+        SubjectRef actor = new SubjectRef(actorSubjectId, actorSubjectType);
+        if (actor.type() == SubjectType.HUMAN) {
+            if (!actor.id().equals(principalHumanId)) {
+                throw BizException.of("world.actor.forbidden");
+            }
+            return actor;
+        }
+        LiabilityChain liability = liabilityPolicyApi.resolveLiability(actor);
+        if (liability == null || liability.liableHumanId() == null || !liability.liableHumanId().equals(principalHumanId)) {
+            throw BizException.of("world.actor.forbidden");
+        }
+        return actor;
     }
 
     private static String normalizeMediaType(String raw, String imageUrl, String videoUrl) {
@@ -672,6 +779,27 @@ public class WorldServiceImpl implements WorldService {
             return "IMAGE";
         }
         return "TEXT";
+    }
+
+    private static SubjectType parseAuthorType(String authorType) {
+        if (!StringUtils.hasText(authorType)) {
+            throw BizException.of("world.author.type.required");
+        }
+        try {
+            return SubjectType.from(authorType);
+        } catch (IllegalArgumentException ex) {
+            throw BizException.of("world.author.type.invalid");
+        }
+    }
+
+    private boolean areFriends(Long viewerId, Long authorId, SubjectType authorType) {
+        if (viewerId == null || authorId == null || authorType == null || authorType == SubjectType.SYSTEM) {
+            return false;
+        }
+        UserFriend.FriendType friendType = authorType == SubjectType.AGENT
+                ? UserFriend.FriendType.AGENT
+                : UserFriend.FriendType.HUMAN;
+        return userFriendMapper.areFriends(viewerId, UserFriend.FriendType.HUMAN, authorId, friendType);
     }
 
     private static final class ColorUtil {

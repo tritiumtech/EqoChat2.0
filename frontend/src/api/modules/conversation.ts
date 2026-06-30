@@ -1,6 +1,8 @@
 import request from '@/utils/request'
 import type { PageResponse } from '@/types/pagination'
 
+export type SubjectType = 'HUMAN' | 'AGENT' | 'SYSTEM'
+
 export interface ConversationSummary {
   id: number
   title: string
@@ -10,10 +12,13 @@ export interface ConversationSummary {
   lastMessageAt?: string
   unreadCount?: number
   online?: boolean
+  targetSubjectId?: number
+  targetSubjectType?: SubjectType
 }
 
 export interface CreateConversationRequest {
-  targetUserId: number
+  targetSubjectId: number
+  targetSubjectType: SubjectType
   title?: string
   avatarUrl?: string
 }
@@ -21,8 +26,9 @@ export interface CreateConversationRequest {
 export interface MessageItem {
   id: number | string
   conversationId: number
-  senderId: number
-  senderType: string
+  senderSubjectId: number
+  senderSubjectType: SubjectType
+  liableHumanId?: number
   messageType: string
   content: string
   createTime: string
@@ -43,6 +49,14 @@ export interface SendMessageRequest {
   metadata?: Record<string, unknown>
   replyToMessageId?: string
   intentData?: string
+  actorSubjectId: number
+  actorSubjectType: SubjectType
+}
+
+export interface MarkConversationReadRequest {
+  messageId: number
+  readerSubjectId: number
+  readerSubjectType: SubjectType
 }
 
 export const conversationApi = {
@@ -66,9 +80,7 @@ export const conversationApi = {
     return request.post<MessageItem>(`/api/v1/conversations/${conversationId}/messages`, data)
   },
 
-  markRead(conversationId: number, messageId: number | string) {
-    return request.post<void>(`/api/v1/conversations/${conversationId}/read`, {
-      messageId: Number(messageId),
-    })
+  markRead(conversationId: number, data: MarkConversationReadRequest) {
+    return request.post<void>(`/api/v1/conversations/${conversationId}/read`, data)
   }
 }

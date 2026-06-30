@@ -1,8 +1,7 @@
 package com.eqochat.business.project.api.dto.request;
 
-import jakarta.validation.constraints.NotBlank;
+import com.eqochat.business.actor.api.model.SubjectType;
 import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 /**
@@ -12,13 +11,8 @@ import lombok.Data;
 public class TransferProjectOwnershipRequest {
 
     @NotNull
-    private Long toMemberId;
+    private Long newOwnerSubjectId;
 
-    /**
-     * HUMAN | AGENT
-     */
-    @NotBlank
-    @Size(max = 20)
-    private String toMemberType;
+    @NotNull
+    private SubjectType newOwnerSubjectType;
 }
-

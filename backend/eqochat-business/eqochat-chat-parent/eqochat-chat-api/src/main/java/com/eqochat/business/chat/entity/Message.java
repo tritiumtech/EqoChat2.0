@@ -1,6 +1,7 @@
 package com.eqochat.business.chat.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.eqochat.business.actor.api.model.SubjectType;
 import lombok.*;
 
 import java.time.LocalDateTime;
@@ -25,7 +26,10 @@ public class Message {
     private Long senderId;
     
     @TableField("sender_type")
-    private String senderType;
+    private SubjectType senderType;
+
+    @TableField("liable_human_id")
+    private Long liableHumanId;
     
     @TableField("message_type")
     private String messageType;

@@ -1,9 +1,4 @@
-const API_BASE =
-  import.meta.env.VITE_API_BASE_URL === undefined || import.meta.env.VITE_API_BASE_URL === ''
-    ? import.meta.env.DEV
-      ? 'http://localhost:8080'
-      : 'http://localhost:8080'
-    : import.meta.env.VITE_API_BASE_URL
+import { buildApiUrl } from '@/utils/runtime-config'
 
 export interface UploadFileResponse {
   url: string
@@ -18,7 +13,7 @@ function uploadChatFile(filePath: string): Promise<string> {
     }
 
     uni.uploadFile({
-      url: `${API_BASE}/api/v1/files/uploads`,
+      url: buildApiUrl('/api/v1/files/uploads'),
       filePath,
       name: 'file',
       header: {
@@ -52,4 +47,3 @@ export const filesApi = {
   uploadChatFile,
   // 预留：如需要用 request 管理下载可在后续补充
 }
-

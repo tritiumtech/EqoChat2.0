@@ -1,5 +1,6 @@
 package com.eqochat.business.project.api.dto.response;
 
+import com.eqochat.business.actor.api.model.SubjectType;
 import lombok.*;
 
 /**
@@ -12,10 +13,10 @@ import lombok.*;
 public class ProjectTaskResponse {
     private Long id;
     private String title;
-    private String assignee;
-    private boolean isAgent;
+    private Long assigneeSubjectId;
+    private SubjectType assigneeSubjectType;
+    private String assigneeDisplayName;
     private String deadline;
     private String status;
     private String priority;
 }
-

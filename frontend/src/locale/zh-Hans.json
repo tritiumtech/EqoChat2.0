@@ -530,6 +530,8 @@
           "task_title": "任务标题",
           "task_value": "任务价值",
           "deadline": "截止日期",
+          "assignee": "负责人",
+          "no_assignee": "暂无可用项目成员",
           "priority": "优先级",
           "value_hint": "任务的货币价值",
           "info_note": "稍后可在项目仪表板中点击任务以编辑任务详情。",

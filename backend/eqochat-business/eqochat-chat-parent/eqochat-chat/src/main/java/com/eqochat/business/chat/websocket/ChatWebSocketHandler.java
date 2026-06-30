@@ -1,6 +1,8 @@
 package com.eqochat.business.chat.websocket;
 
 import com.eqochat.framework.common.UserContext;
+import com.eqochat.business.actor.api.model.SubjectRef;
+import com.eqochat.business.actor.api.model.SubjectType;
 import com.eqochat.framework.websocket.WebSocketMessage;
 import com.eqochat.framework.websocket.WebSocketSessionManager;
 import com.eqochat.business.chat.entity.ConversationParticipant;
@@ -32,47 +34,47 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
     private final WebSocketMessageHandler messageHandler;
     private final ConversationParticipantService participantService;
     
-    // 存储用户会话 userId -> session
-    private final ConcurrentHashMap<String, WebSocketSession> userSessions = new ConcurrentHashMap<>();
+    // principalHumanId -> session
+    private final ConcurrentHashMap<String, WebSocketSession> principalHumanSessions = new ConcurrentHashMap<>();
     
     /**
      * 连接建立后
      */
     @Override
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
-        String userId = extractUserId(session);
-        if (userId == null) {
-            log.warn("WebSocket连接未携带用户ID，关闭连接");
+        String principalHumanId = extractPrincipalHumanId(session);
+        if (principalHumanId == null) {
+            log.warn("WebSocket连接未携带登录人类主体ID，关闭连接");
             session.close(CloseStatus.POLICY_VIOLATION);
             return;
         }
         
         // 存储会话
-        userSessions.put(userId, session);
-        sessionManager.registerSession(userId, session);
+        principalHumanSessions.put(principalHumanId, session);
+        sessionManager.registerPrincipalHumanSession(principalHumanId, session);
         
         // 设置用户上下文
-        UserContext.setCurrentUser(Long.parseLong(userId));
+        UserContext.setCurrentUser(Long.parseLong(principalHumanId));
         
-        log.info("WebSocket连接建立: userId={}, sessionId={}", userId, session.getId());
+        log.info("WebSocket连接建立: principalHumanId={}, sessionId={}", principalHumanId, session.getId());
 
         // 自动加入已存在会话
         try {
-            Long uid = Long.parseLong(userId);
-            for (ConversationParticipant participant : participantService.listByParticipantId(uid)) {
+            Long humanId = Long.parseLong(principalHumanId);
+            for (ConversationParticipant participant : participantService.listByParticipant(SubjectRef.human(humanId))) {
                 if (participant.getConversationId() != null) {
-                    sessionManager.joinConversation(participant.getConversationId().toString(), userId);
+                    sessionManager.joinConversationAsPrincipalHuman(participant.getConversationId().toString(), principalHumanId);
                 }
             }
         } catch (Exception e) {
-            log.warn("加载会话参与者失败: userId={}", userId, e);
+            log.warn("加载会话参与者失败: principalHumanId={}", principalHumanId, e);
         }
         
         // 发送连接确认
-        sendConnectAck(session, userId);
+        sendConnectAck(session, principalHumanId);
         
         // 广播用户上线状态
-        broadcastPresence(userId, "ONLINE");
+        broadcastPresence(principalHumanId, "ONLINE");
     }
     
     /**
@@ -81,9 +83,9 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
     @Override
     protected void handleTextMessage(WebSocketSession session, TextMessage message) throws Exception {
         String payload = message.getPayload();
-        String userId = extractUserId(session);
+        String principalHumanId = extractPrincipalHumanId(session);
         
-        log.debug("收到WebSocket消息: userId={}, payload={}", userId, payload);
+        log.debug("收到WebSocket消息: principalHumanId={}, payload={}", principalHumanId, payload);
         
         try {
             // 解析消息
@@ -91,10 +93,10 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                     payload, WebSocketMessage.BaseMessage.class);
             
             // 设置用户上下文
-            UserContext.setCurrentUser(Long.parseLong(userId));
+            UserContext.setCurrentUser(Long.parseLong(principalHumanId));
             
             // 处理消息
-            messageHandler.handleMessage(userId, baseMessage, session);
+            messageHandler.handleMessage(principalHumanId, baseMessage, session);
             
         } catch (Exception e) {
             log.error("处理WebSocket消息失败: {}", payload, e);
@@ -107,15 +109,15 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
      */
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) throws Exception {
-        String userId = extractUserId(session);
-        if (userId != null) {
-            userSessions.remove(userId);
-            sessionManager.unregisterSession(userId);
+        String principalHumanId = extractPrincipalHumanId(session);
+        if (principalHumanId != null) {
+            principalHumanSessions.remove(principalHumanId);
+            sessionManager.unregisterPrincipalHumanSession(principalHumanId);
             
-            log.info("WebSocket连接关闭: userId={}, status={}", userId, status);
+            log.info("WebSocket连接关闭: principalHumanId={}, status={}", principalHumanId, status);
             
             // 广播用户离线状态
-            broadcastPresence(userId, "OFFLINE");
+            broadcastPresence(principalHumanId, "OFFLINE");
         }
         
         // 清理用户上下文
@@ -127,8 +129,8 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
      */
     @Override
     public void handleTransportError(WebSocketSession session, Throwable exception) throws Exception {
-        String userId = extractUserId(session);
-        log.error("WebSocket传输异常: userId={}", userId, exception);
+        String principalHumanId = extractPrincipalHumanId(session);
+        log.error("WebSocket传输异常: principalHumanId={}", principalHumanId, exception);
         
         if (session.isOpen()) {
             session.close(CloseStatus.SERVER_ERROR);
@@ -136,31 +138,24 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
     }
     
     /**
-     * 从Session提取用户ID
+     * 从Session提取登录人类主体ID
      */
-    private String extractUserId(WebSocketSession session) {
-        // 优先从attributes获取（通过WebSocketAuthInterceptor拦截器设置）
-        String userId = (String) session.getAttributes().get("userId");
-        if (userId != null && !userId.isEmpty()) {
-            return userId;
+    private String extractPrincipalHumanId(WebSocketSession session) {
+        String principalHumanId = (String) session.getAttributes().get("principalHumanId");
+        if (principalHumanId != null && !principalHumanId.isEmpty()) {
+            return principalHumanId;
         }
         
-        // 从URI参数获取 ?userId=xxx (兼容旧版本)
-        String query = session.getUri().getQuery();
-        if (query != null && query.startsWith("userId=")) {
-            return query.substring(7);
-        }
-        
-        log.warn("无法从WebSocketSession提取userId, sessionId={}", session.getId());
+        log.warn("无法从WebSocketSession提取principalHumanId, sessionId={}", session.getId());
         return null;
     }
     
     /**
      * 发送连接确认
      */
-    private void sendConnectAck(WebSocketSession session, String userId) throws IOException {
+    private void sendConnectAck(WebSocketSession session, String principalHumanId) throws IOException {
         WebSocketMessage.ConnectAckPayload ack = WebSocketMessage.ConnectAckPayload.builder()
-                .userId(userId)
+                .principalHumanId(principalHumanId)
                 .connectionId(UUID.randomUUID().toString())
                 .serverTime(System.currentTimeMillis())
                 .build();
@@ -168,9 +163,8 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         WebSocketMessage.BaseMessage message = WebSocketMessage.BaseMessage.builder()
                 .id(UUID.randomUUID().toString())
                 .type(WebSocketMessage.MessageType.CONNECT_ACK)
-                .senderId("system")
-                .senderType("SYSTEM")
-                .recipientId(userId)
+                .senderSubjectId("0")
+                .senderSubjectType(SubjectType.SYSTEM.name())
                 .timestamp(LocalDateTime.now())
                 .payload(ack)
                 .build();
@@ -192,8 +186,8 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         WebSocketMessage.BaseMessage errorMessage = WebSocketMessage.BaseMessage.builder()
                 .id(UUID.randomUUID().toString())
                 .type(WebSocketMessage.MessageType.ERROR)
-                .senderId("system")
-                .senderType("SYSTEM")
+                .senderSubjectId("0")
+                .senderSubjectType(SubjectType.SYSTEM.name())
                 .timestamp(LocalDateTime.now())
                 .payload(error)
                 .build();
@@ -202,11 +196,12 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
     }
     
     /**
-     * 广播用户在线状态
+     * 广播人类主体在线状态
      */
-    private void broadcastPresence(String userId, String status) {
+    private void broadcastPresence(String principalHumanId, String status) {
         WebSocketMessage.PresencePayload presence = WebSocketMessage.PresencePayload.builder()
-                .userId(userId)
+                .subjectId(principalHumanId)
+                .subjectType(SubjectType.HUMAN.name())
                 .status(status)
                 .lastSeenAt(System.currentTimeMillis())
                 .build();
@@ -216,37 +211,37 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                 .type(status.equals("ONLINE") ? 
                         WebSocketMessage.MessageType.PRESENCE_ONLINE : 
                         WebSocketMessage.MessageType.PRESENCE_OFFLINE)
-                .senderId(userId)
-                .senderType("USER")
+                .senderSubjectId(principalHumanId)
+                .senderSubjectType(SubjectType.HUMAN.name())
                 .timestamp(LocalDateTime.now())
                 .payload(presence)
                 .build();
         
         // 广播给所有在线用户（或好友列表）
-        userSessions.forEach((uid, session) -> {
-            if (!uid.equals(userId) && session.isOpen()) {
+        principalHumanSessions.forEach((targetPrincipalHumanId, session) -> {
+            if (!targetPrincipalHumanId.equals(principalHumanId) && session.isOpen()) {
                 try {
                     sendMessage(session, message);
                 } catch (IOException e) {
-                    log.error("发送在线状态失败: targetUserId={}", uid, e);
+                    log.error("发送在线状态失败: targetPrincipalHumanId={}", targetPrincipalHumanId, e);
                 }
             }
         });
     }
     
     /**
-     * 发送消息给指定用户
+     * 发送消息给指定在线登录人类主体
      */
-    public void sendMessageToUser(String userId, WebSocketMessage.BaseMessage message) {
-        WebSocketSession session = userSessions.get(userId);
+    public void sendMessageToPrincipalHuman(String principalHumanId, WebSocketMessage.BaseMessage message) {
+        WebSocketSession session = principalHumanSessions.get(principalHumanId);
         if (session != null && session.isOpen()) {
             try {
                 sendMessage(session, message);
             } catch (IOException e) {
-                log.error("发送消息失败: userId={}", userId, e);
+                log.error("发送消息失败: principalHumanId={}", principalHumanId, e);
             }
         } else {
-            log.debug("用户不在线: userId={}", userId);
+            log.debug("人类主体不在线: principalHumanId={}", principalHumanId);
         }
     }
     
@@ -259,10 +254,10 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
     }
     
     /**
-     * 检查用户是否在线
+     * 检查登录人类主体是否在线
      */
-    public boolean isUserOnline(String userId) {
-        WebSocketSession session = userSessions.get(userId);
+    public boolean isPrincipalHumanOnline(String principalHumanId) {
+        WebSocketSession session = principalHumanSessions.get(principalHumanId);
         return session != null && session.isOpen();
     }
 }

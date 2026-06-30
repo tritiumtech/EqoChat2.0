@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { friendRequestApi, type FriendRequestItem } from '@/api/modules/friendRequest'
+import { friendRequestApi, type FriendRequestItem, type SendFriendRequestDto } from '@/api/modules/friendRequest'
 
 export const useFriendRequestStore = defineStore('friendRequest', () => {
   // 状态
@@ -93,12 +93,9 @@ export const useFriendRequestStore = defineStore('friendRequest', () => {
   }
 
   // 发送申请
-  const sendRequest = async (friendId: number, requestMessage?: string) => {
+  const sendRequest = async (data: SendFriendRequestDto) => {
     try {
-      const result = await friendRequestApi.sendRequest({
-        friendId,
-        requestMessage
-      })
+      const result = await friendRequestApi.sendRequest(data)
       // 添加到已发送列表
       sentRequests.value.unshift(result)
       return true

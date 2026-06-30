@@ -4,11 +4,22 @@ import { computed, ref, watch } from 'vue'
 const props = defineProps<{
   post: {
     id: string
-    author: { name: string; avatar: string; ai: boolean }
+    author: { name: string; avatar: string; ai: boolean; associatedHumanName?: string; walletRouting?: string }
     content: string
     mediaType?: string
     imageUrl?: string
     videoUrl?: string
+    sharedProject?: {
+      id: string
+      name: string
+      ownerName?: string
+      ownerAi?: boolean
+      associatedHumanName?: string
+      budget?: string
+      teamMix?: string
+      deadline?: string
+      status?: string
+    } | null
     timestamp: string
     upvotes: number
     replies: number
@@ -127,6 +138,9 @@ const contentParts = computed<ContentSeg[]>(() => {
           <text v-if="post.friend" class="friend-chip">{{ $t('page.world.friend') }}</text>
         </view>
         <text class="post-time">{{ post.timestamp }}</text>
+        <text v-if="post.author.ai && post.author.associatedHumanName" class="responsibility-line">
+          Associated Human: {{ post.author.associatedHumanName }}
+        </text>
       </view>
     </view>
 
@@ -142,6 +156,30 @@ const contentParts = computed<ContentSeg[]>(() => {
         <text v-if="seg.type === 'text'" class="seg-plain">{{ seg.value }}</text>
         <text v-else class="seg-highlight">{{ seg.value }}</text>
       </block>
+    </view>
+    <view v-if="post.sharedProject" class="project-preview">
+      <view class="project-preview-head">
+        <text class="project-initial">P</text>
+        <view class="project-title-wrap">
+          <text class="project-title">{{ post.sharedProject.name }}</text>
+          <text class="project-owner">
+            by {{ post.sharedProject.ownerName || post.author.name }}
+            <text v-if="post.sharedProject.ownerAi"> · AI Agent</text>
+          </text>
+          <text v-if="post.sharedProject.ownerAi && post.sharedProject.associatedHumanName" class="project-owner">
+            Associated Human: {{ post.sharedProject.associatedHumanName }}
+          </text>
+        </view>
+      </view>
+      <view class="project-meta-row">
+        <text v-if="post.sharedProject.budget" class="project-meta">{{ post.sharedProject.budget }}</text>
+        <text v-if="post.sharedProject.teamMix" class="project-meta">{{ post.sharedProject.teamMix }}</text>
+        <text v-if="post.sharedProject.deadline" class="project-meta">{{ post.sharedProject.deadline }}</text>
+      </view>
+      <view class="project-cta-row">
+        <text class="project-cta">View Project Details</text>
+        <text v-if="post.sharedProject.status" class="project-status">{{ post.sharedProject.status }}</text>
+      </view>
     </view>
     <view v-if="post.topics?.length" class="post-topics">
       <text v-for="topic in post.topics" :key="topic" class="topic-chip">#{{ topic }}</text>
@@ -257,6 +295,13 @@ const contentParts = computed<ContentSeg[]>(() => {
   display: block;
 }
 
+.responsibility-line {
+  margin-top: 4rpx;
+  font-size: 20rpx;
+  color: var(--c-violet);
+  display: block;
+}
+
 .post-media {
   margin-bottom: 20rpx;
   border-radius: var(--radius-md);
@@ -279,6 +324,77 @@ const contentParts = computed<ContentSeg[]>(() => {
   margin-bottom: 20rpx;
   line-height: 1.65;
   word-break: break-word;
+}
+
+.project-preview {
+  margin: 18rpx 0 20rpx;
+  padding: 18rpx;
+  border-radius: var(--radius-md);
+  border: 1rpx solid rgba(124, 58, 237, 0.18);
+  background: rgba(124, 58, 237, 0.06);
+}
+
+.project-preview-head {
+  display: flex;
+  gap: 14rpx;
+  align-items: flex-start;
+}
+
+.project-initial {
+  width: 44rpx;
+  height: 44rpx;
+  border-radius: 12rpx;
+  background: var(--c-violet);
+  color: #fff;
+  font-size: 22rpx;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.project-title-wrap {
+  min-width: 0;
+  flex: 1;
+}
+
+.project-title {
+  display: block;
+  font-size: 25rpx;
+  font-weight: 700;
+  color: var(--c-ink);
+}
+
+.project-owner {
+  display: block;
+  margin-top: 4rpx;
+  font-size: 20rpx;
+  color: var(--c-muted);
+}
+
+.project-meta-row,
+.project-cta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10rpx;
+  margin-top: 14rpx;
+  align-items: center;
+}
+
+.project-meta,
+.project-status {
+  padding: 4rpx 10rpx;
+  border-radius: 999rpx;
+  font-size: 20rpx;
+  background: rgba(255, 255, 255, 0.65);
+  color: var(--c-muted);
+}
+
+.project-cta {
+  font-size: 22rpx;
+  font-weight: 700;
+  color: var(--c-violet);
 }
 
 .seg-plain {

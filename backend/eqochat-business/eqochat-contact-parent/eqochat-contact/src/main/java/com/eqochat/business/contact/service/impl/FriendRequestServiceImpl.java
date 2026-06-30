@@ -1,16 +1,23 @@
 package com.eqochat.business.contact.service.impl;
 
-import com.eqochat.framework.common.BizException;
-import com.eqochat.business.contact.entity.FriendRequest;
-import com.eqochat.business.user.entity.UserFriend;
-import com.eqochat.business.user.entity.UserProfile;
+import com.eqochat.business.actor.api.dto.response.SubjectSummaryResponse;
+import com.eqochat.business.actor.api.model.LiabilityChain;
+import com.eqochat.business.actor.api.model.SubjectRef;
+import com.eqochat.business.actor.api.model.SubjectStatus;
+import com.eqochat.business.actor.api.model.SubjectType;
+import com.eqochat.business.actor.api.service.LiabilityPolicyApi;
+import com.eqochat.business.actor.api.service.SubjectDirectoryApi;
+import com.eqochat.business.agent.entity.AgentProfile;
+import com.eqochat.business.agent.mapper.AgentProfileMapper;
 import com.eqochat.business.contact.api.dto.request.SendFriendRequestRequest;
 import com.eqochat.business.contact.api.dto.response.FriendRequestResponse;
-import com.eqochat.business.contact.mapper.FriendRequestMapper;
-import com.eqochat.business.user.mapper.UserFriendMapper;
 import com.eqochat.business.contact.api.service.FriendRequestService;
-import com.eqochat.business.user.api.service.UserProfileService;
+import com.eqochat.business.contact.entity.FriendRequest;
+import com.eqochat.business.contact.mapper.FriendRequestMapper;
 import com.eqochat.business.notification.api.service.NotificationService;
+import com.eqochat.business.user.entity.UserFriend;
+import com.eqochat.business.user.mapper.UserFriendMapper;
+import com.eqochat.framework.common.BizException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -19,8 +26,11 @@ import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -31,33 +41,38 @@ public class FriendRequestServiceImpl implements FriendRequestService {
 
     private final FriendRequestMapper friendRequestMapper;
     private final UserFriendMapper userFriendMapper;
-    private final UserProfileService userProfileService;
+    private final SubjectDirectoryApi subjectDirectoryApi;
+    private final LiabilityPolicyApi liabilityPolicyApi;
     private final NotificationService notificationService;
+    private final AgentProfileMapper agentProfileMapper;
 
     @Override
     @Transactional
-    public FriendRequestResponse sendRequest(Long userId, SendFriendRequestRequest request) {
-        Long friendId = request.getFriendId();
-        if (userId.equals(friendId)) {
+    public FriendRequestResponse sendRequest(Long principalHumanId, SendFriendRequestRequest request) {
+        SubjectRef requester = requireRelationshipSubject(request.getActorSubjectId(), request.getActorSubjectType());
+        SubjectRef recipient = requireRelationshipSubject(request.getRecipientSubjectId(), request.getRecipientSubjectType());
+        if (requester.equals(recipient)) {
             throw BizException.of("friend_request.self");
         }
-        UserProfile target = userProfileService.getById(friendId);
-        if (target == null) {
-            throw BizException.of("contact.user.not_found");
-        }
-        if (userFriendMapper.areFriends(userId, friendId)) {
+        SubjectSummaryResponse requesterSummary = requireActiveSubject(requester);
+        SubjectSummaryResponse recipientSummary = requireActiveSubject(recipient);
+        requireAuthorizedLiability(principalHumanId, requester);
+
+        if (userFriendMapper.areFriends(
+                requester.id(), toFriendType(requester), recipient.id(), toFriendType(recipient))) {
             throw BizException.of("friend_request.already_friends");
         }
-        var existing = friendRequestMapper.findPendingRequest(userId, friendId);
+        var existing = friendRequestMapper.findPendingRequest(
+                requester.id(), requester.type(), recipient.id(), recipient.type());
         if (existing.isPresent()) {
             throw BizException.of("friend_request.pending_exists");
         }
 
-        UserProfile self = userProfileService.getById(userId);
-
         FriendRequest fr = FriendRequest.builder()
-                .requesterId(userId)
-                .recipientId(friendId)
+                .requesterId(requester.id())
+                .requesterType(requester.type())
+                .recipientId(recipient.id())
+                .recipientType(recipient.type())
                 .requestType(FriendRequest.RequestType.FRIEND)
                 .requestMessage(StringUtils.hasText(request.getRequestMessage()) ? request.getRequestMessage() : null)
                 .status(FriendRequest.RequestStatus.PENDING)
@@ -66,78 +81,67 @@ public class FriendRequestServiceImpl implements FriendRequestService {
 
         // 发送好友请求通知
         try {
-            String requesterName = resolveDisplayName(self);
+            String requesterName = resolveDisplayName(requesterSummary);
             String message = StringUtils.hasText(request.getRequestMessage())
                     ? request.getRequestMessage()
                     : requesterName + " 请求添加你为好友";
             notificationService.sendNotification(
-                    friendId,
+                    recipient,
                     "FRIEND_REQUEST",
                     "新的好友请求",
                     message,
-                    "{\"requestId\":" + fr.getId() + ",\"requesterId\":" + userId + "}",
-                    userId
+                    friendRequestPayload(fr),
+                    requester
             );
         } catch (Exception e) {
             log.error("发送好友请求通知失败", e);
         }
 
-        return toResponse(fr, self, target);
+        return toResponse(fr, requesterSummary, recipientSummary);
     }
 
     @Override
     @Transactional
-    public void accept(Long userId, Long requestId) {
+    public void accept(Long principalHumanId, Long requestId) {
         FriendRequest fr = friendRequestMapper.selectById(requestId);
         if (fr == null) {
             throw BizException.of("friend_request.not_found");
         }
-        if (!fr.getRecipientId().equals(userId)) {
-            throw BizException.of("friend_request.not_recipient");
-        }
+        SubjectRef requester = requesterRef(fr);
+        SubjectRef recipient = recipientRef(fr);
+        requireAuthorizedLiability(principalHumanId, recipient);
         if (fr.getStatus() != FriendRequest.RequestStatus.PENDING) {
             throw BizException.of("friend_request.already_handled");
         }
+        SubjectSummaryResponse requesterSummary = requireActiveSubject(requester);
+        SubjectSummaryResponse recipientSummary = requireActiveSubject(recipient);
 
         LocalDateTime now = LocalDateTime.now();
         fr.setStatus(FriendRequest.RequestStatus.ACCEPTED);
         fr.setRespondedAt(now);
         friendRequestMapper.updateById(fr);
 
-        Long requesterId = fr.getRequesterId();
-        Long recipientId = fr.getRecipientId();
-        if (!userFriendMapper.areFriends(requesterId, recipientId)) {
-            List<UserFriend> relations = List.of(
-                    UserFriend.builder()
-                            .userId(requesterId)
-                            .friendId(recipientId)
-                            .friendType(UserFriend.FriendType.HUMAN)
-                            .status(UserFriend.FriendStatus.ACTIVE)
-                            .addSource("FRIEND_REQUEST")
-                            .createTime(now)
-                            .build(),
-                    UserFriend.builder()
-                            .userId(recipientId)
-                            .friendId(requesterId)
-                            .friendType(UserFriend.FriendType.HUMAN)
-                            .status(UserFriend.FriendStatus.ACTIVE)
-                            .addSource("FRIEND_REQUEST")
-                            .createTime(now)
-                            .build()
-            );
-            relations.forEach(userFriendMapper::insert);
+        boolean inserted = false;
+        if (!userFriendMapper.areFriends(requester.id(), toFriendType(requester), recipient.id(), toFriendType(recipient))) {
+            userFriendMapper.insert(relation(requester, recipient, now));
+            inserted = true;
+        }
+        if (!userFriendMapper.areFriends(recipient.id(), toFriendType(recipient), requester.id(), toFriendType(requester))) {
+            userFriendMapper.insert(relation(recipient, requester, now));
+            inserted = true;
+        }
 
+        if (inserted) {
             // 发送好友请求被接受的通知
             try {
-                UserProfile recipient = userProfileService.getById(recipientId);
-                String recipientName = recipient != null ? resolveDisplayName(recipient) : "对方";
+                String recipientName = resolveDisplayName(recipientSummary);
                 notificationService.sendNotification(
-                        requesterId,
+                        requester,
                         "FRIEND_REQUEST",
                         "好友请求已接受",
                         recipientName + " 接受了你的好友请求",
-                        "{\"requestId\":" + requestId + ",\"recipientId\":" + recipientId + "}",
-                        recipientId
+                        friendRequestPayload(fr),
+                        recipient
                 );
             } catch (Exception e) {
                 log.error("发送好友请求接受通知失败", e);
@@ -147,14 +151,12 @@ public class FriendRequestServiceImpl implements FriendRequestService {
 
     @Override
     @Transactional
-    public void reject(Long userId, Long requestId) {
+    public void reject(Long principalHumanId, Long requestId) {
         FriendRequest fr = friendRequestMapper.selectById(requestId);
         if (fr == null) {
             throw BizException.of("friend_request.not_found");
         }
-        if (!fr.getRecipientId().equals(userId)) {
-            throw BizException.of("friend_request.not_recipient");
-        }
+        requireAuthorizedLiability(principalHumanId, recipientRef(fr));
         if (fr.getStatus() != FriendRequest.RequestStatus.PENDING) {
             throw BizException.of("friend_request.already_handled");
         }
@@ -164,14 +166,24 @@ public class FriendRequestServiceImpl implements FriendRequestService {
     }
 
     @Override
-    public List<FriendRequestResponse> listReceived(Long userId) {
-        List<FriendRequest> list = friendRequestMapper.findPendingByRecipientId(userId);
+    public List<FriendRequestResponse> listReceived(Long principalHumanId) {
+        List<FriendRequest> list = principalSubjects(principalHumanId).stream()
+                .flatMap(subject -> friendRequestMapper
+                        .findPendingByRecipientSubject(subject.id(), subject.type())
+                        .stream())
+                .sorted(Comparator.comparing(FriendRequest::getCreateTime, Comparator.nullsLast(Comparator.reverseOrder())))
+                .toList();
         return toResponseList(list, true);
     }
 
     @Override
-    public List<FriendRequestResponse> listSent(Long userId) {
-        List<FriendRequest> list = friendRequestMapper.findByRequesterId(userId);
+    public List<FriendRequestResponse> listSent(Long principalHumanId) {
+        List<FriendRequest> list = principalSubjects(principalHumanId).stream()
+                .flatMap(subject -> friendRequestMapper
+                        .findByRequesterSubject(subject.id(), subject.type())
+                        .stream())
+                .sorted(Comparator.comparing(FriendRequest::getCreateTime, Comparator.nullsLast(Comparator.reverseOrder())))
+                .toList();
         return toResponseList(list, false);
     }
 
@@ -179,31 +191,35 @@ public class FriendRequestServiceImpl implements FriendRequestService {
         if (list.isEmpty()) {
             return List.of();
         }
-        Set<Long> userIds = list.stream()
-                .flatMap(fr -> List.of(fr.getRequesterId(), fr.getRecipientId()).stream())
-                .collect(Collectors.toSet());
-        Map<Long, UserProfile> profileMap = userProfileService.listByIds(new ArrayList<>(userIds))
-                .stream()
-                .collect(Collectors.toMap(UserProfile::getId, p -> p));
+        Set<SubjectRef> subjects = list.stream()
+                .flatMap(fr -> List.of(requesterRef(fr), recipientRef(fr)).stream())
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        Map<SubjectRef, SubjectSummaryResponse> subjectMap = subjectDirectoryApi.batchGetSubjects(subjects);
 
         List<FriendRequestResponse> result = new ArrayList<>();
         for (FriendRequest fr : list) {
-            UserProfile requester = profileMap.get(fr.getRequesterId());
-            UserProfile recipient = profileMap.get(fr.getRecipientId());
+            SubjectSummaryResponse requester = subjectMap.get(requesterRef(fr));
+            SubjectSummaryResponse recipient = subjectMap.get(recipientRef(fr));
             result.add(toResponse(fr, requester, recipient));
         }
         return result;
     }
 
-    private FriendRequestResponse toResponse(FriendRequest fr, UserProfile requester, UserProfile recipient) {
+    private FriendRequestResponse toResponse(
+            FriendRequest fr,
+            SubjectSummaryResponse requester,
+            SubjectSummaryResponse recipient
+    ) {
         String requesterNickname = requester != null ? resolveDisplayName(requester) : null;
         String requesterAvatar = requester != null ? requester.getAvatarUrl() : null;
         String recipientNickname = recipient != null ? resolveDisplayName(recipient) : null;
         String recipientAvatar = recipient != null ? recipient.getAvatarUrl() : null;
         return FriendRequestResponse.builder()
                 .id(fr.getId())
-                .requesterId(fr.getRequesterId())
-                .recipientId(fr.getRecipientId())
+                .requesterSubjectId(fr.getRequesterId())
+                .requesterSubjectType(subjectTypeOrHuman(fr.getRequesterType()))
+                .recipientSubjectId(fr.getRecipientId())
+                .recipientSubjectType(subjectTypeOrHuman(fr.getRecipientType()))
                 .requestMessage(fr.getRequestMessage())
                 .status(fr.getStatus() != null ? fr.getStatus().name() : null)
                 .createTime(fr.getCreateTime())
@@ -214,11 +230,86 @@ public class FriendRequestServiceImpl implements FriendRequestService {
                 .build();
     }
 
-    private String resolveDisplayName(UserProfile u) {
-        if (u == null) return null;
-        if (StringUtils.hasText(u.getNickname())) return u.getNickname();
-        if (StringUtils.hasText(u.getPhone())) return u.getPhone();
-        if (StringUtils.hasText(u.getEmail())) return u.getEmail();
-        return u.getId() != null ? "用户" + u.getId() : null;
+    private SubjectSummaryResponse requireActiveSubject(SubjectRef ref) {
+        SubjectSummaryResponse subject = subjectDirectoryApi.getSubject(ref);
+        if (subject == null) {
+            throw BizException.of("contact.user.not_found");
+        }
+        if (subject.getStatus() != SubjectStatus.ACTIVE) {
+            throw BizException.of("friend_request.subject.invalid");
+        }
+        return subject;
+    }
+
+    private void requireAuthorizedLiability(Long principalHumanId, SubjectRef actor) {
+        LiabilityChain chain = liabilityPolicyApi.resolveLiability(actor);
+        Long liableHumanId = chain != null ? chain.liableHumanId() : null;
+        if (liableHumanId == null || !Objects.equals(liableHumanId, principalHumanId)) {
+            throw BizException.of("friend_request.not_recipient");
+        }
+    }
+
+    private List<SubjectRef> principalSubjects(Long principalHumanId) {
+        List<SubjectRef> subjects = new ArrayList<>();
+        subjects.add(SubjectRef.human(principalHumanId));
+        for (AgentProfile agent : agentProfileMapper.findActiveByOwnerId(principalHumanId)) {
+            if (agent != null && agent.getId() != null) {
+                subjects.add(SubjectRef.agent(agent.getId()));
+            }
+        }
+        return subjects;
+    }
+
+    private static UserFriend relation(SubjectRef owner, SubjectRef target, LocalDateTime now) {
+        return UserFriend.builder()
+                .userId(owner.id())
+                .userType(toFriendType(owner))
+                .friendId(target.id())
+                .friendType(toFriendType(target))
+                .status(UserFriend.FriendStatus.ACTIVE)
+                .addSource("FRIEND_REQUEST")
+                .createTime(now)
+                .build();
+    }
+
+    private static SubjectRef requireRelationshipSubject(Long id, SubjectType type) {
+        if (id == null || type == null || type == SubjectType.SYSTEM) {
+            throw BizException.of("friend_request.subject.invalid");
+        }
+        return new SubjectRef(id, type);
+    }
+
+    private static SubjectRef requesterRef(FriendRequest fr) {
+        return requireRelationshipSubject(fr.getRequesterId(), subjectTypeOrHuman(fr.getRequesterType()));
+    }
+
+    private static SubjectRef recipientRef(FriendRequest fr) {
+        return requireRelationshipSubject(fr.getRecipientId(), subjectTypeOrHuman(fr.getRecipientType()));
+    }
+
+    private static SubjectType subjectTypeOrHuman(SubjectType type) {
+        return type != null ? type : SubjectType.HUMAN;
+    }
+
+    private static UserFriend.FriendType toFriendType(SubjectRef ref) {
+        if (ref.type() == SubjectType.SYSTEM) {
+            throw BizException.of("friend_request.subject.invalid");
+        }
+        return ref.type() == SubjectType.AGENT ? UserFriend.FriendType.AGENT : UserFriend.FriendType.HUMAN;
+    }
+
+    private static String resolveDisplayName(SubjectSummaryResponse subject) {
+        if (subject == null) return "对方";
+        if (StringUtils.hasText(subject.getDisplayName())) return subject.getDisplayName();
+        return subject.getId() != null ? subject.getType().name() + ":" + subject.getId() : "对方";
+    }
+
+    private static String friendRequestPayload(FriendRequest fr) {
+        return "{\"requestId\":" + fr.getId()
+                + ",\"requesterSubjectId\":" + fr.getRequesterId()
+                + ",\"requesterSubjectType\":\"" + subjectTypeOrHuman(fr.getRequesterType()).name()
+                + "\",\"recipientSubjectId\":" + fr.getRecipientId()
+                + ",\"recipientSubjectType\":\"" + subjectTypeOrHuman(fr.getRecipientType()).name()
+                + "\"}";
     }
 }

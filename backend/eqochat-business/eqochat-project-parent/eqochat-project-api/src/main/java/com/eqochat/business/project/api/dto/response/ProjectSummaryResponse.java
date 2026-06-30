@@ -1,5 +1,6 @@
 package com.eqochat.business.project.api.dto.response;
 
+import com.eqochat.business.actor.api.model.SubjectType;
 import lombok.*;
 
 /**
@@ -29,12 +30,18 @@ public class ProjectSummaryResponse {
     private String deadline;
     private int progress;
 
-    private Long ownerId;
-    private String ownerType;
+    private Long ownerSubjectId;
+    private SubjectType ownerSubjectType;
+    private String ownerDisplayName;
+    private Long associatedHumanId;
+    private String associatedHumanName;
+    private Long liableHumanId;
+    private boolean agentFullyAuthorized;
+    private String walletRouting;
+    private String responsibilityChain;
 
     /**
      * 是否存在待处理 bid 更新（用于列表角标展示）。
      */
     private boolean pendingBidUpdate;
 }
-

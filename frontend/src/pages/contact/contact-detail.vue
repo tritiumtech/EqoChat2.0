@@ -30,7 +30,7 @@
               <text v-if="isAgent" class="agent-badge">{{ t('page.world.ai_agent') }}</text>
             </view>
             <text v-if="contact.bio" class="bio">{{ contact.bio }}</text>
-            <text class="meta-line">{{ t('page.contact.user_id') }}: {{ contact.id }}</text>
+            <text class="meta-line">{{ t('page.contact.user_id') }}: {{ contact.targetSubjectId }}</text>
             <text class="meta-line">{{ t('page.contact.world_posts_line', { n: contact.worldPostCount ?? 0 }) }}</text>
             <view class="tags-row">
               <text v-for="tag in topicTags" :key="tag" class="tag-chip">#{{ tag }}</text>
@@ -173,7 +173,7 @@
 import { computed, ref } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import { useI18n } from 'vue-i18n'
-import { contactApi, type ContactDetail } from '@/api/modules/contact'
+import { contactApi, type ContactDetail, type ContactSubjectType } from '@/api/modules/contact'
 import { conversationApi } from '@/api/modules/conversation'
 import { creditApi, type CreditProfile, type CreditSubjectType } from '@/api/modules/credits'
 import { worldApi, type WorldPost } from '@/api/modules/world'
@@ -181,7 +181,8 @@ import { useUserStore } from '@/store/modules/user'
 
 const contact = ref<ContactDetail | null>(null)
 const loading = ref(false)
-const friendId = ref(0)
+const targetSubjectId = ref(0)
+const targetSubjectType = ref<ContactSubjectType>('HUMAN')
 const userStore = useUserStore()
 const { t } = useI18n({ useScope: 'global' })
 const newTag = ref('')
@@ -194,13 +195,13 @@ const showCreditDetails = ref(false)
 const recentPosts = ref<WorldPost[]>([])
 const activityLoading = ref(false)
 
-const isAgent = computed(() => contact.value?.friendType === 'AGENT')
+const isAgent = computed(() => contact.value?.targetSubjectType === 'AGENT')
 
 const isOnline = computed(() => (contact.value?.status || '').toUpperCase() === 'ACTIVE')
 
 const capabilities = computed(() => contact.value?.capabilities ?? [])
 
-const subjectType = computed<CreditSubjectType>(() => (isAgent.value ? 'AGENT' : 'USER'))
+const subjectType = computed<CreditSubjectType>(() => (isAgent.value ? 'AGENT' : 'HUMAN'))
 
 const showCreditBlock = computed(() => (creditProfile.value?.creditScore ?? 0) > 0)
 
@@ -225,7 +226,7 @@ const buildAvatarStyle = (seed: string) => {
 const loadCreditProfile = async () => {
   if (!contact.value) return
   try {
-    creditProfile.value = await creditApi.getSubjectCreditProfile(contact.value.id, subjectType.value)
+    creditProfile.value = await creditApi.getSubjectCreditProfile(contact.value.targetSubjectId, subjectType.value)
   } catch {
     creditProfile.value = null
   }
@@ -235,7 +236,7 @@ const loadRecentPosts = async () => {
   if (!contact.value) return
   activityLoading.value = true
   try {
-    recentPosts.value = await worldApi.listPostsByAuthor(contact.value.id, { limit: 10 })
+    recentPosts.value = await worldApi.listPostsByAuthor(contact.value.targetSubjectId, contact.value.targetSubjectType, { limit: 10 })
   } catch {
     recentPosts.value = []
   } finally {
@@ -244,7 +245,7 @@ const loadRecentPosts = async () => {
 }
 
 const loadContact = async () => {
-  const id = friendId.value
+  const id = targetSubjectId.value
   if (!id) {
     uni.showToast({ title: t('toast.load_failed'), icon: 'none' })
     setTimeout(() => uni.navigateBack(), 500)
@@ -252,8 +253,8 @@ const loadContact = async () => {
   }
   loading.value = true
   try {
-    contact.value = await contactApi.getContactDetail(id)
-    avatarStyle.value = buildAvatarStyle(contact.value.nickname || String(contact.value.id))
+    contact.value = await contactApi.getContactDetail(targetSubjectType.value, id)
+    avatarStyle.value = buildAvatarStyle(contact.value.nickname || String(contact.value.targetSubjectId))
     topicTags.value = contact.value.tags || []
     await Promise.all([loadCreditProfile(), loadRecentPosts()])
   } catch (err: any) {
@@ -265,15 +266,16 @@ const loadContact = async () => {
 }
 
 const persistTags = async (nextTags: string[]) => {
-  const id = contact.value?.id ?? friendId.value
+  const id = contact.value?.targetSubjectId ?? targetSubjectId.value
+  const type = contact.value?.targetSubjectType ?? targetSubjectType.value
   if (!id) return
-  const saved = await contactApi.updateContactTags(id, nextTags)
+  const saved = await contactApi.updateContactTags(type, id, nextTags)
   topicTags.value = saved || []
   if (contact.value) contact.value = { ...contact.value, tags: topicTags.value }
 }
 
 const addTag = async () => {
-  const id = contact.value?.id ?? friendId.value
+  const id = contact.value?.targetSubjectId ?? targetSubjectId.value
   const tag = (newTag.value || '').trim().replace(/\s+/g, ' ')
   if (!id || !tag) return
   const exists = topicTags.value.some((x) => x.toLowerCase() === tag.toLowerCase())
@@ -289,7 +291,7 @@ const addTag = async () => {
 }
 
 const removeTag = async (tag: string) => {
-  const id = contact.value?.id ?? friendId.value
+  const id = contact.value?.targetSubjectId ?? targetSubjectId.value
   if (!id) return
   const next = topicTags.value.filter((x) => x.toLowerCase() !== tag.toLowerCase())
   try {
@@ -300,10 +302,14 @@ const removeTag = async (tag: string) => {
 }
 
 const startChat = async () => {
-  const id = contact.value?.id ?? friendId.value
+  const id = contact.value?.targetSubjectId ?? targetSubjectId.value
+  const type = contact.value?.targetSubjectType ?? targetSubjectType.value
   if (!id) return
   try {
-    const data = await conversationApi.createConversation({ targetUserId: id })
+    const data = await conversationApi.createConversation({
+      targetSubjectId: id,
+      targetSubjectType: type,
+    })
     const title = encodeURIComponent(contact.value?.nickname || data.title || t('common.conversation'))
     uni.redirectTo({
       url: `/pages/chat/chat-room?conversationId=${data.id}&title=${title}`
@@ -314,9 +320,14 @@ const startChat = async () => {
 }
 
 onLoad((query) => {
-  friendId.value = Number((query as any)?.id ?? (query as any)?.friendId ?? 0)
+  targetSubjectId.value = Number((query as any)?.targetSubjectId ?? 0)
+  targetSubjectType.value = normalizeSubjectType((query as any)?.targetSubjectType)
   loadContact()
 })
+
+function normalizeSubjectType(value: unknown): ContactSubjectType {
+  return String(value || 'HUMAN').toUpperCase() === 'AGENT' ? 'AGENT' : 'HUMAN'
+}
 
 onShow(() => {
   if (!userStore.isLoggedIn) {

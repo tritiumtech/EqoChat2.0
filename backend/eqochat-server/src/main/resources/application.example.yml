@@ -57,11 +57,13 @@ jwt:
   expiration: 432000000
 
 eqochat:
+  project:
+    share-url-template: ${EQOCHAT_PROJECT_SHARE_URL_TEMPLATE:https://app.example.com/#/pages/project/project?projectId={projectId}}
   world:
     upload-dir: ${EQOCHAT_WORLD_UPLOAD_DIR:./data/world-uploads}
     max-image-bytes: 5242880
     max-video-bytes: 52428800
-    share-url-template: ${EQOCHAT_WORLD_SHARE_URL_TEMPLATE:http://127.0.0.1:5173/#/pages/world/world?postId={postId}}
+    share-url-template: ${EQOCHAT_WORLD_SHARE_URL_TEMPLATE:https://app.example.com/#/pages/world/world?postId={postId}}
   file:
     s3:
       endpoint: ${EQOCHAT_FILE_S3_ENDPOINT:localhost:9000}

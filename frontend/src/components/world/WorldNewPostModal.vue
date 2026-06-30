@@ -2,9 +2,15 @@
 import { computed, nextTick, ref, watch } from 'vue'
 
 type MentionFriend = {
-  id: number
+  targetSubjectId: number
+  targetSubjectType: 'HUMAN' | 'AGENT'
   nickname: string
   avatarUrl?: string
+}
+
+type MentionSubject = {
+  subjectId: number
+  subjectType: 'HUMAN' | 'AGENT'
 }
 
 const props = defineProps<{
@@ -23,7 +29,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'close'): void
   (e: 'update:content', value: string): void
-  (e: 'update:mentionedIds', value: number[]): void
+  (e: 'update:mentionedSubjects', value: MentionSubject[]): void
   (e: 'pick-image'): void
   (e: 'pick-video'): void
   (e: 'clear-media'): void
@@ -186,23 +192,32 @@ function insertMention(friend: MentionFriend) {
   })
 }
 
-function collectMentionedIds(content: string, friends: MentionFriend[]): number[] {
+function normalizeSubjectType(value?: string): 'HUMAN' | 'AGENT' {
+  return String(value || 'HUMAN').toUpperCase() === 'AGENT' ? 'AGENT' : 'HUMAN'
+}
+
+function collectMentionedSubjects(content: string, friends: MentionFriend[]): MentionSubject[] {
   if (!content) return []
   if (!friends?.length) return []
-  const nameToId = new Map<string, number>()
+  const nameToSubject = new Map<string, MentionSubject>()
   friends.forEach((f) => {
     if (!f?.nickname) return
-    nameToId.set(f.nickname, f.id)
+    nameToSubject.set(f.nickname, {
+      subjectId: f.targetSubjectId,
+      subjectType: normalizeSubjectType(f.targetSubjectType),
+    })
   })
-  const out: number[] = []
-  const seen = new Set<number>()
+  const out: MentionSubject[] = []
+  const seen = new Set<string>()
   const re = /@([A-Za-z0-9_\u4E00-\u9FFF-]+)/g
   let m: RegExpExecArray | null
   while ((m = re.exec(content)) !== null) {
-    const id = nameToId.get(m[1] || '')
-    if (!id || seen.has(id)) continue
-    seen.add(id)
-    out.push(id)
+    const subject = nameToSubject.get(m[1] || '')
+    if (!subject) continue
+    const key = `${subject.subjectType}:${subject.subjectId}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(subject)
   }
   return out
 }
@@ -210,7 +225,7 @@ function collectMentionedIds(content: string, friends: MentionFriend[]): number[
 watch(
   () => [localContent.value, props.friends] as const,
   ([content, friends]) => {
-    emit('update:mentionedIds', collectMentionedIds(content || '', friends || []))
+    emit('update:mentionedSubjects', collectMentionedSubjects(content || '', friends || []))
   },
   { immediate: true, deep: true },
 )
@@ -274,7 +289,7 @@ const showMentionPanel = computed(() => {
         <view v-if="showMentionPanel" class="mention-panel">
           <view
             v-for="f in mentionCandidates"
-            :key="f.id"
+            :key="`${f.targetSubjectType}:${f.targetSubjectId}`"
             class="mention-item"
             @touchstart.stop="preparePickMention"
             @mousedown.stop="preparePickMention"

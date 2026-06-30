@@ -1,6 +1,7 @@
 package com.eqochat.business.chat.service.impl;
 
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.eqochat.business.actor.api.model.SubjectRef;
 import com.eqochat.framework.common.BizException;
 import com.eqochat.business.chat.entity.Message;
 import com.eqochat.business.chat.mapper.MessageMapper;
@@ -36,19 +37,22 @@ public class MessageServiceImpl extends ServiceImpl<MessageMapper, Message>
     }
     
     @Override
-    public void markAsRead(Long messageId, Long userId) {
+    public void markAsRead(Long messageId, SubjectRef reader) {
         Message message = getById(messageId);
         if (message != null) {
             message.setStatus("READ");
             updateById(message);
-            log.info("消息已标记为已读: messageId={}, userId={}", messageId, userId);
+            log.info("消息已标记为已读: messageId={}, reader={}", messageId, reader);
         }
     }
     
     @Override
-    public void recallMessage(Long messageId, Long userId) {
+    public void recallMessage(Long messageId, SubjectRef sender) {
         Message message = getById(messageId);
-        if (message != null && message.getSenderId().equals(userId)) {
+        if (message != null
+                && sender != null
+                && message.getSenderId().equals(sender.id())
+                && message.getSenderType() == sender.type()) {
             // 2分钟内可撤回
             if (message.getCreateTime().plusMinutes(2).isAfter(LocalDateTime.now())) {
                 message.setStatus("RECALLED");

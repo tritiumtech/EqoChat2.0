@@ -1,6 +1,6 @@
 import request from '@/utils/request'
 
-export type CreditSubjectType = 'USER' | 'AGENT'
+export type CreditSubjectType = 'HUMAN' | 'AGENT' | 'SYSTEM'
 
 export interface CreditDispute {
   id: string
@@ -37,4 +37,3 @@ export const creditApi = {
     })
   },
 }
-

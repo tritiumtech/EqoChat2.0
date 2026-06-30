@@ -1,7 +1,8 @@
 import request from '@/utils/request'
 
 export type ProjectStatus = 'active' | 'paused' | 'completed'
-export type ProjectOwnerType = 'human' | 'agent'
+export type ProjectSubjectType = 'HUMAN' | 'AGENT' | 'SYSTEM'
+export type ProjectBusinessSubjectType = 'HUMAN' | 'AGENT'
 
 export interface ProjectSummary {
   id: number
@@ -15,22 +16,31 @@ export interface ProjectSummary {
   depositPaid: boolean
   deadline: string
   progress: number
-  ownerId: number
-  ownerType: ProjectOwnerType | string
+  ownerSubjectId: number
+  ownerSubjectType: ProjectSubjectType
+  ownerDisplayName?: string
+  associatedHumanId?: number
+  associatedHumanName?: string
+  liableHumanId?: number
+  agentFullyAuthorized?: boolean
+  walletRouting?: string
+  responsibilityChain?: string
   pendingBidUpdate?: boolean
 }
 
 export interface ProjectMember {
-  id: number
+  memberSubjectId: number
+  memberSubjectType: ProjectSubjectType
   name: string
   avatarUrl?: string
-  type: ProjectOwnerType | string
   isOnline: boolean
-  masterId?: number
+  associatedHumanId?: number
+  associatedHumanName?: string
+  liableHumanId?: number
   creditScore?: number
 }
 
-export interface ProjectDetail extends ProjectSummary {
+export interface ProjectDetail extends Omit<ProjectSummary, 'pendingBidUpdate'> {
   members: ProjectMember[]
   pendingBidUpdate?: {
     newBid: number
@@ -50,8 +60,9 @@ export interface ProjectDetail extends ProjectSummary {
 export interface ProjectTask {
   id: number
   title: string
-  assignee: string
-  isAgent: boolean
+  assigneeSubjectId: number
+  assigneeSubjectType: ProjectSubjectType
+  assigneeDisplayName: string
   deadline: string
   status: string
   priority: string
@@ -60,9 +71,22 @@ export interface ProjectTask {
 export interface ProjectPayment {
   id: number
   amount: number
-  recipient: string
-  isAgent: boolean
+  recipientSubjectId: number
+  recipientSubjectType: ProjectBusinessSubjectType
+  recipientDisplayName: string
   masterWallet?: string
+  walletRouting: string
+  directRecipientSubjectId: number
+  directRecipientSubjectType: ProjectBusinessSubjectType
+  settlementSubjectId: number
+  settlementSubjectType: ProjectBusinessSubjectType
+  settlementHumanId?: number | null
+  financialAutonomy: boolean
+  walletPolicyState?: string
+  walletPolicyReason?: string | null
+  liableHumanId: number
+  liabilityRoute: string
+  liabilityReason?: string | null
   status: string
   date: string
 }
@@ -71,8 +95,9 @@ export interface ProjectFile {
   id: number
   name: string
   type: string
-  uploadedBy: string
-  isAgent: boolean
+  uploaderSubjectId: number
+  uploaderSubjectType: ProjectSubjectType
+  uploaderDisplayName: string
   size: string
   date: string
   downloadUrl?: string
@@ -81,6 +106,8 @@ export interface ProjectFile {
 export interface CreateProjectPayload {
   name: string
   bid: number
+  ownerSubjectId: number
+  ownerSubjectType: ProjectBusinessSubjectType
 }
 
 export interface UpdateProjectBidPayload {
@@ -88,8 +115,8 @@ export interface UpdateProjectBidPayload {
 }
 
 export interface TransferProjectOwnershipPayload {
-  toMemberId: number
-  toMemberType: 'HUMAN' | 'AGENT'
+  newOwnerSubjectId: number
+  newOwnerSubjectType: ProjectBusinessSubjectType
 }
 
 export interface CreateProjectTaskPayload {
@@ -97,6 +124,8 @@ export interface CreateProjectTaskPayload {
   value: number
   deadline: string
   priority: 'low' | 'medium' | 'high'
+  assigneeSubjectId: number
+  assigneeSubjectType: ProjectBusinessSubjectType
 }
 
 export const projectApi = {
@@ -131,4 +160,3 @@ export const projectApi = {
     return request.post<ProjectTask>(`/api/v1/projects/${projectId}/tasks`, data)
   },
 }
-

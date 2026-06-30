@@ -50,30 +50,30 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
         
         if (token != null && jwtTokenUtil.validateToken(token)) {
-            Long userId = jwtTokenUtil.getUserIdFromToken(token);
+            Long principalHumanId = jwtTokenUtil.getPrincipalHumanIdFromToken(token);
             String did = jwtTokenUtil.getDidFromToken(token);
             String sessionId = jwtTokenUtil.getSessionIdFromToken(token);
 
-            if (userId == null) {
-                log.warn("JWT缺少userId: {}", path);
+            if (principalHumanId == null) {
+                log.warn("JWT缺少principalHumanId: {}", path);
                 filterChain.doFilter(request, response);
                 return;
             }
 
             // 验证 sessionId 是否有效（单设备登录检查）
             if (sessionId != null && !userSessionApi.validateSession(sessionId)) {
-                log.warn("Session 已失效（被挤下线）: userId={}, sessionId={}", userId, sessionId);
+                log.warn("Session 已失效（被挤下线）: principalHumanId={}, sessionId={}", principalHumanId, sessionId);
                 response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
                 response.getWriter().write("{\"code\":401,\"message\":\"Session expired, please login again\"}");
                 return;
             }
 
-            log.debug("JWT验证成功: userId={}, did={}, sessionId={}", userId, did, sessionId);
+            log.debug("JWT验证成功: principalHumanId={}, did={}, sessionId={}", principalHumanId, did, sessionId);
 
             // 创建认证对象
             UsernamePasswordAuthenticationToken authentication =
                     new UsernamePasswordAuthenticationToken(
-                            userId,
+                            principalHumanId,
                             null,
                             Collections.emptyList()
                     );

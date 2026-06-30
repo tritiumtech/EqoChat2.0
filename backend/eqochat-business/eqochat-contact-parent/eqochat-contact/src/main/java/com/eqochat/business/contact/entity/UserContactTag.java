@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableLogic;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.eqochat.business.user.entity.UserFriend;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -26,8 +27,14 @@ public class UserContactTag {
     @TableField("user_id")
     private Long userId;
 
+    @TableField("user_type")
+    private UserFriend.FriendType userType;
+
     @TableField("friend_id")
     private Long friendId;
+
+    @TableField("friend_type")
+    private UserFriend.FriendType friendType;
 
     @TableField("tag_name")
     private String tagName;

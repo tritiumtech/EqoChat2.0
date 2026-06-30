@@ -1,6 +1,7 @@
 package com.eqochat.business.chat.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.eqochat.business.actor.api.model.SubjectType;
 import lombok.*;
 
 import java.time.LocalDateTime;
@@ -22,7 +23,7 @@ public class ConversationParticipant {
     private Long participantId;
 
     @TableField("participant_type")
-    private ParticipantType participantType;
+    private SubjectType participantType;
 
     @TableField("role")
     private Role role;
@@ -59,10 +60,6 @@ public class ConversationParticipant {
 
     @TableLogic
     private Long delToken;
-
-    public enum ParticipantType {
-        USER, AGENT
-    }
 
     public enum Role {
         OWNER, ADMIN, MEMBER

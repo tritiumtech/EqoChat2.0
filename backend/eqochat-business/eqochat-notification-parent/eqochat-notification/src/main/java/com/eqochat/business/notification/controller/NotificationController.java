@@ -1,5 +1,6 @@
 package com.eqochat.business.notification.controller;
 
+import com.eqochat.business.actor.api.model.SubjectRef;
 import com.eqochat.framework.common.ApiResponse;
 import com.eqochat.framework.common.UserContext;
 import com.eqochat.business.notification.api.dto.request.MarkNotificationReadRequest;
@@ -20,13 +21,13 @@ public class NotificationController {
 
     @GetMapping
     public ApiResponse<List<NotificationResponse>> listMine(@RequestParam(required = false) Integer limit) {
-        return ApiResponse.success(notificationService.listMyNotifications(UserContext.requireCurrentUser(), limit));
+        return ApiResponse.success(notificationService.listNotifications(
+                SubjectRef.human(UserContext.requireCurrentUser()), limit));
     }
 
     @PostMapping("/read")
     public ApiResponse<Void> markRead(@RequestBody @Valid MarkNotificationReadRequest request) {
-        notificationService.markRead(UserContext.requireCurrentUser(), request.getNotificationId());
+        notificationService.markRead(SubjectRef.human(UserContext.requireCurrentUser()), request.getNotificationId());
         return ApiResponse.success(null);
     }
 }
-

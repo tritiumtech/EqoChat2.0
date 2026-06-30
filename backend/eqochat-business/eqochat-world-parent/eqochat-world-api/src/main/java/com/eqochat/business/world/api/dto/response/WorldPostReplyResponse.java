@@ -25,7 +25,9 @@ public class WorldPostReplyResponse {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class Author {
+        private Long id;
         private String name;
+        private String type;
         /**
          * 同 WorldPostResponse，前端用于渐变色/头像。
          */
@@ -33,4 +35,3 @@ public class WorldPostReplyResponse {
         private boolean ai;
     }
 }
-

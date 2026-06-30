@@ -1,6 +1,7 @@
 package com.eqochat.business.chat.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.eqochat.business.actor.api.model.SubjectType;
 import lombok.*;
 
 import java.time.LocalDateTime;
@@ -25,7 +26,7 @@ public class MessageReaction {
     private Long reactorId;
     
     @TableField("reactor_type")
-    private ReactorType reactorType;
+    private SubjectType reactorType;
     
     @TableField("reaction_type")
     private String reactionType;
@@ -49,9 +50,5 @@ public class MessageReaction {
     
     @TableLogic
     private Long delToken;
-    
-    public enum ReactorType {
-        USER, AGENT
-    }
     
 }

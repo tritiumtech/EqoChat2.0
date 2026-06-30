@@ -13,7 +13,7 @@ const chatStore = useChatStore()
 const friendRequestStore = useFriendRequestStore()
 const notificationStore = useNotificationStore()
 
-const parseUserIdFromToken = (token?: string | null): number | null => {
+const parsePrincipalHumanIdFromToken = (token?: string | null): number | null => {
   if (!token) return null
   try {
     const parts = token.split('.')
@@ -23,7 +23,7 @@ const parseUserIdFromToken = (token?: string | null): number | null => {
     const pad = base64.length % 4 === 0 ? '' : '='.repeat(4 - (base64.length % 4))
     const payloadStr = atob(base64 + pad)
     const payload = JSON.parse(payloadStr)
-    const raw = payload.userId ?? payload.sub ?? payload.id ?? payload.uid
+    const raw = payload.principalHumanId ?? payload.sub
     if (raw == null) return null
     const n = Number(raw)
     return Number.isNaN(n) ? null : n
@@ -42,8 +42,8 @@ const ensureRealtime = () => {
     notificationStore.stopRealtime()
     return
   }
-  const userId = parseUserIdFromToken(userStore.token)
-  chatStore.setCurrentUserId(userId)
+  const principalHumanId = parsePrincipalHumanIdFromToken(userStore.token)
+  chatStore.setCurrentPrincipalHumanId(principalHumanId)
   chatStore.startRealtime(userStore.token)
   // 启动通知实时监听
   notificationStore.startRealtime()

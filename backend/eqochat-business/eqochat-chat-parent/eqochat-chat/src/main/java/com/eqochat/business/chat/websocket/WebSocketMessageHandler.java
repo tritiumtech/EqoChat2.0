@@ -1,19 +1,21 @@
 package com.eqochat.business.chat.websocket;
 
+import com.eqochat.business.actor.api.model.SubjectRef;
+import com.eqochat.business.actor.api.model.SubjectType;
+import com.eqochat.business.chat.api.dto.request.MarkConversationReadRequest;
+import com.eqochat.business.chat.api.dto.request.SendMessageRequest;
+import com.eqochat.business.chat.api.dto.response.MessageResponse;
 import com.eqochat.business.chat.api.service.ConversationParticipantService;
 import com.eqochat.business.chat.api.service.ConversationService;
 import com.eqochat.business.chat.api.service.MessageService;
 import com.eqochat.business.chat.entity.ConversationParticipant;
 import com.eqochat.business.chat.entity.Message;
-import com.eqochat.business.chat.entity.MessageReadReceipt;
-import com.eqochat.business.chat.mapper.MessageReadReceiptMapper;
 import com.eqochat.framework.websocket.WebSocketMessage;
 import com.eqochat.framework.websocket.WebSocketSender;
 import com.eqochat.framework.websocket.WebSocketSessionManager;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.WebSocketSession;
 
@@ -23,7 +25,8 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * WebSocket 聊天消息处理（业务实现，依赖 chat 领域服务）。
+ * WebSocket chat message handler. Persistence is delegated to ConversationService
+ * so HTTP and realtime writes share actor/liability rules.
  */
 @Component
 @RequiredArgsConstructor
@@ -34,22 +37,21 @@ public class WebSocketMessageHandler {
     private final MessageService messageService;
     private final ConversationService conversationService;
     private final ConversationParticipantService participantService;
-    private final MessageReadReceiptMapper messageReadReceiptMapper;
     private final WebSocketSessionManager sessionManager;
     private final WebSocketSender webSocketSender;
 
-    public void handleMessage(String userId, WebSocketMessage.BaseMessage message, WebSocketSession session)
+    public void handleMessage(String principalHumanId, WebSocketMessage.BaseMessage message, WebSocketSession session)
             throws IOException {
 
         switch (message.getType()) {
             case CHAT_MESSAGE:
-                handleChatMessage(userId, message, session);
+                handleChatMessage(principalHumanId, message, session);
                 break;
             case CHAT_TYPING:
-                handleTypingMessage(userId, message);
+                handleTypingMessage(principalHumanId, message);
                 break;
             case CHAT_READ:
-                handleReadReceipt(userId, message);
+                handleReadReceipt(principalHumanId, message);
                 break;
             case PING:
                 handlePing(session);
@@ -60,171 +62,100 @@ public class WebSocketMessageHandler {
         }
     }
 
-    private void handleChatMessage(String userId, WebSocketMessage.BaseMessage message, WebSocketSession session) {
+    private void handleChatMessage(String principalHumanId, WebSocketMessage.BaseMessage message, WebSocketSession session) {
         try {
             WebSocketMessage.ChatMessagePayload payload = objectMapper.convertValue(
                     message.getPayload(), WebSocketMessage.ChatMessagePayload.class);
-
             if (payload.getConversationId() == null) {
                 webSocketSender.sendError(session, 400, "缺少会话ID", message.getId());
                 return;
             }
 
-            Long conversationId = Long.parseLong(payload.getConversationId());
-            Long senderId = Long.parseLong(userId);
-            log.info("处理聊天消息: userId={}, conversationId={}", userId, payload.getConversationId());
+            SubjectRef actor = resolveMessageSubject(principalHumanId, message);
+            SendMessageRequest request = new SendMessageRequest();
+            request.setActorSubjectId(actor.id());
+            request.setActorSubjectType(actor.type());
+            request.setMessageType(payload.getMessageType() != null ? payload.getMessageType() : "TEXT");
+            request.setContent(payload.getContent());
+            request.setMetadata(payload.getMetadata());
+            request.setReplyToMessageId(payload.getReplyToMessageId());
+            request.setIntentData(payload.getIntentData());
 
-            if (participantService.findByConversationAndParticipant(conversationId, senderId).isEmpty()) {
-                webSocketSender.sendError(session, 403, "无权限发送消息", message.getId());
-                return;
-            }
-
-            String messageType = payload.getMessageType() != null ? payload.getMessageType() : "TEXT";
-            payload.setMessageType(messageType);
-            boolean isText = messageType == null || "TEXT".equalsIgnoreCase(messageType);
-            if (isText) {
-                if (payload.getContent() == null || payload.getContent().isBlank()) {
-                    webSocketSender.sendError(session, 400, "message.content.required", message.getId());
-                    return;
-                }
-            } else {
-                if (payload.getMetadata() == null) {
-                    webSocketSender.sendError(session, 400, "message.metadata.required", message.getId());
-                    return;
-                }
-            }
-
-            String contentMetadataJson = null;
-            if (payload.getMetadata() != null) {
-                contentMetadataJson = objectMapper.writeValueAsString(payload.getMetadata());
-            }
-
-            Message msg = Message.builder()
-                    .conversationId(conversationId)
-                    .senderId(senderId)
-                    .senderType("USER")
-                    .messageType(messageType)
-                    .content(payload.getContent())
-                    .contentMetadata(contentMetadataJson)
-                    .intentData(payload.getIntentData())
-                    .replyToMessageId(payload.getReplyToMessageId() != null ?
-                            Long.parseLong(payload.getReplyToMessageId()) : null)
-                    .status("SENT")
-                    .build();
-
-            messageService.save(msg);
-            conversationService.updateLastMessage(
-                    conversationId,
-                    msg.getId(),
-                    msg.getCreateTime() != null ? msg.getCreateTime() : LocalDateTime.now()
+            MessageResponse saved = conversationService.sendMessage(
+                    Long.parseLong(principalHumanId),
+                    Long.parseLong(payload.getConversationId()),
+                    request
             );
-
-            participantService.updateLastRead(
-                    conversationId,
-                    senderId,
-                    msg.getId(),
-                    msg.getCreateTime() != null ? msg.getCreateTime() : LocalDateTime.now()
-            );
-
-            joinConversationUsers(payload.getConversationId());
-
-            WebSocketMessage.BaseMessage outMessage = WebSocketMessage.BaseMessage.builder()
-                    .id(String.valueOf(msg.getId()))
-                    .type(WebSocketMessage.MessageType.CHAT_MESSAGE)
-                    .senderId(userId)
-                    .senderType("USER")
-                    .recipientId(payload.getConversationId())
-                    .timestamp(msg.getCreateTime() != null ? msg.getCreateTime() : LocalDateTime.now())
-                    .payload(payload)
-                    .build();
-            broadcastToConversation(payload.getConversationId(), outMessage);
-
+            log.info("WebSocket聊天消息已保存: messageId={}, actor={}", saved.getId(), actor);
+            joinConversationHumans(payload.getConversationId());
+        } catch (IllegalArgumentException e) {
+            log.warn("WebSocket聊天消息参数非法: {}", e.getMessage());
+            webSocketSender.sendError(session, 400, e.getMessage(), message.getId());
         } catch (Exception e) {
             log.error("处理聊天消息失败", e);
-            try {
-                webSocketSender.sendError(session, 500, "消息处理失败: " + e.getMessage(), message.getId());
-            } catch (Exception ex) {
-                log.error("发送错误消息失败", ex);
-            }
+            webSocketSender.sendError(session, 500, "消息处理失败: " + e.getMessage(), message.getId());
         }
     }
 
-    private void handleTypingMessage(String userId, WebSocketMessage.BaseMessage message) {
+    private void handleTypingMessage(String principalHumanId, WebSocketMessage.BaseMessage message) {
         try {
             WebSocketMessage.TypingPayload payload = objectMapper.convertValue(
                     message.getPayload(), WebSocketMessage.TypingPayload.class);
+            SubjectRef actor = resolveMessageSubject(principalHumanId, message);
+            payload.setSubjectId(String.valueOf(actor.id()));
+            payload.setSubjectType(actor.type().name());
+            message.setSenderSubjectId(String.valueOf(actor.id()));
+            message.setSenderSubjectType(actor.type().name());
+            message.setPayload(payload);
 
-            Set<String> users = sessionManager.getConversationUsers(payload.getConversationId());
-            for (String uid : users) {
-                if (!uid.equals(userId)) {
-                    webSocketSender.sendToUser(uid, message);
+            Set<String> principalHumanIds = sessionManager.getConversationPrincipalHumans(payload.getConversationId());
+            for (String targetPrincipalHumanId : principalHumanIds) {
+                if (!targetPrincipalHumanId.equals(principalHumanId)) {
+                    webSocketSender.sendToPrincipalHuman(targetPrincipalHumanId, message);
                 }
             }
-
         } catch (Exception e) {
             log.error("处理输入状态失败", e);
         }
     }
 
-    private void handleReadReceipt(String userId, WebSocketMessage.BaseMessage message) {
+    private void handleReadReceipt(String principalHumanId, WebSocketMessage.BaseMessage message) {
         try {
             WebSocketMessage.ReadReceiptPayload payload = objectMapper.convertValue(
                     message.getPayload(), WebSocketMessage.ReadReceiptPayload.class);
-
-            if (payload.getMessageId() == null) {
+            if (payload.getMessageId() == null || payload.getConversationId() == null) {
                 return;
             }
 
-            Long messageId = Long.parseLong(payload.getMessageId());
-            Message stored = messageService.getById(messageId);
+            SubjectRef reader = resolveMessageSubject(principalHumanId, message);
+            MarkConversationReadRequest request = new MarkConversationReadRequest();
+            request.setMessageId(Long.parseLong(payload.getMessageId()));
+            request.setReaderSubjectId(reader.id());
+            request.setReaderSubjectType(reader.type());
+            conversationService.markRead(Long.parseLong(principalHumanId), Long.parseLong(payload.getConversationId()), request);
+
+            Message stored = messageService.getById(request.getMessageId());
             if (stored == null) {
                 return;
             }
-            Long readerId = Long.parseLong(userId);
-
-            log.info("处理已读回执: userId={}, messageId={}", userId, payload.getMessageId());
-
-            if (!readerId.equals(stored.getSenderId())) {
-                messageService.markAsRead(messageId, readerId);
-            }
-
-            participantService.updateLastRead(
-                    stored.getConversationId(),
-                    readerId,
-                    messageId,
-                    LocalDateTime.now()
-            );
-
-            MessageReadReceipt receipt = MessageReadReceipt.builder()
-                    .messageId(messageId)
-                    .readerId(readerId)
-                    .readerType(MessageReadReceipt.ReaderType.USER)
-                    .readAt(LocalDateTime.now())
-                    .build();
-
-            try {
-                messageReadReceiptMapper.insert(receipt);
-            } catch (DuplicateKeyException ignore) {
-                // ignore
-            }
-
-            if (stored.getSenderId() != null && !stored.getSenderId().equals(readerId)) {
+            if (stored.getSenderType() == SubjectType.HUMAN
+                    && (!stored.getSenderId().equals(reader.id()) || stored.getSenderType() != reader.type())) {
+                WebSocketMessage.ReadReceiptPayload outPayload = WebSocketMessage.ReadReceiptPayload.builder()
+                        .conversationId(String.valueOf(stored.getConversationId()))
+                        .messageId(String.valueOf(stored.getId()))
+                        .readerSubjectId(String.valueOf(reader.id()))
+                        .readerSubjectType(reader.type().name())
+                        .build();
                 WebSocketMessage.BaseMessage readMessage = WebSocketMessage.BaseMessage.builder()
                         .id(UUID.randomUUID().toString())
                         .type(WebSocketMessage.MessageType.CHAT_READ)
-                        .senderId(userId)
-                        .senderType("USER")
-                        .recipientId(String.valueOf(stored.getSenderId()))
+                        .senderSubjectId(String.valueOf(reader.id()))
+                        .senderSubjectType(reader.type().name())
                         .timestamp(LocalDateTime.now())
-                        .payload(WebSocketMessage.ReadReceiptPayload.builder()
-                                .conversationId(String.valueOf(stored.getConversationId()))
-                                .messageId(String.valueOf(messageId))
-                                .readerId(String.valueOf(readerId))
-                                .build())
+                        .payload(outPayload)
                         .build();
-                webSocketSender.sendToUser(String.valueOf(stored.getSenderId()), readMessage);
+                webSocketSender.sendToPrincipalHuman(String.valueOf(stored.getSenderId()), readMessage);
             }
-
         } catch (Exception e) {
             log.error("处理已读回执失败", e);
         }
@@ -234,8 +165,8 @@ public class WebSocketMessageHandler {
         WebSocketMessage.BaseMessage pong = WebSocketMessage.BaseMessage.builder()
                 .id(UUID.randomUUID().toString())
                 .type(WebSocketMessage.MessageType.PONG)
-                .senderId("system")
-                .senderType("SYSTEM")
+                .senderSubjectId("0")
+                .senderSubjectType(SubjectType.SYSTEM.name())
                 .timestamp(LocalDateTime.now())
                 .build();
 
@@ -243,16 +174,21 @@ public class WebSocketMessageHandler {
                 objectMapper.writeValueAsString(pong)));
     }
 
-    private void broadcastToConversation(String conversationId, WebSocketMessage.BaseMessage message) {
-        webSocketSender.broadcastToConversation(conversationId, message);
+    private SubjectRef resolveMessageSubject(String principalHumanId, WebSocketMessage.BaseMessage message) {
+        String rawId = message.getSenderSubjectId();
+        String rawType = message.getSenderSubjectType();
+        if (rawId == null || rawType == null) {
+            throw new IllegalArgumentException("sender subject is incomplete");
+        }
+        return new SubjectRef(Long.parseLong(rawId), SubjectType.from(rawType));
     }
 
-    private void joinConversationUsers(String conversationId) {
+    private void joinConversationHumans(String conversationId) {
         try {
             Long convId = Long.parseLong(conversationId);
             for (ConversationParticipant participant : participantService.listByConversationId(convId)) {
-                if (participant.getParticipantId() != null) {
-                    sessionManager.joinConversation(conversationId, participant.getParticipantId().toString());
+                if (participant.getParticipantId() != null && participant.getParticipantType() == SubjectType.HUMAN) {
+                    sessionManager.joinConversationAsPrincipalHuman(conversationId, participant.getParticipantId().toString());
                 }
             }
         } catch (Exception e) {

@@ -165,8 +165,8 @@ import type { ChatMessagePayload } from '@/types/websocket'
 
 interface ChatMessage {
   id: string
-  senderId: number
-  senderType: string
+  senderSubjectId: number
+  senderSubjectType: string
   isAgent: boolean
   content: string
   createTime: string
@@ -195,7 +195,7 @@ textareaAdjustPosition.value = false
 autoAdjustPosition.value = false
 // #endif
 
-const parseUserIdFromToken = (token: string | null | undefined): number | null => {
+const parsePrincipalHumanIdFromToken = (token: string | null | undefined): number | null => {
   if (!token) return null
   try {
     const parts = token.split('.')
@@ -205,7 +205,7 @@ const parseUserIdFromToken = (token: string | null | undefined): number | null =
     const pad = base64.length % 4 === 0 ? '' : '='.repeat(4 - (base64.length % 4))
     const payloadStr = atob(base64 + pad)
     const payload = JSON.parse(payloadStr)
-    const raw = payload.userId ?? payload.sub ?? payload.id ?? payload.uid
+    const raw = payload.principalHumanId ?? payload.sub
     if (raw == null) return null
     const n = Number(raw)
     if (Number.isNaN(n)) return null
@@ -215,16 +215,16 @@ const parseUserIdFromToken = (token: string | null | undefined): number | null =
   }
 }
 
-const currentUserId = computed(() => {
+const currentPrincipalHumanId = computed(() => {
   const infoId = userStore.userInfo?.id
   if (infoId != null) {
     const n = Number(infoId)
     if (!Number.isNaN(n)) return n
   }
-  const wsUserId = Number((wsClient as any).userId)
-  if (!Number.isNaN(wsUserId) && wsUserId > 0) return wsUserId
+  const wsPrincipalHumanId = Number(wsClient.getPrincipalHumanId())
+  if (!Number.isNaN(wsPrincipalHumanId) && wsPrincipalHumanId > 0) return wsPrincipalHumanId
   const token = userStore.token
-  const fromToken = parseUserIdFromToken(token)
+  const fromToken = parsePrincipalHumanIdFromToken(token)
   return fromToken ?? 0
 })
 
@@ -267,7 +267,7 @@ const showEmoji = ref(false)
 const showAttachMenu = ref(false)
 
 // typing 指示状态（服务端会广播他人的输入状态）
-const otherTypingUserId = ref<number | null>(null)
+const otherTypingSubjectId = ref<number | null>(null)
 const otherTypingClearTimer = ref<number | null>(null)
 
 // 本端 typing 状态（用于避免重复发送 CHAT_TYPING(true)）
@@ -276,16 +276,16 @@ const localTypingStopTimer = ref<number | null>(null)
 
 const typingIndicatorLabel = computed(() => title.value || '对方')
 const typingIndicatorAvatarText = computed(() => {
-  if (!otherTypingUserId.value) return '…'
-  const s = String(otherTypingUserId.value)
+  if (!otherTypingSubjectId.value) return '…'
+  const s = String(otherTypingSubjectId.value)
   return s.length > 0 ? s.slice(-1) : '…'
 })
 const typingIndicatorColor = computed(() => {
-  const id = otherTypingUserId.value || 0
+  const id = otherTypingSubjectId.value || 0
   const colors = ['#7c3aed', '#6366f1', '#8b5cf6', '#22c55e', '#3b82f6', '#f97316', '#ec4899']
   return colors[Math.abs(id) % colors.length]
 })
-const showTypingIndicator = computed(() => otherTypingUserId.value != null)
+const showTypingIndicator = computed(() => otherTypingSubjectId.value != null)
 
 const EMOJIS = ['😀', '😂', '❤️', '👍', '🎉', '🔥', '💯', '✨', '🙏', '💪', '🎯', '🚀']
 
@@ -366,12 +366,12 @@ const normalizeMessagePage = (
 
 const toChatMessage = (item: MessageItem): ChatMessage => ({
   id: String(item.id),
-  senderId: item.senderId,
-  senderType: item.senderType || 'USER',
-  isAgent: String(item.senderType || '').toUpperCase() === 'AGENT',
+  senderSubjectId: item.senderSubjectId,
+  senderSubjectType: item.senderSubjectType || 'HUMAN',
+  isAgent: String(item.senderSubjectType || '').toUpperCase() === 'AGENT',
   content: item.content || '',
   createTime: item.createTime,
-  isSelf: item.senderId === currentUserId.value,
+  isSelf: item.senderSubjectType === 'HUMAN' && item.senderSubjectId === currentPrincipalHumanId.value,
   messageType: item.messageType || 'TEXT',
   attachment: item.attachment,
 })
@@ -550,7 +550,8 @@ const { isConnected, sendMessage, sendReadReceipt, sendTyping } = useWebSocket({
   onChatMessage: (payload, message) => {
     if (String(payload.conversationId) !== String(conversationId.value)) return
     const id = String(message.id)
-    const senderId = Number(message.senderId)
+    const senderSubjectId = Number(message.senderSubjectId)
+    const senderSubjectType = String(message.senderSubjectType || 'SYSTEM')
     const createTime = message.timestamp
     const mt = (payload.messageType || 'TEXT').toString().toUpperCase()
     const attachment = parseAttachmentFromPayload(payload)
@@ -558,7 +559,8 @@ const { isConnected, sendMessage, sendReadReceipt, sendTyping } = useWebSocket({
     // 使用消息的完整 ID 作为处理标记，防止同一消息被多次处理
     const processKey = `msg_${id}_${createTime}`
     
-    console.log('[onChatMessage] 收到消息:', { id, senderId, createTime, mt, isSelf: senderId === currentUserId.value })
+    const isSelfSubject = senderSubjectType === 'HUMAN' && senderSubjectId === currentPrincipalHumanId.value
+    console.log('[onChatMessage] 收到消息:', { id, senderSubjectId, senderSubjectType, createTime, mt, isSelf: isSelfSubject })
     console.log('[onChatMessage] messageIdSet:', Array.from(messageIdSet))
     console.log('[onChatMessage] messages 数量:', messages.value.length)
     
@@ -574,25 +576,25 @@ const { isConnected, sendMessage, sendReadReceipt, sendTyping } = useWebSocket({
       return
     }
     
-    const replaced = replaceLocalMessage(senderId, payload, createTime, id)
+    const replaced = replaceLocalMessage(senderSubjectId, senderSubjectType, payload, createTime, id)
     console.log('[onChatMessage] replaceLocalMessage 结果:', replaced)
     
     if (!replaced) {
       console.log('[onChatMessage] 未找到匹配的本地消息，添加新消息')
       appendChatMessage({
         id,
-        senderId,
-        senderType: String((message as any)?.senderType || 'USER').toString(),
-        isAgent: String((message as any)?.senderType || '').toUpperCase() === 'AGENT',
+        senderSubjectId,
+        senderSubjectType,
+        isAgent: senderSubjectType === 'AGENT',
         content: payload.content || '',
         createTime,
-        isSelf: senderId === currentUserId.value,
+        isSelf: isSelfSubject,
         messageType: mt,
         attachment,
       })
     }
     scrollToBottom()
-    if (isPageVisible.value && senderId !== currentUserId.value) {
+    if (isPageVisible.value && !isSelfSubject) {
       syncReadStatus(payload.conversationId, id)
     }
   },
@@ -600,18 +602,19 @@ const { isConnected, sendMessage, sendReadReceipt, sendTyping } = useWebSocket({
     if (!payload) return
     if (String(payload.conversationId) !== String(conversationId.value)) return
 
-    const senderId = Number(payload.userId)
-    if (!Number.isFinite(senderId) || senderId <= 0) return
-    if (senderId === currentUserId.value) return
+    const senderSubjectId = Number(payload.subjectId)
+    const senderSubjectType = String(payload.subjectType || 'SYSTEM')
+    if (!Number.isFinite(senderSubjectId) || senderSubjectId <= 0) return
+    if (senderSubjectType === 'HUMAN' && senderSubjectId === currentPrincipalHumanId.value) return
 
     if (payload.isTyping) {
-      otherTypingUserId.value = senderId
+      otherTypingSubjectId.value = senderSubjectId
       if (otherTypingClearTimer.value) clearTimeout(otherTypingClearTimer.value)
       otherTypingClearTimer.value = setTimeout(() => {
-        otherTypingUserId.value = null
+        otherTypingSubjectId.value = null
       }, 2500) as unknown as number
     } else {
-      if (otherTypingUserId.value === senderId) otherTypingUserId.value = null
+      if (otherTypingSubjectId.value === senderSubjectId) otherTypingSubjectId.value = null
     }
   },
 })
@@ -658,7 +661,11 @@ const syncReadStatus = async (convId: string, msgId: string) => {
     if (isConnected.value) {
       sendReadReceipt(convId, msgId)
     }
-    await conversationApi.markRead(Number(convId), msgId)
+    await conversationApi.markRead(Number(convId), {
+      messageId: Number(msgId),
+      readerSubjectId: currentPrincipalHumanId.value,
+      readerSubjectType: 'HUMAN',
+    })
     chatStore.markConversationRead(Number(convId))
   } catch {
     // 已读同步失败不打断聊天流
@@ -709,7 +716,7 @@ const loadHistory = async () => {
     messages.value = uniqueMessages
     updateHistoryState(page, uniqueMessages)
     const latest = messages.value[0]
-    if (isPageVisible.value && latest && latest.senderId !== currentUserId.value) {
+    if (isPageVisible.value && latest && !latest.isSelf) {
       syncReadStatus(String(conversationId.value), latest.id)
     }
     scrollToBottom()
@@ -824,8 +831,8 @@ const send = async () => {
     const now = new Date()
     const localMessage: ChatMessage = {
       id: localId,
-      senderId: currentUserId.value,
-      senderType: 'USER',
+      senderSubjectId: currentPrincipalHumanId.value,
+      senderSubjectType: 'HUMAN',
       isAgent: false,
       content: hasText ? text : '',
       // 使用 ISO 字符串格式，与后端保持一致（UTC 时间）
@@ -882,6 +889,8 @@ const sendHttpMessage = async (
       content,
       messageType,
       metadata,
+      actorSubjectId: currentPrincipalHumanId.value,
+      actorSubjectType: 'HUMAN',
     })
     updateLocalMessage(localId, saved)
   } catch (err: any) {
@@ -917,15 +926,16 @@ const parseAttachmentFromPayload = (payload: ChatMessagePayload) => {
 }
 
 const replaceLocalMessage = (
-  senderId: number,
+  senderSubjectId: number,
+  senderSubjectType: string,
   payload: ChatMessagePayload,
   createTime: string,
   realId: string
 ) => {
-  console.log('[replaceLocalMessage] 开始替换:', { senderId, realId, createTime })
+  console.log('[replaceLocalMessage] 开始替换:', { senderSubjectId, senderSubjectType, realId, createTime })
   
-  if (senderId !== currentUserId.value) {
-    console.log('[replaceLocalMessage] senderId 不匹配')
+  if (senderSubjectType !== 'HUMAN' || senderSubjectId !== currentPrincipalHumanId.value) {
+    console.log('[replaceLocalMessage] sender subject 不匹配')
     return false
   }
 
@@ -1026,7 +1036,7 @@ const replaceLocalMessage = (
     createTime,
     local: false,
     failed: false,
-    senderType: 'USER',
+    senderSubjectType: 'HUMAN',
     isAgent: false,
     content: payloadContent,
     messageType: mt,
@@ -1075,8 +1085,9 @@ const updateLocalMessage = (localId: string, saved: MessageItem) => {
     createTime: saved.createTime,
     local: false,
     failed: false,
-    senderType: saved.senderType || 'USER',
-    isAgent: String(saved.senderType || '').toUpperCase() === 'AGENT',
+    senderSubjectId: saved.senderSubjectId,
+    senderSubjectType: saved.senderSubjectType || 'HUMAN',
+    isAgent: String(saved.senderSubjectType || '').toUpperCase() === 'AGENT',
     messageType: (saved.messageType || 'TEXT').toString(),
     attachment: saved.attachment,
   }
@@ -1123,8 +1134,8 @@ const retrySend = (item: ChatMessage) => {
   const content = mt === 'TEXT' ? item.content || '' : ''
   appendChatMessage({
     id: localId,
-    senderId: currentUserId.value,
-    senderType: 'USER',
+    senderSubjectId: currentPrincipalHumanId.value,
+    senderSubjectType: 'HUMAN',
     isAgent: false,
     content,
     createTime: new Date().toISOString(),
@@ -1204,7 +1215,7 @@ onHide(() => {
     clearTimeout(otherTypingClearTimer.value)
     otherTypingClearTimer.value = null
   }
-  otherTypingUserId.value = null
+  otherTypingSubjectId.value = null
   chatStore.setActiveConversation(null)
 })
 
@@ -1214,7 +1225,7 @@ onUnload(() => {
     clearTimeout(otherTypingClearTimer.value)
     otherTypingClearTimer.value = null
   }
-  otherTypingUserId.value = null
+  otherTypingSubjectId.value = null
   clearAllPendingTimers()
   chatStore.setActiveConversation(null)
 })

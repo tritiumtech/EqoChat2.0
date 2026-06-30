@@ -1,11 +1,10 @@
 /**
  * EqoChat WebSocket客户端工具类 (TypeScript版本)
- * 兼容后端WebSocket协议
  */
 
 import {
   MessageType,
-  SenderType,
+  SubjectType,
   ContentType,
   ConnectionStatus,
   type BaseMessage,
@@ -19,10 +18,11 @@ import {
   type WebSocketConfig,
   type ConnectionInfo
 } from '@/types/websocket'
+import { WS_BASE_URL } from '@/utils/runtime-config'
 
 // 默认配置
 const DEFAULT_CONFIG: WebSocketConfig = {
-  baseUrl: import.meta.env.VITE_WS_URL || 'ws://localhost:8080',
+  baseUrl: WS_BASE_URL,
   reconnectInterval: 3000,
   maxReconnectTimes: 5,
   heartbeatInterval: 30000,
@@ -32,7 +32,7 @@ const DEFAULT_CONFIG: WebSocketConfig = {
 class WebSocketClient {
   private ws: UniApp.SocketTask | null = null
   private token: string = ''
-  private userId: string = ''
+  private principalHumanId: string = ''
   private connectionId: string = ''
   
   // 状态
@@ -63,11 +63,11 @@ class WebSocketClient {
     this.callbacks = callbacks
     this.config = { ...this.config, ...config }
     
-    // 从token解析userId
+    // 从 token 解析登录人类主体 ID
     try {
       const parts = token.split('.')
       if (parts.length < 2) {
-        this.userId = ''
+        this.principalHumanId = ''
         return
       }
       const base64Url = parts[1] || ''
@@ -75,10 +75,10 @@ class WebSocketClient {
       const pad = base64.length % 4 === 0 ? '' : '='.repeat(4 - (base64.length % 4))
       const payloadStr = atob(base64 + pad)
       const payload = JSON.parse(payloadStr)
-      const raw = payload.userId ?? payload.sub ?? payload.id ?? payload.uid
-      this.userId = raw == null ? '' : String(raw)
+      const raw = payload.principalHumanId ?? payload.sub
+      this.principalHumanId = raw == null ? '' : String(raw)
     } catch (e) {
-      this.userId = ''
+      this.principalHumanId = ''
       console.warn('解析token失败:', e)
     }
   }
@@ -110,6 +110,11 @@ class WebSocketClient {
 
     if (!this.token) {
       console.error('WebSocket连接失败: 未设置token')
+      return
+    }
+
+    if (!this.config.baseUrl) {
+      console.error('WebSocket连接失败: 未配置 VITE_WS_URL，且当前运行环境无法推导同源 WebSocket 地址')
       return
     }
 
@@ -190,9 +195,8 @@ class WebSocketClient {
    * 发送消息
    * @param type 消息类型
    * @param payload 消息内容
-   * @param recipientId 接收者ID
    */
-  send(type: MessageType, payload: unknown, recipientId?: string): boolean {
+  send(type: MessageType, payload: unknown): boolean {
     if (!this.isConnected) {
       console.error('WebSocket未连接，无法发送消息')
       return false
@@ -201,9 +205,8 @@ class WebSocketClient {
     const message: BaseMessage = {
       id: this.generateMessageId(),
       type,
-      senderId: this.userId,
-      senderType: SenderType.USER,
-      recipientId,
+      senderSubjectId: this.principalHumanId,
+      senderSubjectType: SubjectType.HUMAN,
       timestamp: new Date().toISOString(),
       payload
     }
@@ -247,7 +250,7 @@ class WebSocketClient {
       replyToMessageId: options?.replyToMessageId,
       intentData: options?.intentData
     }
-    return this.send(MessageType.CHAT_MESSAGE, payload, conversationId)
+    return this.send(MessageType.CHAT_MESSAGE, payload)
   }
 
   /**
@@ -258,10 +261,11 @@ class WebSocketClient {
   sendTyping(conversationId: string, isTyping: boolean = true): boolean {
     const payload: TypingPayload = {
       conversationId,
-      userId: this.userId,
+      subjectId: this.principalHumanId,
+      subjectType: SubjectType.HUMAN,
       isTyping
     }
-    return this.send(MessageType.CHAT_TYPING, payload, conversationId)
+    return this.send(MessageType.CHAT_TYPING, payload)
   }
 
   /**
@@ -273,9 +277,10 @@ class WebSocketClient {
     const payload: ReadReceiptPayload = {
       conversationId,
       messageId,
-      readerId: this.userId
+      readerSubjectId: this.principalHumanId,
+      readerSubjectType: SubjectType.HUMAN
     }
-    return this.send(MessageType.CHAT_READ, payload, conversationId)
+    return this.send(MessageType.CHAT_READ, payload)
   }
 
   /**
@@ -534,6 +539,10 @@ class WebSocketClient {
       reconnectCount: this.reconnectCount
     }
   }
+
+  getPrincipalHumanId(): string {
+    return this.principalHumanId
+  }
 }
 
 // 导出单例
@@ -543,7 +552,7 @@ export const wsClient = new WebSocketClient()
 export default {
   wsClient,
   MessageType,
-  SenderType,
+  SubjectType,
   ContentType,
   ConnectionStatus,
   

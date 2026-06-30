@@ -108,6 +108,7 @@
     :open="showCreateTaskModal"
     :projectId="selectedProjectId"
     :creating="creatingTask"
+    :members="projectDetail?.members || []"
     @close="closeCreateTaskModal"
     @submit="submitCreateTask"
   />
@@ -134,6 +135,7 @@ import {
   type ProjectFile,
   type ProjectMember,
   type ProjectPayment,
+  type ProjectBusinessSubjectType,
   type ProjectSummary,
   type ProjectTask,
 } from '@/api/modules/project'
@@ -170,7 +172,7 @@ const showUpdateBidModal = ref(false)
 const updateBidStr = ref('0')
 
 const showTransferModal = ref(false)
-const selectedTransferMemberId = ref<number | null>(null)
+const selectedTransferMemberKey = ref<string | null>(null)
 
 const showShareModal = ref(false)
 const shareUrl = ref('')
@@ -207,22 +209,27 @@ const pendingBidUpdate = computed(() => {
 
 const selectedTransferMember = computed(() => {
   if (!projectDetail.value?.members?.length) return null
-  const targetId = Number(selectedTransferMemberId.value)
-  if (!Number.isFinite(targetId)) return null
-  return projectDetail.value.members.find((m) => Number(m.id) === targetId) || null
+  const targetKey = selectedTransferMemberKey.value
+  if (!targetKey) return null
+  return projectDetail.value.members.find((m) => memberSubjectKey(m) === targetKey) || null
 })
 
 const currentUserIsOwner = computed(() => {
   if (!projectDetail.value) return false
   const currentUserId = Number(userStore.userInfo?.id)
-  const ownerId = Number(projectDetail.value.ownerId)
-  if (!Number.isFinite(currentUserId) || !Number.isFinite(ownerId)) return false
-  return ownerId === currentUserId
+  if (!Number.isFinite(currentUserId)) return false
+  if (projectDetail.value.ownerSubjectType === 'HUMAN') {
+    return Number(projectDetail.value.ownerSubjectId) === currentUserId
+  }
+  if (projectDetail.value.ownerSubjectType === 'AGENT') {
+    return Number(projectDetail.value.liableHumanId ?? projectDetail.value.associatedHumanId) === currentUserId
+  }
+  return false
 })
 
-const isAgentMemberType = (type: unknown) => {
-  return String(type || '').trim().toLowerCase() === 'agent'
-}
+const isBusinessSubjectType = (type: unknown): type is ProjectBusinessSubjectType => type === 'HUMAN' || type === 'AGENT'
+
+const memberSubjectKey = (member: ProjectMember) => `${member.memberSubjectType}:${member.memberSubjectId}`
 
 type RecentActivityItem = {
   id: string
@@ -242,7 +249,7 @@ const recentActivityList = computed<RecentActivityItem[]>(() => {
     return s.includes('complete')
   })
   if (completedTask) {
-    const actor = completedTask.assignee || ''
+    const actor = completedTask.assigneeDisplayName || ''
     items.push({
       id: 'ra_task_1',
       initial: getMemberInitial(actor),
@@ -254,7 +261,7 @@ const recentActivityList = computed<RecentActivityItem[]>(() => {
 
   const firstFile = sidebarFiles.value[0]
   if (firstFile) {
-    const actor = firstFile.uploadedBy || ''
+    const actor = firstFile.uploaderDisplayName || ''
     items.push({
       id: 'ra_file_1',
       initial: getMemberInitial(actor),
@@ -266,7 +273,7 @@ const recentActivityList = computed<RecentActivityItem[]>(() => {
 
   const firstPayment = sidebarPayments.value[0]
   if (firstPayment) {
-    const actor = firstPayment.recipient || ''
+    const actor = firstPayment.recipientDisplayName || ''
     items.push({
       id: 'ra_payment_1',
       initial: getMemberInitial(actor),
@@ -477,7 +484,7 @@ async function loadProjectAll(id: number) {
   sidebarTasks.value = tasks
   sidebarPayments.value = payments
   sidebarFiles.value = files
-  selectedTransferMemberId.value = detail?.members?.[0]?.id ?? null
+  selectedTransferMemberKey.value = detail?.members?.[0] ? memberSubjectKey(detail.members[0]) : null
 }
 
 function openCreateModal() {
@@ -496,7 +503,7 @@ function closeUpdateBidModal() {
 
 function closeTransferModal() {
   showTransferModal.value = false
-  selectedTransferMemberId.value = null
+  selectedTransferMemberKey.value = null
 }
 
 function closeShareModal() {
@@ -511,7 +518,14 @@ function closeCreateTaskModal() {
   showCreateTaskModal.value = false
 }
 
-async function submitCreateTask(payload: { title: string; value: number; deadline: string; priority: string }) {
+async function submitCreateTask(payload: {
+  title: string
+  value: number
+  deadline: string
+  priority: string
+  assigneeSubjectId: number
+  assigneeSubjectType: ProjectBusinessSubjectType
+}) {
   if (!selectedProjectId.value) return
   creatingTask.value = true
   try {
@@ -521,6 +535,8 @@ async function submitCreateTask(payload: { title: string; value: number; deadlin
       value: payload.value,
       deadline: payload.deadline,
       priority: payload.priority as 'low' | 'medium' | 'high',
+      assigneeSubjectId: payload.assigneeSubjectId,
+      assigneeSubjectType: payload.assigneeSubjectType,
     })
     showCreateTaskModal.value = false
     sidebarTasks.value = await projectApi.listSidebarTasks(selectedProjectId.value)
@@ -542,10 +558,20 @@ function calculateDeposit() {
 
 async function submitCreateProject() {
   if (!canCreateProject.value) return
+  const ownerSubjectId = Number(userStore.userInfo?.id)
+  if (!Number.isFinite(ownerSubjectId) || ownerSubjectId <= 0) {
+    uni.showToast({ title: t('toast.load_failed'), icon: 'none' })
+    return
+  }
   try {
     uni.showLoading({ title: t('common.loading'), mask: true })
     const bid = Math.round(Number(createBidStr.value))
-    const created = await projectApi.createProject({ name: createName.value.trim(), bid })
+    const created = await projectApi.createProject({
+      name: createName.value.trim(),
+      bid,
+      ownerSubjectId,
+      ownerSubjectType: 'HUMAN',
+    })
     showCreateModal.value = false
     selectedProjectId.value = created.id
     await loadProjectAll(created.id)
@@ -582,26 +608,31 @@ async function submitUpdateBid() {
 function openTransferModal(member?: ProjectMember) {
   if (!projectDetail.value) return
   if (member) {
-    selectedTransferMemberId.value = member.id
+    selectedTransferMemberKey.value = memberSubjectKey(member)
   } else {
-    selectedTransferMemberId.value = selectedTransferMemberId.value ?? projectDetail.value.members?.[0]?.id ?? null
+    selectedTransferMemberKey.value = selectedTransferMemberKey.value
+      ?? (projectDetail.value.members?.[0] ? memberSubjectKey(projectDetail.value.members[0]) : null)
   }
   showTransferModal.value = true
 }
 
 async function submitTransferOwnership() {
   if (!selectedProjectId.value || !selectedTransferMember.value) return
-  const toMemberId = Number(selectedTransferMember.value.id)
-  if (!Number.isFinite(toMemberId) || toMemberId <= 0) {
+  const newOwnerSubjectId = Number(selectedTransferMember.value.memberSubjectId)
+  if (!Number.isFinite(newOwnerSubjectId) || newOwnerSubjectId <= 0) {
+    uni.showToast({ title: t('toast.load_failed'), icon: 'none' })
+    return
+  }
+  const newOwnerSubjectType = selectedTransferMember.value.memberSubjectType
+  if (!isBusinessSubjectType(newOwnerSubjectType)) {
     uni.showToast({ title: t('toast.load_failed'), icon: 'none' })
     return
   }
   try {
     uni.showLoading({ title: t('common.loading'), mask: true })
-    const toMemberType = isAgentMemberType(selectedTransferMember.value.type) ? 'AGENT' : 'HUMAN'
     await projectApi.transferOwnership(selectedProjectId.value, {
-      toMemberId,
-      toMemberType: toMemberType as 'AGENT' | 'HUMAN',
+      newOwnerSubjectId,
+      newOwnerSubjectType,
     })
     showTransferModal.value = false
     await loadProjectAll(selectedProjectId.value)

@@ -1,5 +1,6 @@
 package com.eqochat.business.project.api.dto.request;
 
+import com.eqochat.business.actor.api.model.SubjectType;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -26,4 +27,10 @@ public class CreateProjectTaskRequest {
 
     @NotBlank(message = "优先级不能为空")
     private String priority;
+
+    @NotNull(message = "任务负责人不能为空")
+    private Long assigneeSubjectId;
+
+    @NotNull(message = "任务负责人类型不能为空")
+    private SubjectType assigneeSubjectType;
 }

@@ -174,28 +174,34 @@
       <view class="card team-members">
         <text class="card-title-sm">{{ t('page.project.team_members.title') }}</text>
         <view class="member-list">
-          <view v-for="m in projectDetail?.members || []" :key="m.id" class="member-row">
+          <view v-for="m in projectDetail?.members || []" :key="`${m.memberSubjectType}:${m.memberSubjectId}`" class="member-row">
             <view class="member-avatar">
               <text class="member-initial">{{ getMemberInitial(m.name) }}</text>
             </view>
             <view class="member-info">
               <view class="member-top">
                 <text class="member-name">{{ m.name }}</text>
-                <view v-if="m.id === projectDetail?.ownerId" class="chip chip-owner">
+                <view v-if="isOwnerMember(m)" class="chip chip-owner">
                   {{ t('page.project.member_owner_label') }}
                 </view>
                 <view v-else class="chip chip-type">
-                  {{ isAgentType(m.type) ? t('page.project.member_type_ai') : t('page.project.member_type_human') }}
+                  {{ subjectTypeLabel(m.memberSubjectType) }}
                 </view>
               </view>
               <view class="member-bottom">
                 <view class="chip chip-online">
                   {{ m.isOnline ? t('page.project.member_online') : t('page.project.member_offline') }}
                 </view>
+                <view v-if="isAgentType(m.memberSubjectType) && m.associatedHumanId" class="chip chip-human">
+                  {{ m.associatedHumanName || `Associated Human #${m.associatedHumanId}` }}
+                </view>
+                <view v-if="isAgentType(m.memberSubjectType) && isOwnerMember(m) && projectDetail?.walletRouting" class="chip chip-wallet">
+                  {{ projectDetail.walletRouting }}
+                </view>
               </view>
             </view>
             <button
-              v-if="currentUserIsOwner && m.id !== projectDetail?.ownerId"
+              v-if="currentUserIsOwner && !isOwnerMember(m)"
               class="member-transfer-btn"
               @click.stop="onOpenTransferModal(m)"
             >
@@ -286,6 +292,15 @@ const formatDepositAmount = props.formatDepositAmount
 const getMemberInitial = props.getMemberInitial
 
 const isAgentType = (type: unknown) => String(type || '').trim().toLowerCase() === 'agent'
+const subjectTypeLabel = (type: unknown) => {
+  if (type === 'AGENT') return t('page.project.member_type_ai')
+  if (type === 'HUMAN') return t('page.project.member_type_human')
+  return String(type || '').toUpperCase()
+}
+const isOwnerMember = (member: ProjectMember) => {
+  return Number(member.memberSubjectId) === Number(projectDetail.value?.ownerSubjectId)
+    && String(member.memberSubjectType || '').toUpperCase() === String(projectDetail.value?.ownerSubjectType || '').toUpperCase()
+}
 </script>
 
 <style scoped src="../project.styles.css"></style>

@@ -26,6 +26,10 @@ public class UserInfoResponse {
     private String bio;
     private String status;
     private Integer creditScore;
+    /**
+     * 展示积分。默认可回退为信用分，Sprint demo 可通过后端配置覆盖，不污染 0-100 信用分语义。
+     */
+    private Integer points;
     private LocalDateTime lastLoginAt;
     private LocalDateTime createTime;
 }

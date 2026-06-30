@@ -1,5 +1,7 @@
 package com.eqochat.business.notification.service.impl;
 
+import com.eqochat.business.actor.api.model.SubjectRef;
+import com.eqochat.business.actor.api.model.SubjectType;
 import com.eqochat.framework.common.BizException;
 import com.eqochat.business.notification.entity.Notification;
 import com.eqochat.business.notification.api.dto.response.NotificationResponse;
@@ -11,7 +13,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
-import java.time.LocalDateTime;
 import java.util.List;
 
 @Service
@@ -22,48 +23,67 @@ public class NotificationServiceImpl implements NotificationService {
     private final NotificationMapper notificationMapper;
 
     @Override
-    public List<NotificationResponse> listMyNotifications(Long userId, Integer limit) {
+    public List<NotificationResponse> listNotifications(SubjectRef recipient, Integer limit) {
+        SubjectRef ref = requireRecipient(recipient);
         int size = limit == null || limit <= 0 ? 50 : Math.min(limit, 100);
-        List<Notification> list = notificationMapper.findByRecipientId(userId);
+        List<Notification> list = notificationMapper.findByRecipient(ref.id(), ref.type().name());
         if (list.isEmpty()) return List.of();
         return list.stream()
                 .limit(size)
-                .map(n -> NotificationResponse.builder()
-                        .id(n.getId())
-                        .type(n.getNotificationType() != null ? n.getNotificationType().name() : null)
-                        .title(n.getTitle())
-                        .content(n.getContent())
-                        .read(Boolean.TRUE.equals(n.getIsRead()))
-                        .createTime(n.getCreateTime())
-                        .build())
+                .map(this::toResponse)
                 .toList();
     }
 
     @Override
-    public void markRead(Long userId, Long notificationId) {
+    public List<NotificationResponse> listUnreadNotifications(SubjectRef recipient, Integer limit) {
+        SubjectRef ref = requireRecipient(recipient);
+        int size = limit == null || limit <= 0 ? 50 : Math.min(limit, 100);
+        List<Notification> list = notificationMapper.findUnreadByRecipient(ref.id(), ref.type().name());
+        if (list.isEmpty()) return List.of();
+        return list.stream()
+                .limit(size)
+                .map(this::toResponse)
+                .toList();
+    }
+
+    @Override
+    public long countUnread(SubjectRef recipient) {
+        SubjectRef ref = requireRecipient(recipient);
+        return notificationMapper.countUnreadByRecipient(ref.id(), ref.type().name());
+    }
+
+    @Override
+    public void markRead(SubjectRef recipient, Long notificationId) {
+        SubjectRef ref = requireRecipient(recipient);
         if (notificationId == null) throw BizException.of("notification.id.required");
-        Notification n = notificationMapper.selectById(notificationId);
-        if (n == null || (n.getDelToken() != null && n.getDelToken() != 0L)) {
+        Notification n = notificationMapper.findByIdForRecipient(notificationId, ref.id(), ref.type().name());
+        if (n == null) {
             throw BizException.of("notification.not_found");
-        }
-        if (!userId.equals(n.getRecipientId())) {
-            throw BizException.of("notification.access.denied");
         }
         if (Boolean.TRUE.equals(n.getIsRead())) {
             return;
         }
-        n.setIsRead(true);
-        n.setReadAt(LocalDateTime.now());
-        notificationMapper.updateById(n);
+        notificationMapper.markReadForRecipient(notificationId, ref.id(), ref.type().name());
+    }
+
+    @Override
+    public void markAllRead(SubjectRef recipient) {
+        SubjectRef ref = requireRecipient(recipient);
+        notificationMapper.markAllAsRead(ref.id(), ref.type().name());
     }
 
     @Override
     @Transactional
-    public void sendNotification(Long recipientId, String type, String title, String content, String data, Long senderId) {
-        if (recipientId == null) {
-            log.warn("发送通知失败: recipientId为空");
-            return;
-        }
+    public void sendNotification(
+            SubjectRef recipient,
+            String type,
+            String title,
+            String content,
+            String data,
+            SubjectRef sender
+    ) {
+        SubjectRef recipientRef = requireRecipient(recipient);
+        SubjectRef senderRef = requireSender(sender);
         if (!StringUtils.hasText(title)) {
             log.warn("发送通知失败: title为空");
             return;
@@ -71,7 +91,9 @@ public class NotificationServiceImpl implements NotificationService {
 
         Notification.NotificationType notificationType;
         try {
-            notificationType = Notification.NotificationType.valueOf(type);
+            notificationType = StringUtils.hasText(type)
+                    ? Notification.NotificationType.valueOf(type)
+                    : Notification.NotificationType.SYSTEM;
         } catch (IllegalArgumentException e) {
             log.warn("未知通知类型: {}, 使用SYSTEM类型", type);
             notificationType = Notification.NotificationType.SYSTEM;
@@ -84,24 +106,81 @@ public class NotificationServiceImpl implements NotificationService {
         }
 
         Notification notification = Notification.builder()
-                .recipientId(recipientId)
-                .recipientType(Notification.RecipientType.USER)
+                .recipientId(recipientRef.id())
+                .recipientType(toRecipientType(recipientRef.type()))
                 .notificationType(notificationType)
                 .title(title)
                 .content(shortContent)
                 .data(data)
-                .senderId(senderId)
-                .senderType(senderId != null ? Notification.SenderType.USER : Notification.SenderType.SYSTEM)
+                .senderId(senderRef.id())
+                .senderType(toSenderType(senderRef.type()))
                 .isRead(false)
                 .priority(Notification.Priority.NORMAL)
                 .build();
 
         try {
             notificationMapper.insert(notification);
-            log.debug("发送通知成功: recipientId={}, type={}, title={}", recipientId, type, title);
+            log.debug("发送通知成功: recipient={}, type={}, title={}", recipientRef, type, title);
         } catch (Exception e) {
-            log.error("发送通知失败: recipientId={}, type={}", recipientId, type, e);
+            log.error("发送通知失败: recipient={}, type={}", recipientRef, type, e);
         }
     }
-}
 
+    private NotificationResponse toResponse(Notification n) {
+        return NotificationResponse.builder()
+                .id(n.getId())
+                .recipientSubjectId(n.getRecipientId())
+                .recipientSubjectType(n.getRecipientType() != null ? n.getRecipientType().name() : null)
+                .senderSubjectId(n.getSenderId())
+                .senderSubjectType(n.getSenderType() != null ? n.getSenderType().name() : null)
+                .type(n.getNotificationType() != null ? n.getNotificationType().name() : null)
+                .title(n.getTitle())
+                .content(n.getContent())
+                .read(Boolean.TRUE.equals(n.getIsRead()))
+                .createTime(n.getCreateTime())
+                .build();
+    }
+
+    private static SubjectRef requireRecipient(SubjectRef recipient) {
+        if (recipient == null || recipient.id() == null || recipient.type() == null) {
+            throw BizException.of("notification.recipient.required");
+        }
+        if (recipient.type() == SubjectType.SYSTEM) {
+            throw BizException.of("notification.recipient.type.invalid");
+        }
+        return recipient;
+    }
+
+    private static SubjectRef requireSender(SubjectRef sender) {
+        if (sender == null || sender.type() == null) {
+            throw BizException.of("notification.sender.required");
+        }
+        if (sender.id() == null) {
+            throw BizException.of("notification.sender.required");
+        }
+        return sender;
+    }
+
+    private static Notification.RecipientType toRecipientType(SubjectType type) {
+        if (type == SubjectType.HUMAN) {
+            return Notification.RecipientType.HUMAN;
+        }
+        if (type == SubjectType.AGENT) {
+            return Notification.RecipientType.AGENT;
+        }
+        throw BizException.of("notification.recipient.type.invalid");
+    }
+
+    private static Notification.SenderType toSenderType(SubjectType type) {
+        if (type == SubjectType.HUMAN) {
+            return Notification.SenderType.HUMAN;
+        }
+        if (type == SubjectType.AGENT) {
+            return Notification.SenderType.AGENT;
+        }
+        if (type == SubjectType.SYSTEM) {
+            return Notification.SenderType.SYSTEM;
+        }
+        throw BizException.of("notification.sender.type.invalid");
+    }
+}

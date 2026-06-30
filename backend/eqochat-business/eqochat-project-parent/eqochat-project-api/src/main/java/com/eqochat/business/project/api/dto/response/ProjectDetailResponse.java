@@ -1,5 +1,6 @@
 package com.eqochat.business.project.api.dto.response;
 
+import com.eqochat.business.actor.api.model.SubjectType;
 import lombok.*;
 
 import java.util.List;
@@ -27,8 +28,15 @@ public class ProjectDetailResponse {
     private String deadline;
     private int progress;
 
-    private Long ownerId;
-    private String ownerType;
+    private Long ownerSubjectId;
+    private SubjectType ownerSubjectType;
+    private String ownerDisplayName;
+    private Long associatedHumanId;
+    private String associatedHumanName;
+    private Long liableHumanId;
+    private boolean agentFullyAuthorized;
+    private String walletRouting;
+    private String responsibilityChain;
 
     private List<ProjectMemberResponse> members;
 
@@ -63,4 +71,3 @@ public class ProjectDetailResponse {
         private int pending;
     }
 }
-

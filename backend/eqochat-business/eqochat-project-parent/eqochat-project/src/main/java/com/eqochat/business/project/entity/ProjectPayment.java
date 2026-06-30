@@ -1,6 +1,7 @@
 package com.eqochat.business.project.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.eqochat.business.actor.api.model.SubjectType;
 import lombok.*;
 
 import java.time.LocalDateTime;
@@ -36,6 +37,42 @@ public class ProjectPayment {
     @TableField("master_wallet")
     private String masterWallet;
 
+    @TableField("wallet_routing")
+    private String walletRouting;
+
+    @TableField("direct_recipient_id")
+    private Long directRecipientId;
+
+    @TableField("direct_recipient_type")
+    private SubjectType directRecipientType;
+
+    @TableField("settlement_subject_id")
+    private Long settlementSubjectId;
+
+    @TableField("settlement_subject_type")
+    private SubjectType settlementSubjectType;
+
+    @TableField("settlement_human_id")
+    private Long settlementHumanId;
+
+    @TableField("financial_autonomy")
+    private Boolean financialAutonomy;
+
+    @TableField("wallet_policy_state")
+    private String walletPolicyState;
+
+    @TableField("wallet_policy_reason")
+    private String walletPolicyReason;
+
+    @TableField("liable_human_id")
+    private Long liableHumanId;
+
+    @TableField("liability_route")
+    private String liabilityRoute;
+
+    @TableField("liability_reason")
+    private String liabilityReason;
+
     @TableField("status")
     private PaymentStatus status;
 
@@ -66,4 +103,3 @@ public class ProjectPayment {
         PENDING, PAID, INVOICED
     }
 }
-

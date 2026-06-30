@@ -17,11 +17,17 @@ public interface WorldService {
     /**
      * 查看某用户发布的动态（需与作者为好友，用于联系人详情等）。
      */
-    PageResponse<WorldPostResponse> listPostsByAuthor(Long viewerId, Long authorId, Long cursorId, Integer limit);
+    PageResponse<WorldPostResponse> listPostsByAuthor(
+            Long viewerId,
+            Long authorId,
+            String authorType,
+            Long cursorId,
+            Integer limit
+    );
 
-    WorldPostResponse createPost(Long authorId, CreateWorldPostRequest request);
+    WorldPostResponse createPost(Long principalHumanId, CreateWorldPostRequest request);
 
-    int createReply(Long authorId, Long postId, CreateWorldPostReplyRequest request);
+    int createReply(Long principalHumanId, Long postId, CreateWorldPostReplyRequest request);
 
     WorldShareLinkResponse shareLink(Long postId);
 

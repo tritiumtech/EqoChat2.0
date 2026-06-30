@@ -44,7 +44,7 @@
           :key="req.id"
           class="request-card"
         >
-          <view class="requester-info" @click="goToUserProfile(req.requesterId)">
+          <view class="requester-info" @click="goToSubjectProfile(req.requesterSubjectId, req.requesterSubjectType)">
             <view class="requester-avatar-wrap">
               <image
                 v-if="req.requesterAvatarUrl"
@@ -52,12 +52,15 @@
                 :src="req.requesterAvatarUrl"
                 mode="aspectFill"
               />
-              <view v-else class="requester-avatar" :style="getAvatarStyle(req.requesterNickname, req.requesterId)">
+              <view v-else class="requester-avatar" :style="getAvatarStyle(req.requesterNickname, req.requesterSubjectId)">
                 <text class="avatar-text">{{ (req.requesterNickname || '?').slice(0, 1) }}</text>
               </view>
             </view>
             <view class="requester-meta">
-              <text class="requester-name">{{ req.requesterNickname || `ID ${req.requesterId}` }}</text>
+              <view class="name-row">
+                <text class="requester-name">{{ req.requesterNickname || `${req.requesterSubjectType} ${req.requesterSubjectId}` }}</text>
+                <text v-if="req.requesterSubjectType === 'AGENT'" class="status-tag pending">{{ t('page.world.ai_agent') }}</text>
+              </view>
               <text class="request-time">{{ t('page.contact.request_received_at') }} {{ formatTime(req.createTime) }}</text>
             </view>
           </view>
@@ -106,7 +109,7 @@
           :key="req.id"
           class="request-card"
         >
-          <view class="requester-info" @click="goToUserProfile(req.recipientId)">
+          <view class="requester-info" @click="goToSubjectProfile(req.recipientSubjectId, req.recipientSubjectType)">
             <view class="requester-avatar-wrap">
               <image
                 v-if="req.recipientAvatarUrl"
@@ -114,13 +117,14 @@
                 :src="req.recipientAvatarUrl"
                 mode="aspectFill"
               />
-              <view v-else class="requester-avatar" :style="getAvatarStyle(req.recipientNickname, req.recipientId)">
+              <view v-else class="requester-avatar" :style="getAvatarStyle(req.recipientNickname, req.recipientSubjectId)">
                 <text class="avatar-text">{{ (req.recipientNickname || '?').slice(0, 1) }}</text>
               </view>
             </view>
             <view class="requester-meta">
               <view class="name-row">
-                <text class="requester-name">{{ req.recipientNickname || `ID ${req.recipientId}` }}</text>
+                <text class="requester-name">{{ req.recipientNickname || `${req.recipientSubjectType} ${req.recipientSubjectId}` }}</text>
+                <text v-if="req.recipientSubjectType === 'AGENT'" class="status-tag pending">{{ t('page.world.ai_agent') }}</text>
                 <text :class="['status-tag', req.status.toLowerCase()]">
                   {{ getStatusText(req.status) }}
                 </text>
@@ -144,6 +148,7 @@ import { computed, ref } from 'vue'
 import { onShow, onHide } from '@dcloudio/uni-app'
 import { useI18nWithFormat } from '@/composables/useI18nWithFormat'
 import { friendRequestApi, type FriendRequestItem } from '@/api/modules/friendRequest'
+import type { ContactSubjectType } from '@/api/modules/contact'
 import { useUserStore } from '@/store/modules/user'
 import { getApiErrorMessage } from '@/utils/request'
 import { wsClient } from '@/utils/websocket'
@@ -237,9 +242,17 @@ const goBack = () => {
   uni.navigateBack()
 }
 
-// 跳转到用户资料
-const goToUserProfile = (userId: number) => {
-  uni.navigateTo({ url: `/pages/contact/user-profile?id=${userId}` })
+// 跳转到主体资料
+const goToSubjectProfile = (subjectId: number, subjectType: ContactSubjectType) => {
+  if (subjectType === 'AGENT') {
+    uni.navigateTo({
+      url: `/pages/contact/contact-detail?targetSubjectType=AGENT&targetSubjectId=${subjectId}`
+    })
+    return
+  }
+  uni.navigateTo({
+    url: `/pages/contact/user-profile?targetSubjectType=HUMAN&targetSubjectId=${subjectId}`
+  })
 }
 
 // 加载收到的申请

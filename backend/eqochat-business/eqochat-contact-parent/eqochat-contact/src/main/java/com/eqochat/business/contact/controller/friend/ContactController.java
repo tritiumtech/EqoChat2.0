@@ -1,5 +1,7 @@
 package com.eqochat.business.contact.controller.friend;
 
+import com.eqochat.business.actor.api.model.SubjectRef;
+import com.eqochat.business.actor.api.model.SubjectType;
 import com.eqochat.framework.common.ApiResponse;
 import com.eqochat.framework.common.UserContext;
 import com.eqochat.business.contact.api.dto.request.UpdateContactTagsRequest;
@@ -27,13 +29,15 @@ public class ContactController {
     @GetMapping
     public ApiResponse<List<ContactResponse>> listContacts(@RequestParam(required = false) String q,
                                                           @RequestParam(required = false) String status) {
-        List<ContactResponse> list = contactService.listContacts(UserContext.requireCurrentUser());
+        Long principalHumanId = UserContext.requireCurrentUser();
+        List<ContactResponse> list = contactService.listContacts(principalHumanId, SubjectRef.human(principalHumanId));
         if (q != null && !q.isBlank()) {
             String keyword = q.trim().toLowerCase();
             list = list.stream()
                     .filter(item -> {
                         String name = item.getNickname() != null ? item.getNickname() : "";
-                        return name.toLowerCase().contains(keyword) || String.valueOf(item.getId()).contains(keyword);
+                        return name.toLowerCase().contains(keyword)
+                                || String.valueOf(item.getTargetSubjectId()).contains(keyword);
                     })
                     .toList();
         }
@@ -46,15 +50,26 @@ public class ContactController {
         return ApiResponse.success(list);
     }
 
-    @GetMapping("/{contactId}")
-    public ApiResponse<ContactDetailResponse> getContactDetail(@PathVariable Long contactId) {
-        return ApiResponse.success(contactService.getContactDetail(UserContext.requireCurrentUser(), contactId));
+    @GetMapping("/{targetType}/{targetId}")
+    public ApiResponse<ContactDetailResponse> getContactDetail(@PathVariable SubjectType targetType,
+                                                               @PathVariable Long targetId) {
+        Long principalHumanId = UserContext.requireCurrentUser();
+        return ApiResponse.success(contactService.getContactDetail(
+                principalHumanId,
+                SubjectRef.human(principalHumanId),
+                new SubjectRef(targetId, targetType)));
     }
 
-    @PutMapping("/{contactId}/tags")
-    public ApiResponse<List<String>> updateContactTags(@PathVariable Long contactId,
+    @PutMapping("/{targetType}/{targetId}/tags")
+    public ApiResponse<List<String>> updateContactTags(@PathVariable SubjectType targetType,
+                                                       @PathVariable Long targetId,
                                                        @RequestBody(required = false) @Valid UpdateContactTagsRequest request) {
+        Long principalHumanId = UserContext.requireCurrentUser();
         List<String> tags = request != null ? request.getTags() : null;
-        return ApiResponse.success(contactService.updateContactTags(UserContext.requireCurrentUser(), contactId, tags));
+        return ApiResponse.success(contactService.updateContactTags(
+                principalHumanId,
+                SubjectRef.human(principalHumanId),
+                new SubjectRef(targetId, targetType),
+                tags));
     }
 }

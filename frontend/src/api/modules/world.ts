@@ -1,19 +1,33 @@
 import request, { forceLogoutAndGoLogin, shouldForceReloginPayload } from '@/utils/request'
 import type { PageResponse } from '@/types/pagination'
-
-const API_BASE =
-  import.meta.env.VITE_API_BASE_URL === undefined || import.meta.env.VITE_API_BASE_URL === ''
-    ? (import.meta.env.DEV ? 'http://localhost:8080' : 'http://localhost:8080')
-    : import.meta.env.VITE_API_BASE_URL
+import { buildApiUrl } from '@/utils/runtime-config'
 
 export type WorldSort = 'friends' | 'upvotes' | 'topics'
 
 export type WorldMediaType = 'TEXT' | 'IMAGE' | 'VIDEO'
+export type WorldSubjectType = 'HUMAN' | 'AGENT' | 'SYSTEM'
 
 export interface WorldAuthor {
+  id?: number | string
   name: string
+  type?: 'human' | 'agent' | string
   avatar: string
   ai: boolean
+  associatedHumanId?: number | string
+  associatedHumanName?: string
+  walletRouting?: string
+}
+
+export interface WorldSharedProject {
+  id: string
+  name: string
+  ownerName?: string
+  ownerAi?: boolean
+  associatedHumanName?: string
+  budget?: string
+  teamMix?: string
+  deadline?: string
+  status?: string
 }
 
 export interface WorldPost {
@@ -23,6 +37,7 @@ export interface WorldPost {
   mediaType?: WorldMediaType | string
   imageUrl?: string
   videoUrl?: string
+  sharedProject?: WorldSharedProject | null
   /**
    * 相对时间显示（如 "now", "15m", "2h", "3d"）
    */
@@ -55,17 +70,27 @@ export interface WorldTopic {
   posts: number
   followers: number
   favorite: boolean
+  followed?: boolean
 }
 
 export interface CreateWorldPostPayload {
+  actorSubjectId: number
+  actorSubjectType: WorldSubjectType
   content: string
   mediaType: WorldMediaType
-  mentionedUserIds?: number[]
+  mentionedSubjects?: WorldMentionedSubject[]
   imageUrl?: string
   videoUrl?: string
 }
 
+export interface WorldMentionedSubject {
+  subjectId: number
+  subjectType: WorldSubjectType
+}
+
 export interface CreateWorldPostReplyPayload {
+  actorSubjectId: number
+  actorSubjectType: WorldSubjectType
   content: string
 }
 
@@ -77,7 +102,7 @@ function uploadWorldFile(filePath: string): Promise<string> {
       return
     }
     uni.uploadFile({
-      url: `${API_BASE}/api/v1/world/uploads`,
+      url: buildApiUrl('/api/v1/world/uploads'),
       filePath,
       name: 'file',
       header: {
@@ -123,9 +148,16 @@ export const worldApi = {
     return request.get<PageResponse<WorldPost>>('/api/v1/world/posts', params)
   },
 
-  /** 指定好友最近发布的动态（需互为好友） */
-  listPostsByAuthor(authorId: number, params?: { cursorId?: number | string; limit?: number }) {
-    return request.get<PageResponse<WorldPost>>(`/api/v1/world/users/${authorId}/posts`, params)
+  /** 指定主体最近发布的动态（需互为好友） */
+  listPostsByAuthor(
+    authorId: number,
+    authorType: WorldSubjectType,
+    params?: { cursorId?: number | string; limit?: number },
+  ) {
+    return request.get<PageResponse<WorldPost>>(
+      `/api/v1/world/subjects/${authorType}/${authorId}/posts`,
+      params,
+    )
   },
 
   createPost(data: CreateWorldPostPayload) {
@@ -172,7 +204,19 @@ export const worldApi = {
     return request.post<{ upvoted: boolean }>(`/api/v1/world/posts/${postId}/upvote`)
   },
 
+  upvotePost(postId: string | number) {
+    return worldApi.toggleUpvote(postId)
+  },
+
   toggleFollow(topicName: string) {
     return request.post<{ following: boolean }>(`/api/v1/world/topics/${encodeURIComponent(topicName)}/follow`)
+  },
+
+  followTopic(topicName: string, _following?: boolean) {
+    return worldApi.toggleFollow(topicName)
+  },
+
+  replyToPost(postId: string | number, content: string, actorSubjectId: number, actorSubjectType: WorldSubjectType) {
+    return worldApi.createReply(postId, { content, actorSubjectId, actorSubjectType })
   },
 }

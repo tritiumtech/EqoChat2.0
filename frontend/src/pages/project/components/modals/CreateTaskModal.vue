@@ -49,6 +49,36 @@
         </view>
 
         <view class="field">
+          <text class="field-label">{{ t('page.project.modals.create_task.assignee') }}</text>
+          <view v-if="businessMembers.length === 0" class="sheet-empty">
+            {{ t('page.project.modals.create_task.no_assignee') }}
+          </view>
+          <view v-else class="assignee-list">
+            <view
+              v-for="member in businessMembers"
+              :key="memberSubjectKey(member)"
+              class="assignee-option"
+              :class="{ active: selectedAssigneeKey === memberSubjectKey(member) }"
+              @click="selectedAssigneeKey = memberSubjectKey(member)"
+            >
+              <view
+                class="assignee-avatar"
+                :class="{ 'assignee-avatar-agent': isAgentSubject(member.memberSubjectType) }"
+              >
+                <text>{{ getMemberInitial(member.name) }}</text>
+              </view>
+              <view class="assignee-main">
+                <text class="assignee-name">{{ member.name }}</text>
+                <text class="assignee-type">
+                  {{ subjectTypeLabel(member.memberSubjectType) }}
+                </text>
+              </view>
+              <text class="assignee-check">{{ selectedAssigneeKey === memberSubjectKey(member) ? '✓' : '' }}</text>
+            </view>
+          </view>
+        </view>
+
+        <view class="field">
           <text class="field-label">{{ t('page.project.modals.create_task.priority') }}</text>
           <view class="priority-row">
             <view
@@ -84,6 +114,7 @@
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Button from '@/components/Button.vue'
+import type { ProjectBusinessSubjectType, ProjectMember } from '@/api/modules/project'
 
 defineOptions({
   options: {
@@ -95,11 +126,19 @@ const props = defineProps<{
   open: boolean
   projectId: number | null
   creating: boolean
+  members: ProjectMember[]
 }>()
 
 const emit = defineEmits<{
   (e: 'close'): void
-  (e: 'submit', payload: { title: string; value: number; deadline: string; priority: string }): void
+  (e: 'submit', payload: {
+    title: string
+    value: number
+    deadline: string
+    priority: string
+    assigneeSubjectId: number
+    assigneeSubjectType: ProjectBusinessSubjectType
+  }): void
 }>()
 
 const { t } = useI18n({ useScope: 'global' })
@@ -108,6 +147,38 @@ const taskTitle = ref('')
 const taskValue = ref('')
 const taskDeadline = ref('')
 const taskPriority = ref<'low' | 'medium' | 'high'>('medium')
+const selectedAssigneeKey = ref<string | null>(null)
+
+const isBusinessSubjectType = (type: unknown): type is ProjectBusinessSubjectType => {
+  return type === 'HUMAN' || type === 'AGENT'
+}
+
+const isAgentSubject = (type: unknown) => type === 'AGENT'
+
+const subjectTypeLabel = (type: unknown) => {
+  if (type === 'AGENT') return t('page.project.member_type_ai')
+  if (type === 'HUMAN') return t('page.project.member_type_human')
+  return String(type || '').toUpperCase()
+}
+
+const memberSubjectKey = (member: ProjectMember) => `${member.memberSubjectType}:${member.memberSubjectId}`
+
+const getMemberInitial = (name?: string) => {
+  const v = String(name || '').trim()
+  return v ? v.slice(0, 1).toUpperCase() : '?'
+}
+
+const businessMembers = computed(() => {
+  return (props.members || []).filter((member) => {
+    return member && isBusinessSubjectType(member.memberSubjectType)
+  })
+})
+
+const selectedAssignee = computed(() => {
+  const key = selectedAssigneeKey.value
+  if (!key) return null
+  return businessMembers.value.find((member) => memberSubjectKey(member) === key) || null
+})
 
 const priorityOptions = computed(() => [
   { value: 'low', label: t('page.project.task_priority.low'), class: 'prio-low' },
@@ -119,7 +190,7 @@ const canCreate = computed(() => {
   const titleOk = taskTitle.value.trim().length > 0
   const valueOk = Number(taskValue.value) > 0
   const deadlineOk = taskDeadline.value.length > 0
-  return titleOk && valueOk && deadlineOk
+  return titleOk && valueOk && deadlineOk && selectedAssignee.value != null
 })
 
 watch(() => props.open, (v) => {
@@ -128,7 +199,14 @@ watch(() => props.open, (v) => {
     taskValue.value = ''
     taskDeadline.value = ''
     taskPriority.value = 'medium'
+    selectedAssigneeKey.value = businessMembers.value[0] ? memberSubjectKey(businessMembers.value[0]) : null
   }
+})
+
+watch(businessMembers, (members) => {
+  if (!props.open) return
+  if (selectedAssignee.value) return
+  selectedAssigneeKey.value = members[0] ? memberSubjectKey(members[0]) : null
 })
 
 function onTitleInput(payload: any) {
@@ -145,11 +223,15 @@ function onDeadlineChange(payload: any) {
 
 function handleSubmit() {
   if (!canCreate.value || props.creating) return
+  const assignee = selectedAssignee.value
+  if (!assignee || !isBusinessSubjectType(assignee.memberSubjectType)) return
   emit('submit', {
     title: taskTitle.value.trim(),
     value: Math.round(Number(taskValue.value) * 100),
     deadline: taskDeadline.value,
     priority: taskPriority.value,
+    assigneeSubjectId: assignee.memberSubjectId,
+    assigneeSubjectType: assignee.memberSubjectType,
   })
 }
 </script>
@@ -199,6 +281,73 @@ function handleSubmit() {
 .field-picker-icon {
   font-size: 20rpx;
   color: var(--c-muted);
+}
+
+.assignee-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
+}
+
+.assignee-option {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  min-height: 88rpx;
+  padding: 14rpx 16rpx;
+  background: var(--c-surface);
+  border: 2rpx solid var(--c-border);
+  border-radius: var(--radius-lg);
+}
+
+.assignee-option.active {
+  border-color: rgba(14, 165, 233, 0.55);
+  background: rgba(14, 165, 233, 0.08);
+}
+
+.assignee-avatar {
+  width: 56rpx;
+  height: 56rpx;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: linear-gradient(135deg, #2563eb, #14b8a6);
+  color: white;
+  font-size: 24rpx;
+  font-weight: 800;
+}
+
+.assignee-avatar-agent {
+  background: linear-gradient(135deg, #7c3aed, #f97316);
+}
+
+.assignee-main {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+}
+
+.assignee-name {
+  color: var(--c-text);
+  font-size: 26rpx;
+  font-weight: 700;
+}
+
+.assignee-type {
+  color: var(--c-muted);
+  font-size: 20rpx;
+}
+
+.assignee-check {
+  width: 32rpx;
+  color: #0284c7;
+  font-size: 28rpx;
+  font-weight: 800;
+  text-align: center;
 }
 
 .priority-row {

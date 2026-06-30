@@ -12,5 +12,5 @@ public class WorldTopicResponse {
     private int posts;
     private int followers;
     private boolean favorite;
+    private boolean followed;
 }
-

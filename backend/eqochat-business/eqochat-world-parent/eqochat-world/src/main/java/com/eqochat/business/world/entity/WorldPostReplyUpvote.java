@@ -21,8 +21,11 @@ public class WorldPostReplyUpvote {
     @TableField("reply_id")
     private Long replyId;
 
-    @TableField("user_id")
-    private Long userId;
+    @TableField("voter_id")
+    private Long voterId;
+
+    @TableField("voter_type")
+    private String voterType;
 
     @TableField(value = "create_time", fill = FieldFill.INSERT)
     private LocalDateTime createTime;
@@ -39,4 +42,3 @@ public class WorldPostReplyUpvote {
     @TableLogic
     private Long delToken;
 }
-

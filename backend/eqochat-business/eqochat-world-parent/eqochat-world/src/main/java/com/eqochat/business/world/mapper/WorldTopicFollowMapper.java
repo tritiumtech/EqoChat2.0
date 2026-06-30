@@ -10,18 +10,23 @@ public interface WorldTopicFollowMapper extends BaseMapper<WorldTopicFollow> {
     @Select("""
             SELECT * FROM world_topic_follow
             WHERE topic_id = #{topicId}
-              AND user_id = #{userId}
+              AND follower_id = #{followerId}
+              AND follower_type = #{followerType}
               AND del_token = '0'
             LIMIT 1
             """)
-    WorldTopicFollow findActive(@Param("topicId") Long topicId, @Param("userId") Long userId);
+    WorldTopicFollow findActive(@Param("topicId") Long topicId,
+                                @Param("followerId") Long followerId,
+                                @Param("followerType") String followerType);
 
     @Select("""
             SELECT * FROM world_topic_follow
             WHERE topic_id = #{topicId}
-              AND user_id = #{userId}
+              AND follower_id = #{followerId}
+              AND follower_type = #{followerType}
             LIMIT 1
             """)
-    WorldTopicFollow findAny(@Param("topicId") Long topicId, @Param("userId") Long userId);
+    WorldTopicFollow findAny(@Param("topicId") Long topicId,
+                             @Param("followerId") Long followerId,
+                             @Param("followerType") String followerType);
 }
-

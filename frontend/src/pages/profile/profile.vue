@@ -219,7 +219,7 @@ const LEVELS = [
 ]
 
 const userPoints = computed(() => {
-  const s = userInfo.value?.creditScore
+  const s = userInfo.value?.points ?? userInfo.value?.creditScore
   if (s == null || Number.isNaN(Number(s))) return 0
   return Math.max(0, Number(s))
 })

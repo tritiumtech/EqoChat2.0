@@ -2,6 +2,10 @@ import request from '@/utils/request'
 
 export interface NotificationItem {
   id: number
+  recipientSubjectId?: number
+  recipientSubjectType?: 'HUMAN' | 'AGENT' | string
+  senderSubjectId?: number
+  senderSubjectType?: 'HUMAN' | 'AGENT' | 'SYSTEM' | string
   type?: string
   title: string
   content?: string
@@ -17,4 +21,3 @@ export const notificationApi = {
     return request.post<void>('/api/v1/notifications/read', { notificationId })
   },
 }
-

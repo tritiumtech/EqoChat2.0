@@ -7,6 +7,7 @@ import com.eqochat.business.credit.mapper.CreditRecordMapper;
 import com.eqochat.business.credit.mapper.SubjectCreditScoreMapper;
 import com.eqochat.business.credit.mapper.ViolationRecordMapper;
 import com.eqochat.business.credit.api.service.CreditProfileService;
+import com.eqochat.framework.common.BizException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -26,11 +27,12 @@ public class CreditProfileServiceImpl implements CreditProfileService {
 
     @Override
     public CreditProfileResponse getSubjectCreditProfile(Long subjectId, String subjectType) {
-        String st = subjectType == null ? "" : subjectType.trim().toUpperCase();
+        CreditRecord.SubjectType st = parseSubjectType(subjectType);
+        String subjectTypeValue = st.name();
 
         // 1) 拉取记录
-        List<CreditRecord> creditRecords = creditRecordMapper.findBySubject(subjectId, st);
-        List<ViolationRecord> violationRecords = violationRecordMapper.findBySubject(subjectId, st);
+        List<CreditRecord> creditRecords = creditRecordMapper.findBySubject(subjectId, subjectTypeValue);
+        List<ViolationRecord> violationRecords = violationRecordMapper.findBySubject(subjectId, subjectTypeValue);
 
         // 2) 基础分数：优先使用信用记录的 latest current_score
         int creditScore = 0;
@@ -125,16 +127,24 @@ public class CreditProfileServiceImpl implements CreditProfileService {
                 .build();
     }
 
-    private int resolveProfileCreditScore(Long subjectId, String subjectType) {
-        if ("USER".equals(subjectType)) {
+    private int resolveProfileCreditScore(Long subjectId, CreditRecord.SubjectType subjectType) {
+        if (subjectType == CreditRecord.SubjectType.HUMAN) {
             Integer s = subjectCreditScoreMapper.selectUserCreditScoreById(subjectId);
             return s != null ? s : 0;
         }
-        if ("AGENT".equals(subjectType)) {
+        if (subjectType == CreditRecord.SubjectType.AGENT) {
             Integer s = subjectCreditScoreMapper.selectAgentCreditScoreById(subjectId);
             return s != null ? s : 0;
         }
         return 0;
+    }
+
+    private static CreditRecord.SubjectType parseSubjectType(String subjectType) {
+        try {
+            return CreditRecord.SubjectType.valueOf(subjectType == null ? "" : subjectType.trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw BizException.of("error.invalid.subject_type");
+        }
     }
 
     private static boolean isProjectLike(String relatedType, String reason) {
@@ -168,4 +178,3 @@ public class CreditProfileServiceImpl implements CreditProfileService {
         return dt.toLocalDate().toString();
     }
 }
-

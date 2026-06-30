@@ -18,6 +18,7 @@ public class WorldPostResponse {
     private String mediaType;
     private String imageUrl;
     private String videoUrl;
+    private SharedProject sharedProject;
     private String timestamp;
     /**
      * 完整的时间戳（ISO-8601 格式），用于前端计算年/月/日分组
@@ -34,12 +35,38 @@ public class WorldPostResponse {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class Author {
+        private Long id;
         private String name;
+        /**
+         * Author subject type. Sprint 1A stores World authors as human users,
+         * but exposing this keeps the API ready for agent authors without
+         * making the frontend infer from the display name.
+         */
+        private String type;
         /**
          * 用于前端渐变/头像色（hex），与 Figma Make 示例保持一致。
          */
         private String avatar;
         private boolean ai;
+        private Long associatedHumanId;
+        private String associatedHumanName;
+        private String walletRouting;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class SharedProject {
+        private String id;
+        private String name;
+        private String ownerName;
+        private boolean ownerAi;
+        private String associatedHumanName;
+        private String budget;
+        private String teamMix;
+        private String deadline;
+        private String status;
     }
 
     public static String formatTime(LocalDateTime time) {
@@ -55,4 +82,3 @@ public class WorldPostResponse {
         return time.toLocalDate().toString();
     }
 }
-

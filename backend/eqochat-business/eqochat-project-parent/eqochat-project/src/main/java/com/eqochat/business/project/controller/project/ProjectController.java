@@ -3,6 +3,7 @@ package com.eqochat.business.project.controller.project;
 import com.eqochat.framework.common.ApiResponse;
 import com.eqochat.framework.common.UserContext;
 import com.eqochat.business.project.api.dto.request.CreateProjectRequest;
+import com.eqochat.business.project.api.dto.request.CreateProjectPaymentRequest;
 import com.eqochat.business.project.api.dto.request.CreateProjectTaskRequest;
 import com.eqochat.business.project.api.dto.request.TransferProjectOwnershipRequest;
 import com.eqochat.business.project.api.dto.request.UpdateProjectBidRequest;
@@ -86,5 +87,12 @@ public class ProjectController {
         Long viewerId = UserContext.requireCurrentUser();
         return ApiResponse.success(projectService.createTask(viewerId, projectId, request));
     }
-}
 
+    @PostMapping("/{projectId}/payments")
+    public ApiResponse<ProjectPaymentResponse> createPayment(
+            @PathVariable Long projectId,
+            @Valid @RequestBody CreateProjectPaymentRequest request) {
+        Long viewerId = UserContext.requireCurrentUser();
+        return ApiResponse.success(projectService.createPayment(viewerId, projectId, request));
+    }
+}

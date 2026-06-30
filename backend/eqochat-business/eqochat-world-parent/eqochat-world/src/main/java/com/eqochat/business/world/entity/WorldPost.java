@@ -18,6 +18,9 @@ public class WorldPost {
     @TableField("author_id")
     private Long authorId;
 
+    @TableField("author_type")
+    private String authorType;
+
     @TableField("content")
     private String content;
 
@@ -29,6 +32,33 @@ public class WorldPost {
 
     @TableField("video_url")
     private String videoUrl;
+
+    @TableField("shared_project_id")
+    private Long sharedProjectId;
+
+    @TableField("shared_project_name")
+    private String sharedProjectName;
+
+    @TableField("shared_project_owner_name")
+    private String sharedProjectOwnerName;
+
+    @TableField("shared_project_owner_ai")
+    private Boolean sharedProjectOwnerAi;
+
+    @TableField("shared_project_associated_human_name")
+    private String sharedProjectAssociatedHumanName;
+
+    @TableField("shared_project_budget")
+    private String sharedProjectBudget;
+
+    @TableField("shared_project_team_mix")
+    private String sharedProjectTeamMix;
+
+    @TableField("shared_project_deadline")
+    private String sharedProjectDeadline;
+
+    @TableField("shared_project_status")
+    private String sharedProjectStatus;
 
     @TableField("reply_count")
     private Integer replyCount;
@@ -54,4 +84,3 @@ public class WorldPost {
     @TableLogic
     private Long delToken;
 }
-

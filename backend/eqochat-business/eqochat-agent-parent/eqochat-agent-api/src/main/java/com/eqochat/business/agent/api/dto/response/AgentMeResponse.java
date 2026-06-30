@@ -20,10 +20,15 @@ public class AgentMeResponse {
     private String agentType;
     private String permissionLevel;
     private Integer creditScore;
+    private Long ownerId;
+    private String ownerName;
+    private String ownerType;
 
     private List<String> capabilities;
 
+    private boolean liabilityAccepted;
     private boolean walletEnabled;
+    private String walletRouting;
+    private String responsibilityChain;
     private long earnings;
 }
-

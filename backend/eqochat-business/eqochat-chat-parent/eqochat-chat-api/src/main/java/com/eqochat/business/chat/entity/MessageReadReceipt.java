@@ -1,6 +1,7 @@
 package com.eqochat.business.chat.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.eqochat.business.actor.api.model.SubjectType;
 import lombok.*;
 
 import java.time.LocalDateTime;
@@ -25,7 +26,7 @@ public class MessageReadReceipt {
     private Long readerId;
     
     @TableField("reader_type")
-    private ReaderType readerType;
+    private SubjectType readerType;
     
     @TableField("read_at")
     private LocalDateTime readAt;
@@ -46,9 +47,5 @@ public class MessageReadReceipt {
     
     @TableLogic
     private Long delToken;
-    
-    public enum ReaderType {
-        USER, AGENT
-    }
     
 }

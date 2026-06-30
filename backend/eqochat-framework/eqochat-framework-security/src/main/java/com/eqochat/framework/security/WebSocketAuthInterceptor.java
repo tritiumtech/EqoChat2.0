@@ -69,23 +69,22 @@ public class WebSocketAuthInterceptor implements HandshakeInterceptor {
                     .parseSignedClaims(token)
                     .getPayload();
             
-            String userId = claims.getSubject();
+            String principalHumanId = claims.getSubject();
             String sessionId = claims.get("sessionId", String.class);
             
             // 验证 sessionId 是否有效（单设备登录检查）
             if (sessionId != null && !userSessionApi.validateSession(sessionId)) {
-                log.warn("WebSocket 连接失败：sessionId 已失效 (被挤下线), userId={}, sessionId={}", userId, sessionId);
-                // 可以在这里设置特殊的状态码或响应头，通知前端是被挤下线的
+                log.warn("WebSocket 连接失败：sessionId 已失效 (被挤下线), principalHumanId={}, sessionId={}", principalHumanId, sessionId);
                 return false;
             }
             
-            attributes.put("userId", userId);
+            attributes.put("principalHumanId", principalHumanId);
             attributes.put("sessionId", sessionId);
             
             // 设置用户上下文
-            UserContext.setCurrentUser(Long.parseLong(userId));
+            UserContext.setCurrentUser(Long.parseLong(principalHumanId));
             
-            log.info("WebSocket 认证成功：userId={}, sessionId={}", userId, sessionId);
+            log.info("WebSocket 认证成功：principalHumanId={}, sessionId={}", principalHumanId, sessionId);
             return true;
             
         } catch (Exception e) {

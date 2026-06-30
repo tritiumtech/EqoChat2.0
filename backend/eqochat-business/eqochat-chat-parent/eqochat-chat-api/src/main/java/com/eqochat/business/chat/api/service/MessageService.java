@@ -1,6 +1,7 @@
 package com.eqochat.business.chat.api.service;
 
 import com.baomidou.mybatisplus.extension.service.IService;
+import com.eqochat.business.actor.api.model.SubjectRef;
 import com.eqochat.business.chat.entity.Message;
 
 import java.util.List;
@@ -20,10 +21,10 @@ public interface MessageService extends IService<Message> {
     /**
      * 标记消息已读
      */
-    void markAsRead(Long messageId, Long userId);
+    void markAsRead(Long messageId, SubjectRef reader);
     
     /**
      * 撤回消息
      */
-    void recallMessage(Long messageId, Long userId);
+    void recallMessage(Long messageId, SubjectRef sender);
 }

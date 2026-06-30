@@ -1,10 +1,6 @@
 import { useUserStore } from '@/store/modules/user'
 import { shouldForceReloginPayload } from '@/utils/api-error'
-
-const BASE_URL =
-  import.meta.env.VITE_API_BASE_URL === undefined || import.meta.env.VITE_API_BASE_URL === ''
-    ? (import.meta.env.DEV ? 'http://localhost:8080' : 'http://localhost:8080')
-    : import.meta.env.VITE_API_BASE_URL
+import { API_BASE_URL } from '@/utils/runtime-config'
 
 type ApiResponse<T> = {
   code: number
@@ -223,4 +219,4 @@ export function getApiErrorMessage(err: any, fallback = '请求失败'): string 
   return typeof msg === 'string' && msg.trim() ? msg : fallback
 }
 
-export default new Request({ baseURL: BASE_URL })
+export default new Request({ baseURL: API_BASE_URL })

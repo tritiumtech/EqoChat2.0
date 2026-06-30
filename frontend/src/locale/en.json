@@ -530,6 +530,8 @@
           "task_title": "Task Title",
           "task_value": "Task Value",
           "deadline": "Deadline",
+          "assignee": "Assignee",
+          "no_assignee": "No available project members",
           "priority": "Priority",
           "value_hint": "Monetary value for this task",
           "info_note": "You can edit task details later by clicking on the task in the project dashboard.",

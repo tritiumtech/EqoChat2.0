@@ -9,14 +9,12 @@ import com.eqochat.business.chat.api.dto.request.SendMessageRequest;
 import com.eqochat.business.chat.api.dto.response.ConversationSummaryResponse;
 import com.eqochat.business.chat.api.dto.response.MessageResponse;
 import com.eqochat.business.chat.api.service.ConversationService;
-import com.eqochat.business.chat.api.service.ConversationParticipantService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.time.LocalDateTime;
 
 @RestController
 @RequestMapping("/api/v1/conversations")
@@ -25,7 +23,6 @@ import java.time.LocalDateTime;
 public class ConversationController {
     
     private final ConversationService conversationService;
-    private final ConversationParticipantService conversationParticipantService;
     
     @GetMapping
     public ApiResponse<List<ConversationSummaryResponse>> listConversations(
@@ -75,12 +72,7 @@ public class ConversationController {
     @PostMapping("/{conversationId}/read")
     public ApiResponse<Void> markRead(@PathVariable Long conversationId,
                                       @RequestBody @Valid MarkConversationReadRequest request) {
-        conversationParticipantService.updateLastRead(
-                conversationId,
-                UserContext.requireCurrentUser(),
-                request.getMessageId(),
-                LocalDateTime.now()
-        );
+        conversationService.markRead(UserContext.requireCurrentUser(), conversationId, request);
         return ApiResponse.success(null);
     }
 }

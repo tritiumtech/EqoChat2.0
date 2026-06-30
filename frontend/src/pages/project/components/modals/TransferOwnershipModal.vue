@@ -13,7 +13,7 @@
           <view class="transfer-member-card">
             <view
               class="transfer-member-avatar"
-              :class="{ 'transfer-avatar-agent': isAgentType(member.type) }"
+              :class="{ 'transfer-avatar-agent': isAgentType(member.memberSubjectType) }"
             >
               <text class="transfer-member-avatar-initial">{{ getMemberInitial(member.name) }}</text>
             </view>
@@ -21,7 +21,7 @@
             <view class="transfer-member-main">
               <text class="transfer-member-name">{{ member.name }}</text>
               <text class="transfer-member-sub">
-                {{ isAgentType(member.type) ? t('page.project.member_type_ai') : t('page.project.member_type_human') }}
+                {{ subjectTypeLabel(member.memberSubjectType) }}
               </text>
             </view>
           </view>
@@ -87,6 +87,11 @@ const getMemberInitial = props.getMemberInitial
 
 const { open, member } = toRefs(props)
 const isAgentType = (type: unknown) => String(type || '').trim().toLowerCase() === 'agent'
+const subjectTypeLabel = (type: unknown) => {
+  if (type === 'AGENT') return t('page.project.member_type_ai')
+  if (type === 'HUMAN') return t('page.project.member_type_human')
+  return String(type || '').toUpperCase()
+}
 </script>
 
 <style scoped src="../../project.styles.css"></style>

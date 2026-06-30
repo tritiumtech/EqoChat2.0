@@ -1,5 +1,6 @@
 package com.eqochat.business.contact.api.dto.response;
 
+import com.eqochat.business.actor.api.model.SubjectType;
 import lombok.Builder;
 import lombok.Data;
 
@@ -13,8 +14,10 @@ import java.time.LocalDateTime;
 public class FriendRequestResponse {
 
     private Long id;
-    private Long requesterId;
-    private Long recipientId;
+    private Long requesterSubjectId;
+    private SubjectType requesterSubjectType;
+    private Long recipientSubjectId;
+    private SubjectType recipientSubjectType;
     private String requestMessage;
     private String status;
     private LocalDateTime createTime;

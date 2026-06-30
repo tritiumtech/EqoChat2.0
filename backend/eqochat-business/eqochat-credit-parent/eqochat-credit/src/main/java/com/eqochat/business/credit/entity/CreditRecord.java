@@ -60,7 +60,7 @@ public class CreditRecord {
     private Long delToken;
     
     public enum SubjectType {
-        USER, AGENT
+        HUMAN, AGENT, SYSTEM
     }
     
 }

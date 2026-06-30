@@ -69,7 +69,7 @@
       :placeholder="t('page.world.new_post_placeholder')"
       @close="closeNewPost"
       @update:content="onNewPostContentChange"
-      @update:mentioned-ids="onMentionedIdsChange"
+      @update:mentioned-subjects="onMentionedSubjectsChange"
       @pick-image="pickImage"
       @pick-video="pickVideo"
       @clear-media="clearMedia"
@@ -118,9 +118,10 @@
 import { computed, ref, watch } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { useI18nWithFormat } from '@/composables/useI18nWithFormat'
-import { worldApi, type WorldMediaType, type WorldPost, type WorldSort, type WorldTopic } from '@/api/modules/world'
+import { worldApi, type WorldMediaType, type WorldMentionedSubject, type WorldPost, type WorldSort, type WorldTopic } from '@/api/modules/world'
 import { contactApi, type ContactItem } from '@/api/modules/contact'
 import { getApiErrorMessage } from '@/utils/request'
+import { useUserStore } from '@/store/modules/user'
 import PostList from '@/components/world/PostList.vue'
 import TopicList from '@/components/world/TopicList.vue'
 import MyPostList from '@/components/world/MyPostList.vue'
@@ -132,6 +133,7 @@ import WorldShareModal from '@/components/world/WorldShareModal.vue'
 import FgTabbar from '@/tabbar/index.vue'
 
 const { t } = useI18nWithFormat()
+const userStore = useUserStore()
 
 type SortOption = WorldSort
 
@@ -143,7 +145,7 @@ const topicList = ref<WorldTopic[]>([])
 const showNewPostModal = ref(false)
 const newPostContent = ref('')
 const mentionFriends = ref<ContactItem[]>([])
-const mentionedUserIds = ref<number[]>([])
+const mentionedSubjects = ref<WorldMentionedSubject[]>([])
 const localImagePath = ref('')
 const localVideoPath = ref('')
 const videoError = ref('')
@@ -190,6 +192,11 @@ const activeTabIndex = computed(() => {
   return 0
 })
 
+const principalHumanId = computed(() => {
+  const id = Number(userStore.userInfo?.id)
+  return Number.isFinite(id) && id > 0 ? id : 0
+})
+
 const canSubmitPost = computed(() => {
   const text = String(newPostContent.value || '').trim()
   return !!(text || localImagePath.value || localVideoPath.value)
@@ -234,9 +241,14 @@ function openTopic(topic: WorldTopic) {
 
 async function toggleFollow(topic: WorldTopic) {
   try {
-    await worldApi.followTopic(topic.name, !topic.followed)
-    topic.followed = !topic.followed
-    topic.followers += topic.followed ? 1 : -1
+    const wasFollowing = Boolean(topic.followed ?? topic.favorite)
+    const result = await worldApi.followTopic(topic.name, !wasFollowing)
+    const following = typeof result?.following === 'boolean' ? result.following : !wasFollowing
+    topic.followed = following
+    topic.favorite = following
+    if (following !== wasFollowing) {
+      topic.followers = Math.max(0, topic.followers + (following ? 1 : -1))
+    }
   } catch (err: any) {
     uni.showToast({ title: getApiErrorMessage(err, t('toast.error')), icon: 'none' })
   }
@@ -293,9 +305,13 @@ function closeReply() {
 
 async function submitReply() {
   if (!replyTarget.value || !replyContent.value.trim()) return
+  if (!principalHumanId.value) {
+    uni.showToast({ title: t('auth.login_required'), icon: 'none' })
+    return
+  }
   replyPosting.value = true
   try {
-    await worldApi.replyToPost(replyTarget.value.id, replyContent.value.trim())
+    await worldApi.replyToPost(replyTarget.value.id, replyContent.value.trim(), principalHumanId.value, 'HUMAN')
     replyTarget.value.replies++
     closeReply()
     uni.showToast({ title: t('toast.success'), icon: 'success' })
@@ -348,7 +364,7 @@ function openNewPost() {
 function closeNewPost() {
   showNewPostModal.value = false
   newPostContent.value = ''
-  mentionedUserIds.value = []
+  mentionedSubjects.value = []
   localImagePath.value = ''
   localVideoPath.value = ''
   videoError.value = ''
@@ -358,8 +374,8 @@ function onNewPostContentChange(value: string) {
   newPostContent.value = value
 }
 
-function onMentionedIdsChange(ids: number[]) {
-  mentionedUserIds.value = ids
+function onMentionedSubjectsChange(subjects: WorldMentionedSubject[]) {
+  mentionedSubjects.value = subjects
 }
 
 async function pickImage() {
@@ -410,15 +426,21 @@ function clearMedia() {
 
 async function submitNewPost() {
   if (!canSubmitPost.value) return
+  if (!principalHumanId.value) {
+    uni.showToast({ title: t('auth.login_required'), icon: 'none' })
+    return
+  }
   posting.value = true
   try {
     const mediaType: WorldMediaType = localVideoPath.value ? 'VIDEO' : localImagePath.value ? 'IMAGE' : 'TEXT'
     await worldApi.createPost({
+      actorSubjectId: principalHumanId.value,
+      actorSubjectType: 'HUMAN',
       content: newPostContent.value.trim(),
       mediaType,
       imageUrl: localImagePath.value || undefined,
       videoUrl: localVideoPath.value || undefined,
-      mentionedUserIds: mentionedUserIds.value,
+      mentionedSubjects: mentionedSubjects.value,
     })
     closeNewPost()
     postListRef.value?.reload()

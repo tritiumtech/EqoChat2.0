@@ -1,9 +1,12 @@
 import request from '@/utils/request'
+import type { ContactSubjectType } from './contact'
 
 export interface FriendRequestItem {
   id: number
-  requesterId: number
-  recipientId: number
+  requesterSubjectId: number
+  requesterSubjectType: ContactSubjectType
+  recipientSubjectId: number
+  recipientSubjectType: ContactSubjectType
   requestMessage?: string
   status: string
   createTime: string
@@ -14,7 +17,10 @@ export interface FriendRequestItem {
 }
 
 export interface SendFriendRequestDto {
-  friendId: number
+  actorSubjectId: number
+  actorSubjectType: ContactSubjectType
+  recipientSubjectId: number
+  recipientSubjectType: ContactSubjectType
   requestMessage?: string
 }
 

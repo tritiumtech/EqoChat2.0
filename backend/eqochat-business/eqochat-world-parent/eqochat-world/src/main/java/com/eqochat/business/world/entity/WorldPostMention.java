@@ -18,8 +18,11 @@ public class WorldPostMention {
     @TableField("post_id")
     private Long postId;
 
-    @TableField("mentioned_user_id")
-    private Long mentionedUserId;
+    @TableField("mentioned_subject_id")
+    private Long mentionedSubjectId;
+
+    @TableField("mentioned_subject_type")
+    private String mentionedSubjectType;
 
     @TableField(value = "create_time", fill = FieldFill.INSERT)
     private LocalDateTime createTime;

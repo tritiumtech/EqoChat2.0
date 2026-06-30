@@ -50,7 +50,20 @@ public class WorldController {
     public ApiResponse<PageResponse<WorldPostResponse>> listPostsByAuthor(@PathVariable Long authorId,
                                                                    @RequestParam(required = false) Long cursorId,
                                                                    @RequestParam(required = false) Integer limit) {
-        return ApiResponse.success(worldService.listPostsByAuthor(UserContext.requireCurrentUser(), authorId, cursorId, limit));
+        return ApiResponse.success(worldService.listPostsByAuthor(
+                UserContext.requireCurrentUser(), authorId, "HUMAN", cursorId, limit));
+    }
+
+    /**
+     * Canonical subject author timeline. authorType must be HUMAN/AGENT/SYSTEM.
+     */
+    @GetMapping("/subjects/{authorType}/{authorId}/posts")
+    public ApiResponse<PageResponse<WorldPostResponse>> listPostsBySubjectAuthor(@PathVariable String authorType,
+                                                                                 @PathVariable Long authorId,
+                                                                                 @RequestParam(required = false) Long cursorId,
+                                                                                 @RequestParam(required = false) Integer limit) {
+        return ApiResponse.success(worldService.listPostsByAuthor(
+                UserContext.requireCurrentUser(), authorId, authorType, cursorId, limit));
     }
 
     @PostMapping("/posts")

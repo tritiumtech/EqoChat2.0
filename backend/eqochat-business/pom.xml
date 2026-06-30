@@ -20,6 +20,7 @@
 
         <module>eqochat-agent-parent</module>
         <module>eqochat-user-parent</module>
+        <module>eqochat-actor-parent</module>
         <module>eqochat-world-parent</module>
         <module>eqochat-chat-parent</module>
         <module>eqochat-contact-parent</module>

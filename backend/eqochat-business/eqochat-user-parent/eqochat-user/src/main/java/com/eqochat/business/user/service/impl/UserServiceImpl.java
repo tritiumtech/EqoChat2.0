@@ -52,7 +52,11 @@ public class UserServiceImpl implements UserService {
         }
         
         // 检查是否已是好友
-        boolean isFriend = userFriendMapper.areFriends(currentUserId, user.getId());
+        boolean isFriend = userFriendMapper.areFriends(
+                currentUserId,
+                UserFriend.FriendType.HUMAN,
+                user.getId(),
+                UserFriend.FriendType.HUMAN);
         
         // 获取世界动态数量
         int worldPostCount = Math.toIntExact(worldPostStatsApi.countByAuthorId(user.getId()));
@@ -83,7 +87,11 @@ public class UserServiceImpl implements UserService {
         }
         
         // 检查是否已是好友
-        boolean isFriend = userFriendMapper.areFriends(currentUserId, userId);
+        boolean isFriend = userFriendMapper.areFriends(
+                currentUserId,
+                UserFriend.FriendType.HUMAN,
+                userId,
+                UserFriend.FriendType.HUMAN);
         
         // 获取世界动态数量
         int worldPostCount = Math.toIntExact(worldPostStatsApi.countByAuthorId(userId));

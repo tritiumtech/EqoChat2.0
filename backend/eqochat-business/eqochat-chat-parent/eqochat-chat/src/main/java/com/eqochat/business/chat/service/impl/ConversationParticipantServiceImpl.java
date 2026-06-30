@@ -1,6 +1,8 @@
 package com.eqochat.business.chat.service.impl;
 
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.eqochat.business.actor.api.model.SubjectRef;
+import com.eqochat.business.actor.api.model.SubjectType;
 import com.eqochat.business.chat.api.service.ConversationParticipantService;
 import com.eqochat.business.chat.entity.ConversationParticipant;
 import com.eqochat.business.chat.mapper.ConversationParticipantMapper;
@@ -18,8 +20,19 @@ public class ConversationParticipantServiceImpl
         implements ConversationParticipantService {
 
     @Override
-    public List<ConversationParticipant> listByParticipantId(Long participantId) {
-        return baseMapper.findByParticipantId(participantId);
+    public List<ConversationParticipant> listByParticipant(SubjectRef participant) {
+        if (participant == null) {
+            return List.of();
+        }
+        return listByParticipant(participant.id(), participant.type());
+    }
+
+    @Override
+    public List<ConversationParticipant> listByParticipant(Long participantId, SubjectType participantType) {
+        if (participantId == null || participantType == null) {
+            return List.of();
+        }
+        return baseMapper.findByParticipant(participantId, participantType);
     }
 
     @Override
@@ -28,16 +41,46 @@ public class ConversationParticipantServiceImpl
     }
 
     @Override
-    public Optional<ConversationParticipant> findByConversationAndParticipant(Long conversationId, Long participantId) {
-        return baseMapper.findByConversationAndParticipant(conversationId, participantId);
+    public Optional<ConversationParticipant> findByConversationAndParticipant(Long conversationId, SubjectRef participant) {
+        if (participant == null) {
+            return Optional.empty();
+        }
+        return findByConversationAndParticipant(conversationId, participant.id(), participant.type());
     }
 
     @Override
-    public void updateLastRead(Long conversationId, Long participantId, Long lastReadMessageId, LocalDateTime readAt) {
-        if (conversationId == null || participantId == null || lastReadMessageId == null) {
+    public Optional<ConversationParticipant> findByConversationAndParticipant(
+            Long conversationId,
+            Long participantId,
+            SubjectType participantType
+    ) {
+        if (conversationId == null || participantId == null || participantType == null) {
+            return Optional.empty();
+        }
+        return baseMapper.findByConversationAndParticipant(conversationId, participantId, participantType);
+    }
+
+    @Override
+    public void updateLastRead(Long conversationId, SubjectRef participant, Long lastReadMessageId, LocalDateTime readAt) {
+        if (participant == null) {
             return;
         }
-        Optional<ConversationParticipant> participantOpt = findByConversationAndParticipant(conversationId, participantId);
+        updateLastRead(conversationId, participant.id(), participant.type(), lastReadMessageId, readAt);
+    }
+
+    @Override
+    public void updateLastRead(
+            Long conversationId,
+            Long participantId,
+            SubjectType participantType,
+            Long lastReadMessageId,
+            LocalDateTime readAt
+    ) {
+        if (conversationId == null || participantId == null || participantType == null || lastReadMessageId == null) {
+            return;
+        }
+        Optional<ConversationParticipant> participantOpt =
+                findByConversationAndParticipant(conversationId, participantId, participantType);
         if (participantOpt.isEmpty()) {
             return;
         }

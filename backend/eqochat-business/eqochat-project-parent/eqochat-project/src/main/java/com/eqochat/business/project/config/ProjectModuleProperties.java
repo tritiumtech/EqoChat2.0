@@ -13,6 +13,5 @@ public class ProjectModuleProperties {
     /**
      * 对外分享落地页 URL 前缀，须包含占位符 {projectId}。
      */
-    private String shareUrlTemplate = "https://example.com/project/{projectId}";
+    private String shareUrlTemplate = "/#/pages/project/project?projectId={projectId}";
 }
-

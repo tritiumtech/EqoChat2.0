@@ -72,11 +72,11 @@ public class Notification {
     private Long delToken;
     
     public enum RecipientType {
-        USER, AGENT
+        HUMAN, AGENT
     }
     
     public enum SenderType {
-        USER, AGENT, SYSTEM
+        HUMAN, AGENT, SYSTEM
     }
     
     public enum NotificationType {

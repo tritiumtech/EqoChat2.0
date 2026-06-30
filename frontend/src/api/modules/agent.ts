@@ -8,8 +8,14 @@ export interface MyAgentItem {
   agentType?: string
   permissionLevel?: string
   creditScore?: number
+  ownerId?: number
+  ownerName?: string
+  ownerType?: 'human' | 'agent' | string
   capabilities: string[]
+  liabilityAccepted?: boolean
   walletEnabled: boolean
+  walletRouting?: string
+  responsibilityChain?: string
   earnings: number
 }
 
@@ -18,4 +24,3 @@ export const agentApi = {
     return request.get<MyAgentItem[]>('/api/v1/agents/me')
   },
 }
-

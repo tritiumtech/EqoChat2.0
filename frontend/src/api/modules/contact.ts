@@ -1,19 +1,21 @@
 import request from '@/utils/request'
 
+export type ContactSubjectType = 'HUMAN' | 'AGENT'
+
 export interface ContactItem {
-  id: number
+  ownerSubjectId?: number
+  ownerSubjectType?: ContactSubjectType
+  targetSubjectId: number
+  targetSubjectType: ContactSubjectType
   nickname: string
   avatarUrl?: string
   status?: string
   tags?: string[]
 }
 
-export type ContactFriendType = 'HUMAN' | 'AGENT'
-
 export interface ContactDetail extends ContactItem {
   bio?: string
   worldPostCount: number
-  friendType: ContactFriendType
   capabilities: string[]
 }
 
@@ -21,10 +23,10 @@ export const contactApi = {
   listContacts(params?: { q?: string; status?: string }) {
     return request.get<ContactItem[]>('/api/v1/contacts', params)
   },
-  getContactDetail(contactId: number) {
-    return request.get<ContactDetail>(`/api/v1/contacts/${contactId}`)
+  getContactDetail(targetSubjectType: ContactSubjectType, targetSubjectId: number) {
+    return request.get<ContactDetail>(`/api/v1/contacts/${targetSubjectType}/${targetSubjectId}`)
   },
-  updateContactTags(contactId: number, tags: string[]) {
-    return request.put<string[]>(`/api/v1/contacts/${contactId}/tags`, { tags })
+  updateContactTags(targetSubjectType: ContactSubjectType, targetSubjectId: number, tags: string[]) {
+    return request.put<string[]>(`/api/v1/contacts/${targetSubjectType}/${targetSubjectId}/tags`, { tags })
   },
 }

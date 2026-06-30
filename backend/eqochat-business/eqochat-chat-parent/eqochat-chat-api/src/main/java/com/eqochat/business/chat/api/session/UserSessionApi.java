@@ -1,15 +1,15 @@
 package com.eqochat.business.chat.api.session;
 
 /**
- * 用户登录会话（Redis + 可选 WebSocket 挤下线），供 HTTP 过滤器与认证服务依赖。
+ * 登录人类主体会话（Redis + 可选 WebSocket 挤下线），供 HTTP 过滤器与认证服务依赖。
  */
 public interface UserSessionApi {
 
-    String createSession(Long userId);
+    String createSession(Long principalHumanId);
 
-    String getSessionId(Long userId);
+    String getSessionId(Long principalHumanId);
 
-    Long getUserIdBySession(String sessionId);
+    Long getPrincipalHumanIdBySession(String sessionId);
 
     boolean validateSession(String sessionId);
 

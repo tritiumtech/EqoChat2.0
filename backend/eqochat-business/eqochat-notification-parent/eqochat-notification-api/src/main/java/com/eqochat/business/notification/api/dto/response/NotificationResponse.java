@@ -10,10 +10,13 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 public class NotificationResponse {
     private Long id;
+    private Long recipientSubjectId;
+    private String recipientSubjectType;
+    private Long senderSubjectId;
+    private String senderSubjectType;
     private String type;
     private String title;
     private String content;
     private boolean read;
     private LocalDateTime createTime;
 }
-

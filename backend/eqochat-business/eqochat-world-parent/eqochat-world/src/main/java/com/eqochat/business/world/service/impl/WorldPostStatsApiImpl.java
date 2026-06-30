@@ -15,4 +15,9 @@ public class WorldPostStatsApiImpl implements WorldPostStatsApi {
     public long countByAuthorId(Long authorId) {
         return worldPostMapper.countByAuthorId(authorId);
     }
+
+    @Override
+    public long countByAuthor(Long authorId, String authorType) {
+        return worldPostMapper.countByAuthor(authorId, authorType);
+    }
 }

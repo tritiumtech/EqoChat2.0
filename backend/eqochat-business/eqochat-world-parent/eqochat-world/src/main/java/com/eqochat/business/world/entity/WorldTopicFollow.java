@@ -18,8 +18,11 @@ public class WorldTopicFollow {
     @TableField("topic_id")
     private Long topicId;
 
-    @TableField("user_id")
-    private Long userId;
+    @TableField("follower_id")
+    private Long followerId;
+
+    @TableField("follower_type")
+    private String followerType;
 
     @TableField(value = "create_time", fill = FieldFill.INSERT)
     private LocalDateTime createTime;
@@ -36,4 +39,3 @@ public class WorldTopicFollow {
     @TableLogic
     private Long delToken;
 }
-

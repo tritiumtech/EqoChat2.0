@@ -20,6 +20,9 @@ public class UserFriend {
     
     @TableField("user_id")
     private Long userId;
+
+    @TableField("user_type")
+    private FriendType userType;
     
     @TableField("friend_id")
     private Long friendId;

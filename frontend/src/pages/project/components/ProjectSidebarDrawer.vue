@@ -51,9 +51,9 @@
                 </view>
               </view>
               <view class="task-meta-row">
-                <text class="task-meta-item">{{ task.assignee }}</text>
+                <text class="task-meta-item">{{ task.assigneeDisplayName }}</text>
                 <text class="task-meta-sep">·</text>
-                <text class="task-meta-item">{{ task.isAgent ? t('page.project.member_type_ai') : t('page.project.member_type_human') }}</text>
+                <text class="task-meta-item">{{ subjectTypeLabel(task.assigneeSubjectType) }}</text>
                 <text class="task-meta-sep">·</text>
                 <text class="task-meta-date">{{ task.deadline || '-' }}</text>
               </view>
@@ -68,7 +68,7 @@
               <text class="payment-icon">$</text>
             </view>
             <view class="payment-main">
-              <text class="payment-title">{{ payment.recipient }}</text>
+              <text class="payment-title">{{ payment.recipientDisplayName }}</text>
               <view class="payment-amount-row">
                 <text class="payment-amount">{{ formatMoney(payment.amount) }}</text>
                 <view class="payment-pill" :class="paymentPillClass(payment.status)">
@@ -76,7 +76,7 @@
                 </view>
               </view>
               <text class="payment-meta">
-                {{ payment.isAgent ? t('page.project.member_type_ai') : t('page.project.member_type_human') }} · {{ payment.date || '' }}
+                {{ subjectTypeLabel(payment.recipientSubjectType) }} · {{ payment.date || '' }}
               </text>
             </view>
           </view>
@@ -94,7 +94,7 @@
                 {{ file.type }} · {{ file.size || '-' }}
               </text>
               <text class="file-meta">
-                {{ file.isAgent ? t('page.project.member_type_ai') : t('page.project.member_type_human') }} · {{ file.date || '' }}
+                {{ subjectTypeLabel(file.uploaderSubjectType) }} · {{ file.date || '' }}
               </text>
               <button v-if="file.downloadUrl" class="link-btn" @click="openProjectFile(file.downloadUrl)">
                 {{ t('page.project.download_open') }}
@@ -154,7 +154,12 @@ const paymentPillClass = props.paymentPillClass
 const paymentStatusLabel = props.paymentStatusLabel
 const formatMoney = props.formatMoney
 const openProjectFile = props.openProjectFile
+
+const subjectTypeLabel = (type: unknown) => {
+  if (type === 'AGENT') return t('page.project.member_type_ai')
+  if (type === 'HUMAN') return t('page.project.member_type_human')
+  return String(type || '').toUpperCase()
+}
 </script>
 
 <style scoped src="../project.styles.css"></style>
-

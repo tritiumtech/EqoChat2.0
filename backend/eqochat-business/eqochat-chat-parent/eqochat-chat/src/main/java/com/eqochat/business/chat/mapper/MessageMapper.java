@@ -1,6 +1,7 @@
 package com.eqochat.business.chat.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.eqochat.business.actor.api.model.SubjectType;
 import com.eqochat.business.chat.entity.Message;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -30,13 +31,14 @@ public interface MessageMapper extends BaseMapper<Message> {
             SELECT COUNT(*) FROM message
             WHERE conversation_id = #{conversationId}
               AND del_token = '0'
-              AND sender_id != #{userId}
+              AND NOT (sender_id = #{readerId} AND sender_type = #{readerType})
               <if test="lastReadMessageId != null">
                 AND id &gt; #{lastReadMessageId}
               </if>
             </script>
             """)
     long countUnreadMessages(@Param("conversationId") Long conversationId,
-                             @Param("userId") Long userId,
+                             @Param("readerId") Long readerId,
+                             @Param("readerType") SubjectType readerType,
                              @Param("lastReadMessageId") Long lastReadMessageId);
 }

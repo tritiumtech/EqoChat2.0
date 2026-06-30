@@ -3,6 +3,7 @@ package com.eqochat.business.chat.websocket;
 import com.eqochat.business.chat.entity.ConversationParticipant;
 import com.eqochat.business.chat.entity.Message;
 import com.eqochat.business.chat.api.service.ConversationParticipantService;
+import com.eqochat.business.actor.api.model.SubjectType;
 import com.eqochat.framework.websocket.WebSocketMessage;
 import com.eqochat.framework.websocket.WebSocketSender;
 import com.eqochat.framework.websocket.WebSocketSessionManager;
@@ -31,7 +32,7 @@ public class ChatMessageRealtimeNotifier {
             return;
         }
         String conversationId = String.valueOf(msg.getConversationId());
-        joinConversationUsers(conversationId);
+        joinConversationHumans(conversationId);
 
         Object metadata = null;
         if (msg.getContentMetadata() != null && !msg.getContentMetadata().isBlank()) {
@@ -55,22 +56,21 @@ public class ChatMessageRealtimeNotifier {
         WebSocketMessage.BaseMessage out = WebSocketMessage.BaseMessage.builder()
                 .id(String.valueOf(msg.getId()))
                 .type(WebSocketMessage.MessageType.CHAT_MESSAGE)
-                .senderId(String.valueOf(msg.getSenderId()))
-                .senderType(msg.getSenderType() != null ? msg.getSenderType() : "USER")
-                .recipientId(conversationId)
+                .senderSubjectId(String.valueOf(msg.getSenderId()))
+                .senderSubjectType(msg.getSenderType() != null ? msg.getSenderType().name() : SubjectType.SYSTEM.name())
                 .timestamp(ts)
                 .payload(payload)
                 .build();
 
-        webSocketSender.broadcastToConversation(conversationId, out);
+        webSocketSender.broadcastToConversationHumans(conversationId, out);
     }
 
-    private void joinConversationUsers(String conversationId) {
+    private void joinConversationHumans(String conversationId) {
         try {
             Long convId = Long.parseLong(conversationId);
             for (ConversationParticipant participant : participantService.listByConversationId(convId)) {
-                if (participant.getParticipantId() != null) {
-                    sessionManager.joinConversation(conversationId, participant.getParticipantId().toString());
+                if (participant.getParticipantId() != null && participant.getParticipantType() == SubjectType.HUMAN) {
+                    sessionManager.joinConversationAsPrincipalHuman(conversationId, participant.getParticipantId().toString());
                 }
             }
         } catch (Exception e) {

@@ -18,6 +18,8 @@ import com.eqochat.framework.sms.SmsSender;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.dao.DataAccessException;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -36,10 +38,12 @@ public class AuthServiceImpl implements AuthService {
     private final StringRedisTemplate redisTemplate;
     private final SmsSender smsSender;
     private final UserSessionApi userSessionApi;
+    private final JdbcTemplate jdbcTemplate;
     
     private static final String VERIFY_CODE_PREFIX = "verify:code:";
     private static final String VERIFY_EMAIL_CODE_PREFIX = "verify:email:";
     private static final String DID_PREFIX = "did:eqochat:user:";
+    private static final String DEMO_POINTS_KEY_PREFIX = "demo.user.points.";
     /**
      * token 过期时间（秒），与 jwt.expiration(毫秒) 保持一致：5 天
      */
@@ -247,8 +251,8 @@ public class AuthServiceImpl implements AuthService {
             throw BizException.of(ApiErrorCodes.CODE_UNAUTHORIZED, ApiErrorCodes.AUTH_TOKEN_INVALID);
         }
         
-        Long userId = jwtTokenUtil.getUserIdFromToken(token);
-        UserProfile user = userProfileService.getById(userId);
+        Long principalHumanId = jwtTokenUtil.getPrincipalHumanIdFromToken(token);
+        UserProfile user = userProfileService.getById(principalHumanId);
         
         if (user == null || (user.getDelToken() != null && user.getDelToken() != 0L)) {
             throw BizException.of("auth.user.not_found");
@@ -260,7 +264,7 @@ public class AuthServiceImpl implements AuthService {
         
         // 如果原 sessionId 无效，说明用户已被挤下线或 session 已过期
         if (sessionId == null || !userSessionApi.validateSession(sessionId)) {
-            log.warn("refreshToken: session 已失效，拒绝刷新 token: userId={}, sessionId={}", userId, oldSessionId);
+            log.warn("refreshToken: session 已失效，拒绝刷新 token: principalHumanId={}, sessionId={}", principalHumanId, oldSessionId);
             throw BizException.of(ApiErrorCodes.CODE_UNAUTHORIZED, "auth.session.expired");
         }
         
@@ -307,8 +311,26 @@ public class AuthServiceImpl implements AuthService {
                 .bio(user.getBio())
                 .status(user.getStatus().name())
                 .creditScore(user.getCreditScore())
+                .points(resolvePoints(user))
                 .lastLoginAt(user.getLastLoginAt())
                 .createTime(user.getCreateTime())
                 .build();
+    }
+
+    private Integer resolvePoints(UserProfile user) {
+        int fallback = user.getCreditScore() != null ? Math.max(0, user.getCreditScore()) : 0;
+        if (user.getId() == null) {
+            return fallback;
+        }
+        try {
+            Integer configured = jdbcTemplate.queryForObject(
+                    "SELECT CAST(config_value AS SIGNED) FROM system_config WHERE config_key = ? AND del_token = '0' LIMIT 1",
+                    Integer.class,
+                    DEMO_POINTS_KEY_PREFIX + user.getId()
+            );
+            return configured != null ? configured : fallback;
+        } catch (DataAccessException ignored) {
+            return fallback;
+        }
     }
 }

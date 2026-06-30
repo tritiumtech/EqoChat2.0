@@ -133,8 +133,7 @@ const avatarStyle = (item: ConversationSummary) => {
 }
 
 const isAgentConversation = (item: ConversationSummary) => {
-  const ty = (item.conversationType || '').toLowerCase()
-  return ty.includes('agent') || ty.includes('ai')
+  return item.targetSubjectType === 'AGENT'
 }
 
 const isOnline = (item: ConversationSummary) => {

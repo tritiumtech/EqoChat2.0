@@ -1,10 +1,19 @@
 package com.eqochat.business.agent.controller;
 
-import com.baomidou.mybatisplus.core.toolkit.StringUtils;
 import com.eqochat.framework.common.ApiResponse;
 import com.eqochat.framework.common.UserContext;
+import com.eqochat.business.actor.api.dto.response.SubjectSummaryResponse;
+import com.eqochat.business.actor.api.model.CapabilityState;
+import com.eqochat.business.actor.api.model.LiabilityChain;
+import com.eqochat.business.actor.api.model.SubjectRef;
+import com.eqochat.business.actor.api.model.WalletCapability;
+import com.eqochat.business.actor.api.service.LiabilityPolicyApi;
+import com.eqochat.business.actor.api.service.SubjectDirectoryApi;
+import com.eqochat.business.actor.api.service.WalletPolicyApi;
+import com.eqochat.business.agent.entity.AgentBinding;
 import com.eqochat.business.agent.entity.AgentProfile;
 import com.eqochat.business.agent.api.dto.response.AgentMeResponse;
+import com.eqochat.business.agent.mapper.AgentBindingMapper;
 import com.eqochat.business.agent.mapper.AgentProfileMapper;
 import com.eqochat.business.credit.entity.CreditRecord;
 import com.eqochat.business.credit.mapper.CreditRecordMapper;
@@ -26,7 +35,11 @@ import java.util.List;
 public class AgentController {
 
     private final AgentProfileMapper agentProfileMapper;
+    private final AgentBindingMapper agentBindingMapper;
     private final CreditRecordMapper creditRecordMapper;
+    private final SubjectDirectoryApi subjectDirectoryApi;
+    private final WalletPolicyApi walletPolicyApi;
+    private final LiabilityPolicyApi liabilityPolicyApi;
     private final ObjectMapper objectMapper;
 
     @GetMapping("/me")
@@ -41,11 +54,22 @@ public class AgentController {
         for (AgentProfile agent : agents) {
             List<String> capabilities = parseCapabilities(agent.getCapabilityTags());
 
-            Integer creditScore = agent.getCreditScore() != null ? agent.getCreditScore() : 0;
+            SubjectRef agentRef = SubjectRef.agent(agent.getId());
+            SubjectSummaryResponse agentSubject = subjectDirectoryApi.getSubject(agentRef);
+            Integer creditScore = agentSubject != null && agentSubject.getCreditScore() != null
+                    ? agentSubject.getCreditScore()
+                    : (agent.getCreditScore() != null ? agent.getCreditScore() : 0);
 
             long earnings = computeEarnings(agent.getId());
-            boolean walletEnabled = agent.getStatus() == AgentProfile.AgentStatus.ACTIVE
-                    && StringUtils.isNotBlank(agent.getPermissionLevel());
+            WalletCapability wallet = walletPolicyApi.resolveWallet(agentRef);
+            boolean walletEnabled = wallet != null && wallet.state() == CapabilityState.ENABLED;
+            LiabilityChain liability = liabilityPolicyApi.resolveLiability(agentRef);
+            AgentBinding binding = agentBindingMapper.findByAgentIdAndOwnerId(agent.getId(), agent.getOwnerId())
+                    .orElse(null);
+            boolean liabilityAccepted = binding != null && Boolean.TRUE.equals(binding.getLiabilityAccepted());
+            SubjectSummaryResponse owner = agent.getOwnerId() != null
+                    ? subjectDirectoryApi.getSubject(SubjectRef.human(agent.getOwnerId()))
+                    : null;
 
             out.add(
                     AgentMeResponse.builder()
@@ -56,8 +80,14 @@ public class AgentController {
                             .agentType(agent.getAgentType() != null ? agent.getAgentType().name() : null)
                             .permissionLevel(agent.getPermissionLevel())
                             .creditScore(creditScore)
+                            .ownerId(agent.getOwnerId())
+                            .ownerName(owner != null ? owner.getDisplayName() : null)
+                            .ownerType("human")
                             .capabilities(capabilities)
+                            .liabilityAccepted(liabilityAccepted)
                             .walletEnabled(walletEnabled)
+                            .walletRouting(wallet != null ? wallet.routing() : null)
+                            .responsibilityChain(liability != null ? liability.route() : null)
                             .earnings(earnings)
                             .build()
             );
@@ -104,4 +134,3 @@ public class AgentController {
         return Collections.emptyList();
     }
 }
-

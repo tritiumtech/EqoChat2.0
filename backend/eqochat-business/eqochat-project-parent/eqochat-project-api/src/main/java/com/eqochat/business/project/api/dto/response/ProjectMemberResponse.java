@@ -1,5 +1,6 @@
 package com.eqochat.business.project.api.dto.response;
 
+import com.eqochat.business.actor.api.model.SubjectType;
 import lombok.*;
 
 /**
@@ -11,12 +12,13 @@ import lombok.*;
 @AllArgsConstructor
 public class ProjectMemberResponse {
 
-    private Long id;
+    private Long memberSubjectId;
+    private SubjectType memberSubjectType;
     private String name;
     private String avatarUrl;
-    private String type;
     private boolean isOnline;
-    private Long masterId;
+    private Long associatedHumanId;
+    private String associatedHumanName;
+    private Long liableHumanId;
     private Integer creditScore;
 }
-

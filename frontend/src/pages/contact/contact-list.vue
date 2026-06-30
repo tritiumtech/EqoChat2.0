@@ -70,9 +70,9 @@
             </view>
             <view
               v-for="item in grouped[letter]"
-              :key="item.id"
+              :key="`${item.targetSubjectType}:${item.targetSubjectId}`"
               class="contact-row"
-              @click="goDetail(item.id)"
+              @click="goDetail(item)"
             >
               <view class="avatar-wrap">
                 <view
@@ -95,9 +95,10 @@
               <view class="info">
                 <view class="name-row">
                   <text class="name">{{ item.nickname }}</text>
+                  <text v-if="isAgentContact(item)" class="agent-badge">{{ t('page.world.ai_agent') }}</text>
                 </view>
                 <text class="role">
-                  {{ item.tags?.length ? `#${item.tags[0]}` : `${t('page.contact.user_id')}: ${item.id}` }}
+                  {{ item.tags?.length ? `#${item.tags[0]}` : `${t('page.contact.user_id')}: ${item.targetSubjectId}` }}
                 </text>
               </view>
             </view>
@@ -158,9 +159,11 @@ const avatarHue = (s: string) => {
 }
 
 const avatarStyle = (item: Contact) => {
-  const c = avatarHue(item.nickname || String(item.id))
+  const c = avatarHue(item.nickname || String(item.targetSubjectId))
   return { background: `linear-gradient(135deg, ${c}f0, ${c}c0)` }
 }
+
+const isAgentContact = (item: Contact) => item.targetSubjectType === 'AGENT'
 
 const topicFilters = computed(() => {
   const topics = new Set<string>()
@@ -214,8 +217,10 @@ const scrollToLetter = (letter: string) => {
   })
 }
 
-const goDetail = (id: number) => {
-  uni.navigateTo({ url: '/pages/contact/contact-detail?id=' + id })
+const goDetail = (item: Contact) => {
+  uni.navigateTo({
+    url: `/pages/contact/contact-detail?targetSubjectType=${item.targetSubjectType}&targetSubjectId=${item.targetSubjectId}`
+  })
 }
 
 // 跳转到搜索用户页面
@@ -541,6 +546,16 @@ watch(searchQuery, () => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.agent-badge {
+  flex-shrink: 0;
+  padding: 4rpx 12rpx;
+  border-radius: var(--radius-md);
+  font-size: 20rpx;
+  color: #7c3aed;
+  border: 1rpx solid rgba(124, 58, 237, 0.2);
+  background: rgba(124, 58, 237, 0.08);
 }
 
 .index-bar {

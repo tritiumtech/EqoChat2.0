@@ -1,6 +1,7 @@
 package com.eqochat.business.contact.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.eqochat.business.actor.api.model.SubjectType;
 import lombok.*;
 
 import java.time.LocalDateTime;
@@ -20,9 +21,15 @@ public class FriendRequest {
     
     @TableField("requester_id")
     private Long requesterId;
+
+    @TableField("requester_type")
+    private SubjectType requesterType;
     
     @TableField("recipient_id")
     private Long recipientId;
+
+    @TableField("recipient_type")
+    private SubjectType recipientType;
     
     @TableField("request_type")
     private RequestType requestType;

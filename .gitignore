@@ -18,6 +18,10 @@ frontend/env/.env.*
 # Local assistant/editor state
 .workbuddy/
 
+# Python runtime cache
+__pycache__/
+*.pyc
+
 backend/target
 **/target
 frontend/node_modules

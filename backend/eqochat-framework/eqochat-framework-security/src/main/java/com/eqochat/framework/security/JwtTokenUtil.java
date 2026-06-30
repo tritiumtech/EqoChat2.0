@@ -34,20 +34,20 @@ public class JwtTokenUtil {
     /**
      * 生成 token（带 sessionId）
      */
-    public String generateToken(Long userId, String did, String sessionId) {
+    public String generateToken(Long principalHumanId, String did, String sessionId) {
         Map<String, Object> claims = new HashMap<>();
-        claims.put("userId", userId);
+        claims.put("principalHumanId", principalHumanId);
         claims.put("did", did);
         claims.put("sessionId", sessionId);
         
-        return createToken(claims, userId.toString());
+        return createToken(claims, principalHumanId.toString());
     }
     
     /**
-     * 生成 token（旧版本，兼容用）
+     * 生成 token（无 sessionId）
      */
-    public String generateToken(Long userId, String did) {
-        return generateToken(userId, did, null);
+    public String generateToken(Long principalHumanId, String did) {
+        return generateToken(principalHumanId, did, null);
     }
     
     /**
@@ -75,11 +75,11 @@ public class JwtTokenUtil {
     }
     
     /**
-     * 从 token 获取用户 ID
+     * 从 token 获取登录人类主体 ID
      */
-    public Long getUserIdFromToken(String token) {
+    public Long getPrincipalHumanIdFromToken(String token) {
         Claims claims = getAllClaimsFromToken(token);
-        Object raw = claims.get("userId");
+        Object raw = claims.get("principalHumanId");
         if (raw instanceof Number) {
             return ((Number) raw).longValue();
         }

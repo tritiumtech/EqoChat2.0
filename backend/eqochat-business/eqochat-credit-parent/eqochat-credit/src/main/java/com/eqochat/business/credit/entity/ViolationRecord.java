@@ -73,7 +73,7 @@ public class ViolationRecord {
     private Long delToken;
 
     public enum SubjectType {
-        USER, AGENT
+        HUMAN, AGENT, SYSTEM
     }
 
     public enum Severity {

@@ -16,105 +16,105 @@ import java.util.concurrent.CopyOnWriteArraySet;
 @Slf4j
 public class WebSocketSessionManager {
     
-    // userId -> WebSocketSession
-    private final Map<String, WebSocketSession> userSessionMap = new ConcurrentHashMap<>();
+    // principalHumanId -> WebSocketSession
+    private final Map<String, WebSocketSession> principalHumanSessionMap = new ConcurrentHashMap<>();
     
-    // conversationId -> Set<userId>
-    private final Map<String, Set<String>> conversationUsersMap = new ConcurrentHashMap<>();
+    // conversationId -> Set<principalHumanId>
+    private final Map<String, Set<String>> conversationPrincipalHumansMap = new ConcurrentHashMap<>();
     
-    // sessionId -> userId
-    private final Map<String, String> sessionUserMap = new ConcurrentHashMap<>();
+    // sessionId -> principalHumanId
+    private final Map<String, String> sessionPrincipalHumanMap = new ConcurrentHashMap<>();
     
     /**
      * 注册会话
      */
-    public void registerSession(String userId, WebSocketSession session) {
-        userSessionMap.put(userId, session);
-        sessionUserMap.put(session.getId(), userId);
-        log.info("注册WebSocket会话: userId={}, sessionId={}", userId, session.getId());
+    public void registerPrincipalHumanSession(String principalHumanId, WebSocketSession session) {
+        principalHumanSessionMap.put(principalHumanId, session);
+        sessionPrincipalHumanMap.put(session.getId(), principalHumanId);
+        log.info("注册WebSocket会话: principalHumanId={}, sessionId={}", principalHumanId, session.getId());
     }
     
     /**
      * 注销会话
      */
-    public void unregisterSession(String userId) {
-        WebSocketSession session = userSessionMap.remove(userId);
+    public void unregisterPrincipalHumanSession(String principalHumanId) {
+        WebSocketSession session = principalHumanSessionMap.remove(principalHumanId);
         if (session != null) {
-            sessionUserMap.remove(session.getId());
+            sessionPrincipalHumanMap.remove(session.getId());
         }
         
         // 从所有会话中移除
-        conversationUsersMap.forEach((convId, users) -> users.remove(userId));
+        conversationPrincipalHumansMap.forEach((convId, humans) -> humans.remove(principalHumanId));
         
-        log.info("注销WebSocket会话: userId={}", userId);
+        log.info("注销WebSocket会话: principalHumanId={}", principalHumanId);
     }
     
     /**
-     * 获取用户会话
+     * 获取登录人类主体会话
      */
-    public WebSocketSession getSession(String userId) {
-        return userSessionMap.get(userId);
+    public WebSocketSession getPrincipalHumanSession(String principalHumanId) {
+        return principalHumanSessionMap.get(principalHumanId);
     }
     
     /**
-     * 根据sessionId获取userId
+     * 根据 sessionId 获取登录人类主体 ID
      */
-    public String getUserIdBySessionId(String sessionId) {
-        return sessionUserMap.get(sessionId);
+    public String getPrincipalHumanIdBySessionId(String sessionId) {
+        return sessionPrincipalHumanMap.get(sessionId);
     }
     
     /**
-     * 用户加入会话
+     * 登录人类主体加入会话
      */
-    public void joinConversation(String conversationId, String userId) {
-        conversationUsersMap
+    public void joinConversationAsPrincipalHuman(String conversationId, String principalHumanId) {
+        conversationPrincipalHumansMap
                 .computeIfAbsent(conversationId, k -> new CopyOnWriteArraySet<>())
-                .add(userId);
-        log.debug("用户加入会话: conversationId={}, userId={}", conversationId, userId);
+                .add(principalHumanId);
+        log.debug("人类主体加入会话: conversationId={}, principalHumanId={}", conversationId, principalHumanId);
     }
     
     /**
-     * 用户离开会话
+     * 登录人类主体离开会话
      */
-    public void leaveConversation(String conversationId, String userId) {
-        Set<String> users = conversationUsersMap.get(conversationId);
-        if (users != null) {
-            users.remove(userId);
-            if (users.isEmpty()) {
-                conversationUsersMap.remove(conversationId);
+    public void leaveConversationAsPrincipalHuman(String conversationId, String principalHumanId) {
+        Set<String> humans = conversationPrincipalHumansMap.get(conversationId);
+        if (humans != null) {
+            humans.remove(principalHumanId);
+            if (humans.isEmpty()) {
+                conversationPrincipalHumansMap.remove(conversationId);
             }
         }
-        log.debug("用户离开会话: conversationId={}, userId={}", conversationId, userId);
+        log.debug("人类主体离开会话: conversationId={}, principalHumanId={}", conversationId, principalHumanId);
     }
     
     /**
-     * 获取会话中的所有用户
+     * 获取会话中的所有登录人类主体
      */
-    public Set<String> getConversationUsers(String conversationId) {
-        return conversationUsersMap.getOrDefault(conversationId, new CopyOnWriteArraySet<>());
+    public Set<String> getConversationPrincipalHumans(String conversationId) {
+        return conversationPrincipalHumansMap.getOrDefault(conversationId, new CopyOnWriteArraySet<>());
     }
     
     /**
-     * 检查用户是否在线
+     * 检查登录人类主体是否在线
      */
-    public boolean isOnline(String userId) {
-        WebSocketSession session = userSessionMap.get(userId);
+    public boolean isPrincipalHumanOnline(String principalHumanId) {
+        WebSocketSession session = principalHumanSessionMap.get(principalHumanId);
         return session != null && session.isOpen();
     }
     
     /**
-     * 获取在线用户数量
+     * 获取在线登录人类主体数量
      */
-    public int getOnlineUserCount() {
-        return (int) userSessionMap.values().stream()
+    public int getOnlinePrincipalHumanCount() {
+        return (int) principalHumanSessionMap.values().stream()
                 .filter(WebSocketSession::isOpen)
                 .count();
     }
     
     /**
-     * 获取所有在线用户ID
+     * 获取所有在线登录人类主体 ID
      */
-    public Set<String> getAllOnlineUsers() {
-        return userSessionMap.keySet();
+    public Set<String> getAllOnlinePrincipalHumans() {
+        return principalHumanSessionMap.keySet();
     }
 }

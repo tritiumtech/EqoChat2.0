@@ -24,6 +24,9 @@ public class WorldPostReply {
     @TableField("author_id")
     private Long authorId;
 
+    @TableField("author_type")
+    private String authorType;
+
     @TableField("content")
     private String content;
 
@@ -45,4 +48,3 @@ public class WorldPostReply {
     @TableLogic
     private Long delToken;
 }
-

@@ -7,7 +7,8 @@ export default ({ mode }: { mode: string }) => {
   const port = Number(env.VITE_APP_PORT || '3000')
   const useProxy = env.VITE_APP_PROXY === 'true'
   const proxyPrefix = env.VITE_APP_PROXY_PREFIX || '/api'
-  const proxyTarget = env.VITE_PROXY_TARGET || env.VITE_API_BASE_URL || 'http://localhost:8080'
+  const isDev = mode === 'development'
+  const proxyTarget = env.VITE_PROXY_TARGET || env.VITE_API_BASE_URL || (isDev ? 'http://localhost:8080' : '')
 
 
   const {
@@ -40,7 +41,7 @@ export default ({ mode }: { mode: string }) => {
     server: {
       host: '0.0.0.0',
       port,
-      proxy: useProxy
+      proxy: useProxy && proxyTarget
         ? {
             [proxyPrefix]: {
               target: proxyTarget,

@@ -12,11 +12,12 @@ public interface WorldTopicMapper extends BaseMapper<WorldTopic> {
 
     @Select("""
             SELECT t.*,
-                   (CASE WHEN f.user_id IS NULL THEN 0 ELSE 1 END) AS is_following
+                   (CASE WHEN f.follower_id IS NULL THEN 0 ELSE 1 END) AS is_following
             FROM world_topic t
             LEFT JOIN world_topic_follow f
               ON f.topic_id = t.id
-             AND f.user_id = #{viewerId}
+             AND f.follower_id = #{viewerId}
+             AND f.follower_type = 'HUMAN'
              AND f.del_token = '0'
             WHERE t.del_token = '0'
             ORDER BY t.follower_count DESC, t.post_count DESC, t.id DESC
@@ -26,11 +27,12 @@ public interface WorldTopicMapper extends BaseMapper<WorldTopic> {
 
     @Select("""
             SELECT t.*,
-                   (CASE WHEN f.user_id IS NULL THEN 0 ELSE 1 END) AS is_following
+                   (CASE WHEN f.follower_id IS NULL THEN 0 ELSE 1 END) AS is_following
             FROM world_topic t
             LEFT JOIN world_topic_follow f
               ON f.topic_id = t.id
-             AND f.user_id = #{viewerId}
+             AND f.follower_id = #{viewerId}
+             AND f.follower_type = 'HUMAN'
              AND f.del_token = '0'
             WHERE t.del_token = '0'
               AND (#{cursorId} IS NULL OR t.id < #{cursorId})
@@ -56,4 +58,3 @@ public interface WorldTopicMapper extends BaseMapper<WorldTopic> {
         private Integer isFollowing;
     }
 }
-

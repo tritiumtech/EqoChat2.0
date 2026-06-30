@@ -32,7 +32,7 @@
                 <text v-if="isAgent" class="agent-badge">{{ t('page.world.ai_agent') }}</text>
               </view>
               <text v-if="userInfo.bio" class="bio">{{ userInfo.bio }}</text>
-              <text class="meta-line">{{ t('page.contact.user_id') }}: {{ userInfo.id }}</text>
+              <text class="meta-line">{{ t('page.contact.user_id') }}: {{ targetSubjectId }}</text>
               <text class="meta-line">{{ tf('page.contact.world_posts_line', { n: userInfo.worldPostCount }) }}</text>
             </view>
           </view>
@@ -146,6 +146,7 @@ import { onLoad, onShow } from '@dcloudio/uni-app'
 import { useI18nWithFormat } from '@/composables/useI18nWithFormat'
 import { userApi, type UserSearchResult } from '@/api/modules/user'
 import { friendRequestApi, type FriendRequestItem } from '@/api/modules/friendRequest'
+import type { ContactSubjectType } from '@/api/modules/contact'
 import { conversationApi } from '@/api/modules/conversation'
 import { useUserStore } from '@/store/modules/user'
 import { getApiErrorMessage } from '@/utils/request'
@@ -153,7 +154,8 @@ import PageHeader from '@/components/PageHeader.vue'
 
 const userInfo = ref<UserSearchResult | null>(null)
 const loading = ref(false)
-const userId = ref(0)
+const targetSubjectId = ref(0)
+const targetSubjectType = ref<ContactSubjectType>('HUMAN')
 const userStore = useUserStore()
 const { t, tf } = useI18nWithFormat()
 
@@ -169,7 +171,7 @@ const sentRequests = ref<FriendRequestItem[]>([])
 const isOnline = computed(() => (userInfo.value?.status || '').toUpperCase() === 'ACTIVE')
 
 // 是否是智能体
-const isAgent = computed(() => userInfo.value?.friendType === 'AGENT')
+const isAgent = computed(() => targetSubjectType.value === 'AGENT')
 
 // 能力标签
 const capabilities = computed(() => (userInfo.value as any)?.capabilities ?? [])
@@ -181,7 +183,7 @@ const avatarLetter = computed(() => userInfo.value?.nickname?.slice(0, 1) || '?'
 const avatarStyle = computed(() => {
   const hues = ['#14B8A6', '#3B82F6', '#8B5CF6', '#EC4899', '#F59E0B', '#10B981', '#6366F1', '#EF4444']
   let h = 0
-  const s = userInfo.value?.nickname || String(userInfo.value?.id || 0)
+  const s = userInfo.value?.nickname || String(targetSubjectId.value || 0)
   for (let i = 0; i < s.length; i++) h = s.charCodeAt(i) + ((h << 5) - h)
   const c = hues[Math.abs(h) % hues.length]!
   return { background: `linear-gradient(135deg, ${c}f0, ${c}e0)` }
@@ -189,17 +191,29 @@ const avatarStyle = computed(() => {
 
 // 是否已发送申请
 const hasSentRequest = computed(() => {
-  return sentRequests.value.some(r => r.recipientId === userId.value && r.status === 'PENDING')
+  return sentRequests.value.some(r =>
+    r.recipientSubjectId === targetSubjectId.value
+    && r.recipientSubjectType === targetSubjectType.value
+    && r.status === 'PENDING'
+  )
 })
 
 // 是否收到对方申请
 const hasReceivedRequest = computed(() => {
-  return receivedRequests.value.some(r => r.requesterId === userId.value && r.status === 'PENDING')
+  return receivedRequests.value.some(r =>
+    r.requesterSubjectId === targetSubjectId.value
+    && r.requesterSubjectType === targetSubjectType.value
+    && r.status === 'PENDING'
+  )
 })
 
 // 获取收到的申请ID
 const receivedRequestId = computed(() => {
-  const req = receivedRequests.value.find(r => r.requesterId === userId.value && r.status === 'PENDING')
+  const req = receivedRequests.value.find(r =>
+    r.requesterSubjectId === targetSubjectId.value
+    && r.requesterSubjectType === targetSubjectType.value
+    && r.status === 'PENDING'
+  )
   return req?.id
 })
 
@@ -210,7 +224,7 @@ const goBack = () => {
 
 // 加载用户资料
 const loadUserProfile = async () => {
-  if (!userId.value) {
+  if (!targetSubjectId.value) {
     uni.showToast({ title: t('toast.load_failed'), icon: 'none' })
     setTimeout(() => uni.navigateBack(), 500)
     return
@@ -218,7 +232,7 @@ const loadUserProfile = async () => {
   
   loading.value = true
   try {
-    const data = await userApi.getUserPublicProfile(userId.value)
+    const data = await userApi.getUserPublicProfile(targetSubjectId.value)
     userInfo.value = data
   } catch (err: any) {
     uni.showToast({ title: err?.message || t('toast.load_failed'), icon: 'none' })
@@ -246,8 +260,15 @@ const sendRequest = async () => {
   sending.value = true
   
   try {
+    const actorSubjectId = currentPrincipalHumanId()
+    if (!actorSubjectId) {
+      throw new Error(t('toast.load_failed'))
+    }
     await friendRequestApi.sendRequest({
-      friendId: userInfo.value.id,
+      actorSubjectId,
+      actorSubjectType: 'HUMAN',
+      recipientSubjectId: targetSubjectId.value,
+      recipientSubjectType: targetSubjectType.value,
       requestMessage: requestMessage.value?.trim() || undefined
     })
     
@@ -304,7 +325,10 @@ const startChat = async () => {
   }
   
   try {
-    const data = await conversationApi.createConversation({ targetUserId: userInfo.value.id })
+    const data = await conversationApi.createConversation({
+      targetSubjectId: targetSubjectId.value,
+      targetSubjectType: targetSubjectType.value,
+    })
     const title = encodeURIComponent(userInfo.value.nickname || data.title || t('common.conversation'))
     uni.redirectTo({
       url: `/pages/chat/chat-room?conversationId=${data.id}&title=${title}`
@@ -315,8 +339,17 @@ const startChat = async () => {
 }
 
 onLoad((query) => {
-  userId.value = Number((query as any)?.id ?? 0)
+  targetSubjectId.value = Number((query as any)?.targetSubjectId ?? 0)
+  targetSubjectType.value = normalizeSubjectType((query as any)?.targetSubjectType)
 })
+
+function normalizeSubjectType(value: unknown): ContactSubjectType {
+  return String(value || 'HUMAN').toUpperCase() === 'AGENT' ? 'AGENT' : 'HUMAN'
+}
+
+function currentPrincipalHumanId(): number {
+  return Number((userStore.userInfo as any)?.id ?? 0)
+}
 
 onShow(() => {
   if (!userStore.isLoggedIn) {

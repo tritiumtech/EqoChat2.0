@@ -1,5 +1,6 @@
 package com.eqochat.business.contact.api.dto.response;
 
+import com.eqochat.business.actor.api.model.SubjectType;
 import lombok.Builder;
 import lombok.Data;
 
@@ -12,7 +13,10 @@ import java.util.List;
 @Builder
 public class ContactDetailResponse {
 
-    private Long id;
+    private Long ownerSubjectId;
+    private SubjectType ownerSubjectType;
+    private Long targetSubjectId;
+    private SubjectType targetSubjectType;
     private String nickname;
     private String avatarUrl;
     /** user_profile.status 或 agent_profile.status 枚举名 */
@@ -20,10 +24,8 @@ public class ContactDetailResponse {
     private List<String> tags;
     /** 简介：用户 bio 或智能体 description */
     private String bio;
-    /** 世界动态发帖数（作者 user id） */
+    /** 世界动态发帖数（作者 subject id/type） */
     private int worldPostCount;
-    /** HUMAN | AGENT，与好友关系一致 */
-    private String friendType;
     /** 智能体能力标签，解析自 capability_tags */
     private List<String> capabilities;
 }

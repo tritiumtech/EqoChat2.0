@@ -23,26 +23,26 @@ public class WebSocketSender {
     private final ObjectMapper objectMapper;
     private final WebSocketSessionManager sessionManager;
     
-    public void sendToUser(String userId, WebSocketMessage.BaseMessage message) {
-        WebSocketSession session = sessionManager.getSession(userId);
+    public void sendToPrincipalHuman(String principalHumanId, WebSocketMessage.BaseMessage message) {
+        WebSocketSession session = sessionManager.getPrincipalHumanSession(principalHumanId);
         if (session != null && session.isOpen()) {
             try {
                 sendMessage(session, message);
             } catch (IOException e) {
-                log.error("发送消息失败: userId={}", userId, e);
+                log.error("发送消息失败: principalHumanId={}", principalHumanId, e);
             }
         } else {
-            log.debug("用户不在线: userId={}", userId);
+            log.debug("人类主体不在线: principalHumanId={}", principalHumanId);
         }
     }
 
     /**
-     * 向已加入该会话广播列表的所有在线用户推送同一条消息（含发送方，便于多端同步）。
+     * 向已加入该会话广播列表的所有在线人类主体推送同一条消息（含发送方，便于多端同步）。
      */
-    public void broadcastToConversation(String conversationId, WebSocketMessage.BaseMessage message) {
-        Set<String> users = sessionManager.getConversationUsers(conversationId);
-        for (String userId : users) {
-            sendToUser(userId, message);
+    public void broadcastToConversationHumans(String conversationId, WebSocketMessage.BaseMessage message) {
+        Set<String> principalHumanIds = sessionManager.getConversationPrincipalHumans(conversationId);
+        for (String principalHumanId : principalHumanIds) {
+            sendToPrincipalHuman(principalHumanId, message);
         }
     }
     
@@ -56,8 +56,8 @@ public class WebSocketSender {
         WebSocketMessage.BaseMessage errorMessage = WebSocketMessage.BaseMessage.builder()
                 .id(UUID.randomUUID().toString())
                 .type(WebSocketMessage.MessageType.ERROR)
-                .senderId("system")
-                .senderType("SYSTEM")
+                .senderSubjectId("0")
+                .senderSubjectType("SYSTEM")
                 .timestamp(LocalDateTime.now())
                 .payload(error)
                 .build();

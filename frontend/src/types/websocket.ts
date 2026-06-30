@@ -20,9 +20,9 @@ export enum MessageType {
   SESSION_KICKED = 'SESSION_KICKED'
 }
 
-// 发送者类型
-export enum SenderType {
-  USER = 'USER',
+// 社交主体类型
+export enum SubjectType {
+  HUMAN = 'HUMAN',
   AGENT = 'AGENT',
   SYSTEM = 'SYSTEM'
 }
@@ -51,9 +51,8 @@ export enum ConnectionStatus {
 export interface BaseMessage {
   id: string
   type: MessageType
-  senderId: string
-  senderType: SenderType
-  recipientId?: string
+  senderSubjectId: string
+  senderSubjectType: SubjectType
   timestamp: string
   payload: unknown
 }
@@ -72,26 +71,29 @@ export interface ChatMessagePayload {
 export interface ReadReceiptPayload {
   conversationId: string
   messageId: string
-  readerId: string
+  readerSubjectId: string
+  readerSubjectType: SubjectType
 }
 
 // 输入状态内容
 export interface TypingPayload {
   conversationId: string
-  userId: string
+  subjectId: string
+  subjectType: SubjectType
   isTyping: boolean
 }
 
 // 在线状态内容
 export interface PresencePayload {
-  userId: string
+  subjectId: string
+  subjectType: SubjectType
   status: 'ONLINE' | 'OFFLINE' | 'BUSY'
   lastSeenAt?: number
 }
 
 // 连接确认内容
 export interface ConnectAckPayload {
-  userId: string
+  principalHumanId: string
   connectionId: string
   serverTime: number
 }
