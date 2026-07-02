@@ -9,26 +9,26 @@ import com.eqochat.business.actor.api.model.SubjectType;
 import com.eqochat.business.actor.api.service.CapabilityQueryApi;
 import com.eqochat.business.actor.api.service.LiabilityPolicyApi;
 import com.eqochat.business.actor.api.service.SubjectDirectoryApi;
-import com.eqochat.business.agent.entity.AgentProfile;
-import com.eqochat.business.agent.mapper.AgentProfileMapper;
-import com.eqochat.business.user.entity.UserProfile;
-import com.eqochat.business.user.mapper.UserProfileMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.util.Collection;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
 public class SubjectDirectoryServiceImpl implements SubjectDirectoryApi {
 
-    private final UserProfileMapper userProfileMapper;
-    private final AgentProfileMapper agentProfileMapper;
+    private final ActorSourceRepository actorSourceRepository;
     private final ActorDataAccess dataAccess;
     private final CapabilityQueryApi capabilityQueryApi;
     private final LiabilityPolicyApi liabilityPolicyApi;
+    private final SubjectRegistryRepository subjectRegistryRepository;
 
     @Override
     public SubjectSummaryResponse getSubject(SubjectRef ref) {
@@ -74,27 +74,43 @@ public class SubjectDirectoryServiceImpl implements SubjectDirectoryApi {
     }
 
     @Override
+    public List<SubjectRef> listAssociatedSubjects(Long principalHumanId) {
+        if (principalHumanId == null || principalHumanId <= 0) {
+            return List.of();
+        }
+        Set<SubjectRef> subjects = new LinkedHashSet<>(subjectRegistryRepository.findAssociatedSubjects(principalHumanId));
+        return new ArrayList<>(subjects);
+    }
+
+    @Override
     public Long requireLiableHumanId(SubjectRef ref) {
         LiabilityChain chain = liabilityPolicyApi.resolveLiability(ref);
         return chain != null ? chain.liableHumanId() : null;
     }
 
     private SubjectSummaryResponse getHuman(Long id) {
-        UserProfile profile = userProfileMapper.selectById(id);
+        SubjectRef ref = SubjectRef.human(id);
+        return subjectRegistryRepository.find(ref)
+                .map(this::fromRegistry)
+                .orElse(null);
+    }
+
+    SubjectSummaryResponse refreshHuman(Long id) {
+        SubjectRef ref = SubjectRef.human(id);
+        ActorSourceRepository.Human profile = actorSourceRepository.findHuman(id).orElse(null);
         if (profile == null) {
             return null;
         }
-        SubjectRef ref = SubjectRef.human(profile.getId());
         CreditProfileSummary credit = dataAccess.creditProfile(ref, profile.getCreditScore());
         CapabilitySet capabilities = capabilityQueryApi.getCapabilities(ref);
         LiabilityChain liability = liabilityPolicyApi.resolveLiability(ref);
-        return SubjectSummaryResponse.builder()
+        SubjectSummaryResponse subject = SubjectSummaryResponse.builder()
                 .id(profile.getId())
                 .type(SubjectType.HUMAN)
-                .did(profile.getDid())
+                .did(profile.did())
                 .displayName(dataAccess.displayName(profile))
-                .avatarUrl(profile.getAvatarUrl())
-                .bio(profile.getBio())
+                .avatarUrl(profile.avatarUrl())
+                .bio(profile.bio())
                 .status(dataAccess.userStatus(profile))
                 .points(dataAccess.currentPoints(ref, 0))
                 .creditScore(credit.score())
@@ -105,25 +121,36 @@ public class SubjectDirectoryServiceImpl implements SubjectDirectoryApi {
                 .associatedHumanId(profile.getId())
                 .associatedHumanName(dataAccess.displayName(profile))
                 .build();
+        subjectRegistryRepository.upsertHuman(profile, subject);
+        return subject;
     }
 
     private SubjectSummaryResponse getAgent(Long id) {
-        AgentProfile profile = agentProfileMapper.selectById(id);
+        SubjectRef ref = SubjectRef.agent(id);
+        return subjectRegistryRepository.find(ref)
+                .map(this::fromRegistry)
+                .orElse(null);
+    }
+
+    SubjectSummaryResponse refreshAgent(Long id) {
+        SubjectRef ref = SubjectRef.agent(id);
+        ActorSourceRepository.Agent profile = actorSourceRepository.findAgent(id).orElse(null);
         if (profile == null) {
             return null;
         }
-        UserProfile owner = profile.getOwnerId() != null ? userProfileMapper.selectById(profile.getOwnerId()) : null;
-        SubjectRef ref = SubjectRef.agent(profile.getId());
+        ActorSourceRepository.Human owner = profile.getOwnerId() != null
+                ? actorSourceRepository.findHuman(profile.getOwnerId()).orElse(null)
+                : null;
         CreditProfileSummary credit = dataAccess.creditProfile(ref, profile.getCreditScore());
         CapabilitySet capabilities = capabilityQueryApi.getCapabilities(ref);
         LiabilityChain liability = liabilityPolicyApi.resolveLiability(ref);
-        return SubjectSummaryResponse.builder()
+        SubjectSummaryResponse subject = SubjectSummaryResponse.builder()
                 .id(profile.getId())
                 .type(SubjectType.AGENT)
-                .did(profile.getDid())
+                .did(profile.did())
                 .displayName(dataAccess.displayName(profile))
-                .avatarUrl(profile.getAvatarUrl())
-                .bio(profile.getDescription())
+                .avatarUrl(profile.avatarUrl())
+                .bio(profile.description())
                 .status(dataAccess.agentStatus(profile))
                 .points(dataAccess.currentPoints(ref, 0))
                 .creditScore(credit.score())
@@ -133,6 +160,38 @@ public class SubjectDirectoryServiceImpl implements SubjectDirectoryApi {
                 .capabilityTags(dataAccess.parseCapabilityTags(profile.getCapabilityTags()))
                 .associatedHumanId(profile.getOwnerId())
                 .associatedHumanName(owner != null ? dataAccess.displayName(owner) : null)
+                .build();
+        subjectRegistryRepository.upsertAgent(profile, subject);
+        return subject;
+    }
+
+    private SubjectSummaryResponse fromRegistry(SubjectRegistryRepository.SubjectRegistryRecord row) {
+        SubjectRef ref = row.ref();
+        CreditProfileSummary credit = dataAccess.creditProfile(ref, row.creditScore());
+        CapabilitySet capabilities = capabilityQueryApi.getCapabilities(ref);
+        LiabilityChain liability = liabilityPolicyApi.resolveLiability(ref);
+        Long associatedHumanId = row.associatedHumanId();
+        String associatedHumanName = row.associatedHumanName();
+        if (row.subjectType() == SubjectType.HUMAN) {
+            associatedHumanId = row.subjectId();
+            associatedHumanName = row.displayName();
+        }
+        return SubjectSummaryResponse.builder()
+                .id(row.subjectId())
+                .type(row.subjectType())
+                .did(row.did())
+                .displayName(row.displayName())
+                .avatarUrl(row.avatarUrl())
+                .bio(row.bio())
+                .status(row.status())
+                .points(dataAccess.currentPoints(ref, row.points()))
+                .creditScore(credit.score())
+                .creditProfile(credit)
+                .liabilityChain(liability)
+                .capabilities(capabilities)
+                .capabilityTags(dataAccess.parseCapabilityTags(row.capabilityTags()))
+                .associatedHumanId(associatedHumanId)
+                .associatedHumanName(associatedHumanName)
                 .build();
     }
 }

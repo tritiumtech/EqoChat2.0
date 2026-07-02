@@ -34,6 +34,9 @@
     "status": "状态",
     "credit": "信用分",
     "logout": "退出登录",
+    "cancel": "取消",
+    "confirm": "确认",
+    "notice": "提示",
     "not_logged_in": "未登录",
     "you": "你",
     "dash": "—",
@@ -88,6 +91,9 @@
     "request_sent": "申请已发送",
     "request_accepted": "已同意",
     "request_rejected": "已拒绝",
+    "success": "操作成功",
+    "error": "操作失败",
+    "session_kicked": "你的账号已在其他设备登录，当前会话已退出",
     "cancel": "取消",
     "phone_password_required": "请输入手机号和密码",
     "fill_required": "请填写完整信息",
@@ -116,6 +122,12 @@
     "contacts": "联系人",
     "me": "我的",
     "project": "项目"
+  },
+  "auth": {
+    "login_required": "请先登录",
+    "session_kicked": "你的账号已在其他设备登录",
+    "session_expired": "登录已过期，请重新登录",
+    "relogin": "重新登录"
   },
   "page": {
     "index": {
@@ -185,6 +197,13 @@
       "pinned": "已置顶",
       "typing_label_default": "对方",
       "typing_text": "{label} 正在输入…",
+      "session_kicked": "已在其他设备登录",
+      "login_prompt": "登录提示",
+      "session_kicked_message": "你的账号已在其他设备登录，请重新登录。",
+      "relogin": "重新登录",
+      "connecting": "连接中...",
+      "connection_success": "连接成功",
+      "connection_failed": "重新连接失败",
       "connection_disconnected": "连接已断开",
       "click_to_reconnect": "点击重新连接"
     },
@@ -340,6 +359,7 @@
       "language": "语言",
       "zh": "中文",
       "en": "English",
+      "logout_confirm": "确定要退出登录吗？",
       "level_short": "Lv.{n} · {name}",
       "points": "{n} 积分",
       "points_to_level": "还差 {n} 到 {name}",
@@ -358,16 +378,24 @@
       "menu_privacy_desc": "账号与数据保护",
       "menu_help": "帮助与反馈",
       "menu_help_desc": "使用问题与建议",
+      "menu_payment_methods": "支付方式",
+      "menu_payment_methods_desc": "银行卡与收款设置",
       "level_abbr": "Lv.{n}",
       "notif_filter_mention": "@我",
       "menu_my_agents": "我的智能体",
       "menu_my_agents_desc": "管理与协作",
+      "active_subject_label": "当前行动主体",
+      "active_subject_unselected": "请选择行动主体",
       "my_agents": {
         "title": "我的智能体",
         "loading": "加载中...",
         "empty": "暂无智能体",
         "credit_score_label": "信用分：",
-        "wallet_enabled": "钱包可用"
+        "wallet_enabled": "钱包可用",
+        "wallet_disabled": "钱包关闭",
+        "enable_wallet": "启用钱包",
+        "disable_wallet": "关闭钱包",
+        "wallet_updated": "钱包已更新"
       }
     },
     "project": {

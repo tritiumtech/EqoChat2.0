@@ -63,30 +63,23 @@ public class ProjectServiceImpl implements ProjectService {
     );
 
     @Override
-    public List<ProjectSummaryResponse> listMyProjects(Long viewerId) {
-        if (viewerId == null) {
-            throw BizException.of("auth.user.not_found");
-        }
+    public List<ProjectSummaryResponse> listMyProjects(
+            Long principalHumanId,
+            Long viewerSubjectId,
+            SubjectType viewerSubjectType
+    ) {
+        SubjectRef viewer = requireViewerSubject(principalHumanId, viewerSubjectId, viewerSubjectType);
 
         Set<Long> projectIds = new LinkedHashSet<>();
 
-        List<ProjectMember> humanMembers = projectMemberMapper.selectList(new LambdaQueryWrapper<ProjectMember>()
-                .eq(ProjectMember::getMemberId, viewerId)
-                .eq(ProjectMember::getMemberType, ProjectMember.MemberType.HUMAN));
-        addProjectIds(projectIds, humanMembers);
-
-        List<ProjectMember> liableAgentMembers = projectMemberMapper.selectList(new LambdaQueryWrapper<ProjectMember>()
-                .eq(ProjectMember::getMemberType, ProjectMember.MemberType.AGENT)
-                .eq(ProjectMember::getMasterId, viewerId));
-        addProjectIds(projectIds, liableAgentMembers);
+        List<ProjectMember> subjectMembers = projectMemberMapper.selectList(new LambdaQueryWrapper<ProjectMember>()
+                .eq(ProjectMember::getMemberId, viewer.id())
+                .eq(ProjectMember::getMemberType, toMemberType(viewer.type())));
+        addProjectIds(projectIds, subjectMembers);
 
         List<Project> ownedProjects = projectMapper.selectList(new LambdaQueryWrapper<Project>()
-                .and(w -> w
-                        .eq(Project::getOwnerId, viewerId)
-                        .eq(Project::getOwnerType, Project.ProjectOwnerType.HUMAN))
-                .or(w -> w
-                        .eq(Project::getOwnerType, Project.ProjectOwnerType.AGENT)
-                        .eq(Project::getAgentOwnerMasterId, viewerId)));
+                .eq(Project::getOwnerId, viewer.id())
+                .eq(Project::getOwnerType, toProjectOwnerType(viewer.type())));
         if (ownedProjects != null) {
             for (Project p : ownedProjects) {
                 if (p != null && p.getId() != null) {
@@ -128,8 +121,8 @@ public class ProjectServiceImpl implements ProjectService {
     }
 
     @Override
-    public ProjectDetailResponse createProject(Long viewerId, CreateProjectRequest request) {
-        if (viewerId == null) {
+    public ProjectDetailResponse createProject(Long principalHumanId, CreateProjectRequest request) {
+        if (principalHumanId == null) {
             throw BizException.of("auth.user.not_found");
         }
         if (request == null || !StringUtils.hasText(request.getName()) || request.getBid() == null) {
@@ -142,7 +135,7 @@ public class ProjectServiceImpl implements ProjectService {
                 "project.owner.invalid"
         );
         SubjectSummaryResponse ownerSummary = requireActiveSubject(owner);
-        LiabilityChain ownerLiability = requireAuthorizedLiability(viewerId, owner, "project.owner.forbidden");
+        LiabilityChain ownerLiability = requireAuthorizedLiability(principalHumanId, owner, "project.owner.forbidden");
 
         long bid = request.getBid();
         boolean depositPaid = bid < 100;
@@ -165,8 +158,8 @@ public class ProjectServiceImpl implements ProjectService {
                 .pendingOwnershipTransfer(null)
                 .createTime(LocalDateTime.now())
                 .updateTime(LocalDateTime.now())
-                .createBy(viewerId)
-                .updateBy(viewerId)
+                .createBy(principalHumanId)
+                .updateBy(principalHumanId)
                 .build();
 
         projectMapper.insert(project);
@@ -175,10 +168,10 @@ public class ProjectServiceImpl implements ProjectService {
         }
 
         // 创建者自动加入项目成员
-        ProjectMember ownerMember = memberFromSubject(project.getId(), owner, ownerSummary, ownerLiability, viewerId);
+        ProjectMember ownerMember = memberFromSubject(project.getId(), owner, ownerSummary, ownerLiability, principalHumanId);
         projectMemberMapper.insert(ownerMember);
 
-        return getProjectDetail(viewerId, project.getId());
+        return getProjectDetail(principalHumanId, project.getId(), owner.id(), owner.type());
     }
 
     private ProjectMember memberFromSubject(
@@ -205,7 +198,12 @@ public class ProjectServiceImpl implements ProjectService {
     }
 
     @Override
-    public ProjectDetailResponse getProjectDetail(Long viewerId, Long projectId) {
+    public ProjectDetailResponse getProjectDetail(
+            Long principalHumanId,
+            Long projectId,
+            Long viewerSubjectId,
+            SubjectType viewerSubjectType
+    ) {
         if (projectId == null) {
             throw BizException.of("project.required");
         }
@@ -215,7 +213,8 @@ public class ProjectServiceImpl implements ProjectService {
             throw BizException.of("project.not_found");
         }
 
-        ensureViewerCanAccess(viewerId, projectId, project);
+        SubjectRef viewer = requireViewerSubject(principalHumanId, viewerSubjectId, viewerSubjectType);
+        ensureViewerCanAccess(principalHumanId, viewer, projectId, project);
 
         List<ProjectMember> members = projectMemberMapper.selectList(new LambdaQueryWrapper<ProjectMember>()
                 .eq(ProjectMember::getProjectId, projectId));
@@ -304,8 +303,8 @@ public class ProjectServiceImpl implements ProjectService {
     }
 
     @Override
-    public void requestBidUpdate(Long viewerId, Long projectId, UpdateProjectBidRequest request) {
-        if (viewerId == null) {
+    public void requestBidUpdate(Long principalHumanId, Long projectId, UpdateProjectBidRequest request) {
+        if (principalHumanId == null) {
             throw BizException.of("auth.user.not_found");
         }
         if (projectId == null) {
@@ -319,23 +318,30 @@ public class ProjectServiceImpl implements ProjectService {
         if (project == null) {
             throw BizException.of("project.not_found");
         }
-        ensureViewerCanAccess(viewerId, projectId, project);
+        SubjectRef actor = requireActorSubject(
+                principalHumanId,
+                request.getActorSubjectId(),
+                request.getActorSubjectType(),
+                "project.bid.actor.invalid",
+                "project.bid.forbidden"
+        );
+        ensureActorCanAccessProject(principalHumanId, actor, projectId, project);
 
-        requireCurrentOwnerAuthority(viewerId, project, "project.bid.forbidden");
+        requireCurrentOwnerAuthority(principalHumanId, actor, project, "project.bid.forbidden");
 
         long newBid = request.getNewBid();
         project.setBid(newBid);
         project.setDepositPaid(newBid < 100);
         project.setPendingBidUpdate(null);
-        project.setUpdateBy(viewerId);
+        project.setUpdateBy(principalHumanId);
         project.setUpdateTime(LocalDateTime.now());
 
         projectMapper.updateById(project);
     }
 
     @Override
-    public void transferOwnership(Long viewerId, Long projectId, TransferProjectOwnershipRequest request) {
-        if (viewerId == null) {
+    public void transferOwnership(Long principalHumanId, Long projectId, TransferProjectOwnershipRequest request) {
+        if (principalHumanId == null) {
             throw BizException.of("auth.user.not_found");
         }
         if (projectId == null) {
@@ -349,16 +355,23 @@ public class ProjectServiceImpl implements ProjectService {
         if (project == null) {
             throw BizException.of("project.not_found");
         }
-        ensureViewerCanAccess(viewerId, projectId, project);
+        SubjectRef actor = requireActorSubject(
+                principalHumanId,
+                request.getActorSubjectId(),
+                request.getActorSubjectType(),
+                "project.transfer.actor.invalid",
+                "project.transfer.forbidden"
+        );
+        ensureActorCanAccessProject(principalHumanId, actor, projectId, project);
 
-        requireCurrentOwnerAuthority(viewerId, project, "project.transfer.forbidden");
+        requireCurrentOwnerAuthority(principalHumanId, actor, project, "project.transfer.forbidden");
         SubjectRef newOwner = requireBusinessSubject(
                 request.getNewOwnerSubjectId(),
                 request.getNewOwnerSubjectType(),
                 "project.transfer.invalid"
         );
         LiabilityChain newOwnerLiability = newOwner.type() == SubjectType.AGENT
-                ? requireAuthorizedLiability(viewerId, newOwner, "project.transfer.forbidden")
+                ? requireAuthorizedLiability(principalHumanId, newOwner, "project.transfer.forbidden")
                 : liabilityPolicyApi.resolveLiability(newOwner);
 
         ProjectMember targetMember = projectMemberMapper.selectOne(new LambdaQueryWrapper<ProjectMember>()
@@ -380,20 +393,25 @@ public class ProjectServiceImpl implements ProjectService {
         }
 
         project.setPendingOwnershipTransfer(null);
-        project.setUpdateBy(viewerId);
+        project.setUpdateBy(principalHumanId);
         project.setUpdateTime(LocalDateTime.now());
 
         projectMapper.updateById(project);
     }
 
     @Override
-    public ProjectShareLinkResponse shareLink(Long viewerId, Long projectId) {
-        ensureViewerCanAccess(viewerId, projectId, projectMapper.selectById(projectId));
-
+    public ProjectShareLinkResponse shareLink(
+            Long principalHumanId,
+            Long projectId,
+            Long viewerSubjectId,
+            SubjectType viewerSubjectType
+    ) {
         Project project = projectMapper.selectById(projectId);
         if (project == null) {
             throw BizException.of("project.not_found");
         }
+        SubjectRef viewer = requireViewerSubject(principalHumanId, viewerSubjectId, viewerSubjectType);
+        ensureViewerCanAccess(principalHumanId, viewer, projectId, project);
 
         String tpl = properties.getShareUrlTemplate();
         if (!StringUtils.hasText(tpl) || !tpl.contains("{projectId}")) {
@@ -404,12 +422,18 @@ public class ProjectServiceImpl implements ProjectService {
     }
 
     @Override
-    public List<ProjectTaskResponse> listSidebarTasks(Long viewerId, Long projectId) {
+    public List<ProjectTaskResponse> listSidebarTasks(
+            Long principalHumanId,
+            Long projectId,
+            Long viewerSubjectId,
+            SubjectType viewerSubjectType
+    ) {
         Project project = projectMapper.selectById(projectId);
         if (project == null) {
             throw BizException.of("project.not_found");
         }
-        ensureViewerCanAccess(viewerId, projectId, project);
+        SubjectRef viewer = requireViewerSubject(principalHumanId, viewerSubjectId, viewerSubjectType);
+        ensureViewerCanAccess(principalHumanId, viewer, projectId, project);
 
         List<ProjectTask> tasks = projectTaskMapper.selectList(new LambdaQueryWrapper<ProjectTask>()
                 .eq(ProjectTask::getProjectId, projectId));
@@ -420,12 +444,18 @@ public class ProjectServiceImpl implements ProjectService {
     }
 
     @Override
-    public List<ProjectPaymentResponse> listSidebarPayments(Long viewerId, Long projectId) {
+    public List<ProjectPaymentResponse> listSidebarPayments(
+            Long principalHumanId,
+            Long projectId,
+            Long viewerSubjectId,
+            SubjectType viewerSubjectType
+    ) {
         Project project = projectMapper.selectById(projectId);
         if (project == null) {
             throw BizException.of("project.not_found");
         }
-        ensureViewerCanAccess(viewerId, projectId, project);
+        SubjectRef viewer = requireViewerSubject(principalHumanId, viewerSubjectId, viewerSubjectType);
+        ensureViewerCanAccess(principalHumanId, viewer, projectId, project);
 
         List<ProjectPayment> payments = projectPaymentMapper.selectList(new LambdaQueryWrapper<ProjectPayment>()
                 .eq(ProjectPayment::getProjectId, projectId));
@@ -436,12 +466,18 @@ public class ProjectServiceImpl implements ProjectService {
     }
 
     @Override
-    public List<ProjectFileResponse> listSidebarFiles(Long viewerId, Long projectId) {
+    public List<ProjectFileResponse> listSidebarFiles(
+            Long principalHumanId,
+            Long projectId,
+            Long viewerSubjectId,
+            SubjectType viewerSubjectType
+    ) {
         Project project = projectMapper.selectById(projectId);
         if (project == null) {
             throw BizException.of("project.not_found");
         }
-        ensureViewerCanAccess(viewerId, projectId, project);
+        SubjectRef viewer = requireViewerSubject(principalHumanId, viewerSubjectId, viewerSubjectType);
+        ensureViewerCanAccess(principalHumanId, viewer, projectId, project);
 
         List<ProjectFile> files = projectFileMapper.selectList(new LambdaQueryWrapper<ProjectFile>()
                 .eq(ProjectFile::getProjectId, projectId));
@@ -451,38 +487,43 @@ public class ProjectServiceImpl implements ProjectService {
                 .toList();
     }
 
-    private void ensureViewerCanAccess(Long viewerId, Long projectId, Project project) {
+    private void ensureViewerCanAccess(Long principalHumanId, SubjectRef viewer, Long projectId, Project project) {
         if (project == null) {
             throw BizException.of("project.not_found");
         }
-        if (viewerId == null) {
+        if (principalHumanId == null) {
             throw BizException.of("auth.user.not_found");
         }
+        if (viewer == null) {
+            throw BizException.of("project.viewer.invalid");
+        }
+        ensureSubjectCanAccess(viewer, projectId, project);
+    }
+
+    private void ensureActorCanAccessProject(Long principalHumanId, SubjectRef actor, Long projectId, Project project) {
+        if (project == null) {
+            throw BizException.of("project.not_found");
+        }
+        if (principalHumanId == null) {
+            throw BizException.of("auth.user.not_found");
+        }
+        if (actor == null) {
+            throw BizException.of("project.forbidden");
+        }
+        ensureSubjectCanAccess(actor, projectId, project);
+    }
+
+    private void ensureSubjectCanAccess(SubjectRef subject, Long projectId, Project project) {
         SubjectRef owner = ownerRef(project);
-        if (owner.type() == SubjectType.HUMAN && Objects.equals(owner.id(), viewerId)) {
-            return;
-        }
-        if (owner.type() == SubjectType.AGENT) {
-            LiabilityChain ownerLiability = liabilityPolicyApi.resolveLiability(owner);
-            if (Objects.equals(liableHumanId(ownerLiability), viewerId)
-                    || Objects.equals(project.getAgentOwnerMasterId(), viewerId)) {
-                return;
-            }
-        }
-
-        Long humanMemberCount = projectMemberMapper.selectCount(new LambdaQueryWrapper<ProjectMember>()
-                .eq(ProjectMember::getProjectId, projectId)
-                .eq(ProjectMember::getMemberId, viewerId)
-                .eq(ProjectMember::getMemberType, ProjectMember.MemberType.HUMAN));
-        if (humanMemberCount != null && humanMemberCount > 0) {
+        if (owner.equals(subject)) {
             return;
         }
 
-        Long liableAgentMemberCount = projectMemberMapper.selectCount(new LambdaQueryWrapper<ProjectMember>()
+        Long memberCount = projectMemberMapper.selectCount(new LambdaQueryWrapper<ProjectMember>()
                 .eq(ProjectMember::getProjectId, projectId)
-                .eq(ProjectMember::getMemberType, ProjectMember.MemberType.AGENT)
-                .eq(ProjectMember::getMasterId, viewerId));
-        if (liableAgentMemberCount != null && liableAgentMemberCount > 0) {
+                .eq(ProjectMember::getMemberId, subject.id())
+                .eq(ProjectMember::getMemberType, toMemberType(subject.type())));
+        if (memberCount != null && memberCount > 0) {
             return;
         }
 
@@ -661,6 +702,24 @@ public class ProjectServiceImpl implements ProjectService {
         return new SubjectRef(subjectId, subjectType);
     }
 
+    private SubjectRef requireViewerSubject(Long principalHumanId, Long subjectId, SubjectType subjectType) {
+        SubjectRef subject = requireBusinessSubject(subjectId, subjectType, "project.viewer.invalid");
+        requireAuthorizedLiability(principalHumanId, subject, "project.viewer.forbidden");
+        return subject;
+    }
+
+    private SubjectRef requireActorSubject(
+            Long principalHumanId,
+            Long subjectId,
+            SubjectType subjectType,
+            String invalidCode,
+            String forbiddenCode
+    ) {
+        SubjectRef subject = requireBusinessSubject(subjectId, subjectType, invalidCode);
+        requireAuthorizedLiability(principalHumanId, subject, forbiddenCode);
+        return subject;
+    }
+
     private SubjectSummaryResponse requireActiveSubject(SubjectRef subject) {
         SubjectSummaryResponse summary = subjectDirectoryApi.getSubject(subject);
         if (summary == null) {
@@ -681,8 +740,17 @@ public class ProjectServiceImpl implements ProjectService {
         return liability;
     }
 
-    private LiabilityChain requireCurrentOwnerAuthority(Long principalHumanId, Project project, String errorCode) {
-        return requireAuthorizedLiability(principalHumanId, ownerRef(project), errorCode);
+    private LiabilityChain requireCurrentOwnerAuthority(
+            Long principalHumanId,
+            SubjectRef actor,
+            Project project,
+            String errorCode
+    ) {
+        SubjectRef owner = ownerRef(project);
+        if (!owner.equals(actor)) {
+            throw BizException.of(errorCode);
+        }
+        return requireAuthorizedLiability(principalHumanId, actor, errorCode);
     }
 
     private static SubjectRef ownerRef(Project project) {
@@ -875,8 +943,8 @@ public class ProjectServiceImpl implements ProjectService {
     }
 
     @Override
-    public ProjectTaskResponse createTask(Long viewerId, Long projectId, CreateProjectTaskRequest request) {
-        if (viewerId == null) {
+    public ProjectTaskResponse createTask(Long principalHumanId, Long projectId, CreateProjectTaskRequest request) {
+        if (principalHumanId == null) {
             throw BizException.of("auth.user.not_found");
         }
         if (projectId == null) {
@@ -892,7 +960,14 @@ public class ProjectServiceImpl implements ProjectService {
         if (project == null) {
             throw BizException.of("project.not_found");
         }
-        ensureViewerCanAccess(viewerId, projectId, project);
+        SubjectRef actor = requireActorSubject(
+                principalHumanId,
+                request.getActorSubjectId(),
+                request.getActorSubjectType(),
+                "project.task.actor.invalid",
+                "project.forbidden"
+        );
+        ensureActorCanAccessProject(principalHumanId, actor, projectId, project);
 
         SubjectRef assignee = requireBusinessSubject(
                 request.getAssigneeSubjectId(),
@@ -919,8 +994,8 @@ public class ProjectServiceImpl implements ProjectService {
                 .priority(parseTaskPriority(request.getPriority()))
                 .createTime(LocalDateTime.now())
                 .updateTime(LocalDateTime.now())
-                .createBy(viewerId)
-                .updateBy(viewerId)
+                .createBy(principalHumanId)
+                .updateBy(principalHumanId)
                 .build();
 
         projectTaskMapper.insert(task);
@@ -929,8 +1004,8 @@ public class ProjectServiceImpl implements ProjectService {
     }
 
     @Override
-    public ProjectPaymentResponse createPayment(Long viewerId, Long projectId, CreateProjectPaymentRequest request) {
-        if (viewerId == null) {
+    public ProjectPaymentResponse createPayment(Long principalHumanId, Long projectId, CreateProjectPaymentRequest request) {
+        if (principalHumanId == null) {
             throw BizException.of("auth.user.not_found");
         }
         if (projectId == null) {
@@ -945,7 +1020,14 @@ public class ProjectServiceImpl implements ProjectService {
         if (project == null) {
             throw BizException.of("project.not_found");
         }
-        ensureViewerCanAccess(viewerId, projectId, project);
+        SubjectRef actor = requireActorSubject(
+                principalHumanId,
+                request.getActorSubjectId(),
+                request.getActorSubjectType(),
+                "project.payment.actor.invalid",
+                "project.forbidden"
+        );
+        ensureActorCanAccessProject(principalHumanId, actor, projectId, project);
 
         SubjectRef recipient = requireBusinessSubject(
                 request.getRecipientSubjectId(),
@@ -987,8 +1069,8 @@ public class ProjectServiceImpl implements ProjectService {
                 .date(StringUtils.hasText(request.getDate()) ? request.getDate().trim() : LocalDate.now().toString())
                 .createTime(LocalDateTime.now())
                 .updateTime(LocalDateTime.now())
-                .createBy(viewerId)
-                .updateBy(viewerId)
+                .createBy(principalHumanId)
+                .updateBy(principalHumanId)
                 .build();
 
         projectPaymentMapper.insert(payment);
@@ -1012,8 +1094,8 @@ public class ProjectServiceImpl implements ProjectService {
             throw BizException.of("project.payment.wallet.invalid");
         }
 
-        SubjectRef settlementSubject = settlementSubject(wallet, directRecipient);
-        if (settlementSubject.id() == null || settlementSubject.type() == SubjectType.SYSTEM) {
+        SubjectRef settlementSubject = wallet.settlementSubject();
+        if (settlementSubject == null || settlementSubject.id() == null || settlementSubject.type() == SubjectType.SYSTEM) {
             throw BizException.of("project.payment.wallet.invalid");
         }
 
@@ -1029,16 +1111,6 @@ public class ProjectServiceImpl implements ProjectService {
                 liability != null ? liability.route() : null,
                 liability != null ? liability.reason() : null
         );
-    }
-
-    private static SubjectRef settlementSubject(WalletCapability wallet, SubjectRef directRecipient) {
-        if (wallet.settlementHumanId() != null) {
-            return SubjectRef.human(wallet.settlementHumanId());
-        }
-        if (Boolean.TRUE.equals(wallet.financialAutonomy())) {
-            return directRecipient;
-        }
-        return directRecipient;
     }
 
     private static ProjectPayment.PaymentStatus parsePaymentStatus(String raw) {

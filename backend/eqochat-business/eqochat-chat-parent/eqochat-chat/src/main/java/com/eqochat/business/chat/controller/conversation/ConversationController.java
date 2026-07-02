@@ -1,8 +1,10 @@
 package com.eqochat.business.chat.controller.conversation;
 
 import com.eqochat.framework.common.ApiResponse;
+import com.eqochat.framework.common.BizException;
 import com.eqochat.framework.common.PageResponse;
 import com.eqochat.framework.common.UserContext;
+import com.eqochat.business.actor.api.model.SubjectType;
 import com.eqochat.business.chat.api.dto.request.CreateConversationRequest;
 import com.eqochat.business.chat.api.dto.request.MarkConversationReadRequest;
 import com.eqochat.business.chat.api.dto.request.SendMessageRequest;
@@ -26,8 +28,12 @@ public class ConversationController {
     
     @GetMapping
     public ApiResponse<List<ConversationSummaryResponse>> listConversations(
-            @RequestParam(required = false) String q) {
-        List<ConversationSummaryResponse> list = conversationService.listConversations(UserContext.requireCurrentUser());
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) Long viewerSubjectId,
+            @RequestParam(required = false) SubjectType viewerSubjectType) {
+        requireExplicitViewerSubject(viewerSubjectId, viewerSubjectType);
+        List<ConversationSummaryResponse> list = conversationService.listConversations(
+                UserContext.requireCurrentUser(), viewerSubjectId, viewerSubjectType);
         if (q == null || q.isBlank()) {
             return ApiResponse.success(list);
         }
@@ -42,8 +48,13 @@ public class ConversationController {
     }
 
     @GetMapping("/{conversationId}")
-    public ApiResponse<ConversationSummaryResponse> getConversation(@PathVariable Long conversationId) {
-        return ApiResponse.success(conversationService.getConversation(UserContext.requireCurrentUser(), conversationId));
+    public ApiResponse<ConversationSummaryResponse> getConversation(
+            @PathVariable Long conversationId,
+            @RequestParam(required = false) Long viewerSubjectId,
+            @RequestParam(required = false) SubjectType viewerSubjectType) {
+        requireExplicitViewerSubject(viewerSubjectId, viewerSubjectType);
+        return ApiResponse.success(conversationService.getConversation(
+                UserContext.requireCurrentUser(), conversationId, viewerSubjectId, viewerSubjectType));
     }
     
     @PostMapping
@@ -56,9 +67,12 @@ public class ConversationController {
     public ApiResponse<PageResponse<MessageResponse>> getMessages(
             @PathVariable Long conversationId,
             @RequestParam(required = false) Long lastMessageId,
-            @RequestParam(required = false) Integer limit) {
+            @RequestParam(required = false) Integer limit,
+            @RequestParam(required = false) Long viewerSubjectId,
+            @RequestParam(required = false) SubjectType viewerSubjectType) {
+        requireExplicitViewerSubject(viewerSubjectId, viewerSubjectType);
         return ApiResponse.success(conversationService.getMessages(
-                UserContext.requireCurrentUser(), conversationId, lastMessageId, limit));
+                UserContext.requireCurrentUser(), conversationId, lastMessageId, limit, viewerSubjectId, viewerSubjectType));
     }
 
     @PostMapping("/{conversationId}/messages")
@@ -74,5 +88,11 @@ public class ConversationController {
                                       @RequestBody @Valid MarkConversationReadRequest request) {
         conversationService.markRead(UserContext.requireCurrentUser(), conversationId, request);
         return ApiResponse.success(null);
+    }
+
+    private static void requireExplicitViewerSubject(Long viewerSubjectId, SubjectType viewerSubjectType) {
+        if (viewerSubjectId == null || viewerSubjectType == null || viewerSubjectType == SubjectType.SYSTEM) {
+            throw BizException.of("conv.viewer.invalid");
+        }
     }
 }

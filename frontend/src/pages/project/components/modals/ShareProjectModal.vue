@@ -3,7 +3,7 @@
     <view class="modal-card modal-card-md" @click.stop>
       <view class="modal-head">
         <text class="sheet-title">{{ t('page.project.modals.share.title') }}</text>
-        <text class="sheet-close" @click="emit('close')">✕</text>
+        <text class="sheet-close" @click="emit('close')">x</text>
       </view>
 
       <view class="modal-body modal-body-spaced">
@@ -86,4 +86,3 @@ const getMemberInitial = props.getMemberInitial
 </script>
 
 <style scoped src="../../project.styles.css"></style>
-

@@ -3,6 +3,8 @@ package com.eqochat.business.notification.service.impl;
 import com.eqochat.business.actor.api.model.SubjectRef;
 import com.eqochat.business.notification.entity.Notification;
 import com.eqochat.business.notification.mapper.NotificationMapper;
+import com.eqochat.framework.websocket.WebSocketMessage;
+import com.eqochat.framework.websocket.WebSocketSender;
 import com.eqochat.framework.common.BizException;
 import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
@@ -19,6 +21,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -26,6 +29,8 @@ class NotificationServiceImplActorContractTest {
 
     @Mock
     NotificationMapper notificationMapper;
+    @Mock
+    WebSocketSender webSocketSender;
 
     @Test
     void mapperQueriesScopeRecipientBySubjectType() throws Exception {
@@ -45,7 +50,7 @@ class NotificationServiceImplActorContractTest {
 
     @Test
     void sendNotificationPersistsExplicitRecipientAndSenderSubjects() {
-        NotificationServiceImpl service = new NotificationServiceImpl(notificationMapper);
+        NotificationServiceImpl service = new NotificationServiceImpl(notificationMapper, webSocketSender);
 
         service.sendNotification(
                 SubjectRef.agent(101L),
@@ -66,8 +71,35 @@ class NotificationServiceImplActorContractTest {
     }
 
     @Test
+    void sendNotificationPushesRealtimeToRecipientSubject() {
+        NotificationServiceImpl service = new NotificationServiceImpl(notificationMapper, webSocketSender);
+
+        service.sendNotification(
+                SubjectRef.agent(101L),
+                "MESSAGE_MENTION",
+                "Mention",
+                "hello",
+                "{\"postId\":1}",
+                SubjectRef.human(2L)
+        );
+
+        ArgumentCaptor<WebSocketMessage.BaseMessage> messageCaptor =
+                ArgumentCaptor.forClass(WebSocketMessage.BaseMessage.class);
+        verify(webSocketSender).sendToSubject(org.mockito.ArgumentMatchers.eq("101"), org.mockito.ArgumentMatchers.eq("AGENT"), messageCaptor.capture());
+        WebSocketMessage.BaseMessage message = messageCaptor.getValue();
+        assertThat(message.getType()).isEqualTo(WebSocketMessage.MessageType.NOTIFICATION);
+        assertThat(message.getSenderSubjectId()).isEqualTo("2");
+        assertThat(message.getSenderSubjectType()).isEqualTo("HUMAN");
+        assertThat(message.getRecipientSubjectId()).isEqualTo("101");
+        assertThat(message.getRecipientSubjectType()).isEqualTo("AGENT");
+        NotificationResponsePayload payload = NotificationResponsePayload.from(message.getPayload());
+        assertThat(payload.recipientSubjectId()).isEqualTo(101L);
+        assertThat(payload.recipientSubjectType()).isEqualTo("AGENT");
+    }
+
+    @Test
     void sendNotificationRequiresExplicitSender() {
-        NotificationServiceImpl service = new NotificationServiceImpl(notificationMapper);
+        NotificationServiceImpl service = new NotificationServiceImpl(notificationMapper, webSocketSender);
 
         assertThatThrownBy(() -> service.sendNotification(
                 SubjectRef.human(2L),
@@ -79,11 +111,12 @@ class NotificationServiceImplActorContractTest {
         ))
                 .isInstanceOf(BizException.class)
                 .hasMessage("notification.sender.required");
+        verifyNoInteractions(webSocketSender);
     }
 
     @Test
     void markReadUsesRecipientSubjectScope() {
-        NotificationServiceImpl service = new NotificationServiceImpl(notificationMapper);
+        NotificationServiceImpl service = new NotificationServiceImpl(notificationMapper, webSocketSender);
         Notification notification = Notification.builder()
                 .id(10L)
                 .recipientId(2L)
@@ -101,7 +134,7 @@ class NotificationServiceImplActorContractTest {
 
     @Test
     void listNotificationsReturnsCanonicalSubjectFields() {
-        NotificationServiceImpl service = new NotificationServiceImpl(notificationMapper);
+        NotificationServiceImpl service = new NotificationServiceImpl(notificationMapper, webSocketSender);
         when(notificationMapper.findByRecipient(2L, "HUMAN")).thenReturn(List.of(Notification.builder()
                 .id(10L)
                 .recipientId(2L)
@@ -140,5 +173,16 @@ class NotificationServiceImplActorContractTest {
             }
         }
         throw new IllegalArgumentException("method not found: " + methodName);
+    }
+
+    private record NotificationResponsePayload(
+            Long recipientSubjectId,
+            String recipientSubjectType
+    ) {
+        static NotificationResponsePayload from(Object raw) {
+            com.eqochat.business.notification.api.dto.response.NotificationResponse response =
+                    (com.eqochat.business.notification.api.dto.response.NotificationResponse) raw;
+            return new NotificationResponsePayload(response.getRecipientSubjectId(), response.getRecipientSubjectType());
+        }
     }
 }

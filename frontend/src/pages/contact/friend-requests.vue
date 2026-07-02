@@ -150,6 +150,7 @@ import { useI18nWithFormat } from '@/composables/useI18nWithFormat'
 import { friendRequestApi, type FriendRequestItem } from '@/api/modules/friendRequest'
 import type { ContactSubjectType } from '@/api/modules/contact'
 import { useUserStore } from '@/store/modules/user'
+import { useActiveSubjectStore } from '@/store/modules/activeSubject'
 import { getApiErrorMessage } from '@/utils/request'
 import { wsClient } from '@/utils/websocket'
 import type { BaseMessage } from '@/types/websocket'
@@ -157,6 +158,7 @@ import PageHeader from '@/components/PageHeader.vue'
 
 const { t, tf } = useI18nWithFormat()
 const userStore = useUserStore()
+const activeSubjectStore = useActiveSubjectStore()
 
 // WebSocket 监听 ID
 let wsListenerId: string | null = null
@@ -244,14 +246,8 @@ const goBack = () => {
 
 // 跳转到主体资料
 const goToSubjectProfile = (subjectId: number, subjectType: ContactSubjectType) => {
-  if (subjectType === 'AGENT') {
-    uni.navigateTo({
-      url: `/pages/contact/contact-detail?targetSubjectType=AGENT&targetSubjectId=${subjectId}`
-    })
-    return
-  }
   uni.navigateTo({
-    url: `/pages/contact/user-profile?targetSubjectType=HUMAN&targetSubjectId=${subjectId}`
+    url: `/pages/contact/user-profile?targetSubjectType=${subjectType}&targetSubjectId=${subjectId}`
   })
 }
 
@@ -259,7 +255,7 @@ const goToSubjectProfile = (subjectId: number, subjectType: ContactSubjectType) 
 const loadReceivedRequests = async () => {
   receivedLoading.value = true
   try {
-    receivedRequests.value = await friendRequestApi.listReceived()
+    receivedRequests.value = await friendRequestApi.listReceived(activeSubjectStore.friendRequestSubjectParams())
   } catch (err: any) {
     uni.showToast({ title: getApiErrorMessage(err, t('toast.load_failed')), icon: 'none' })
     receivedRequests.value = []
@@ -272,7 +268,7 @@ const loadReceivedRequests = async () => {
 const loadSentRequests = async () => {
   sentLoading.value = true
   try {
-    sentRequests.value = await friendRequestApi.listSent()
+    sentRequests.value = await friendRequestApi.listSent(activeSubjectStore.friendRequestSubjectParams())
   } catch (err: any) {
     uni.showToast({ title: getApiErrorMessage(err, t('toast.load_failed')), icon: 'none' })
     sentRequests.value = []
@@ -336,12 +332,13 @@ const stopWsListener = () => {
   }
 }
 
-onShow(() => {
+onShow(async () => {
   if (!userStore.isLoggedIn) {
     uni.reLaunch({ url: '/pages/auth/login' })
     return
   }
   uni.setNavigationBarTitle({ title: t('page.contact.new_friends') })
+  await activeSubjectStore.ensureLoaded()
   loadReceivedRequests()
   loadSentRequests()
   startWsListener()

@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { worldApi, type WorldPost, type WorldPostReply } from '@/api/modules/world'
+import { worldApi, type WorldPost, type WorldPostReply, type WorldSubjectParams } from '@/api/modules/world'
 import { getApiErrorMessage } from '@/utils/request'
 
 const props = defineProps<{
   post: WorldPost
+  viewer?: WorldSubjectParams
 }>()
 
 const emit = defineEmits<{
@@ -27,7 +28,11 @@ async function loadReplies() {
   if (!props.post?.id) return
   loadingReplies.value = true
   try {
-    const list = await worldApi.listReplies(props.post.id, { limit: 100 })
+    const list = await worldApi.listReplies(props.post.id, {
+      limit: 100,
+      viewerSubjectId: props.viewer?.subjectId,
+      viewerSubjectType: props.viewer?.subjectType,
+    })
     replies.value = Array.isArray(list) ? list : []
   } catch (err: any) {
     uni.showToast({ title: getApiErrorMessage(err, ''), icon: 'none' })
@@ -118,11 +123,11 @@ function onToggleReplyUpvote(targetId: string) {
               <text class="detail-action-text">{{ post.upvotes }}</text>
             </view>
             <view class="detail-action" @click="emit('reply')">
-              <text class="detail-action-icon">💬</text>
+              <text class="detail-action-icon">R</text>
               <text class="detail-action-text">{{ post.replies }}</text>
             </view>
             <view class="detail-action" @click="emit('share')">
-              <text class="detail-action-icon">⤴</text>
+              <text class="detail-action-icon">S</text>
               <text class="detail-action-text">{{ $t('page.world.share') }}</text>
             </view>
           </view>
@@ -457,4 +462,3 @@ function onToggleReplyUpvote(targetId: string) {
   color: var(--c-secondary);
 }
 </style>
-

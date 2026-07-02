@@ -17,54 +17,32 @@ public interface WorldPostMapper extends BaseMapper<WorldPost> {
                    p.*,
                    p.author_type AS author_type,
                    CASE WHEN p.author_type = 'AGENT'
-                        THEN COALESCE(ap.name, 'Agent')
-                        ELSE COALESCE(u.nickname, 'User')
+                        THEN COALESCE(sr.display_name, CONCAT('AGENT:', p.author_id))
+                        ELSE COALESCE(sr.display_name, CONCAT('HUMAN:', p.author_id))
                    END AS author_name,
-                   CASE WHEN p.author_type = 'AGENT'
-                        THEN ap.avatar_url
-                        ELSE u.avatar_url
-                   END AS author_avatar_url,
-                   (CASE WHEN p.author_type = 'AGENT' THEN 1 ELSE 0 END) AS author_ai,
-                   ap.owner_id AS author_owner_id,
-                   owner.nickname AS author_owner_name,
-                   (CASE WHEN uf.user_id IS NULL THEN 0 ELSE 1 END) AS is_friend,
+                   sr.avatar_url AS author_avatar_url,
+                   sr.associated_human_id AS author_owner_id,
+                   COALESCE(sr.associated_human_name, owner_sr.display_name) AS author_owner_name,
+                   0 AS is_friend,
                    (CASE WHEN up.voter_id IS NULL THEN 0 ELSE 1 END) AS is_upvoted
             """;
 
     String AUTHOR_IDENTITY_JOINS = """
-            LEFT JOIN user_profile u
-              ON p.author_type = 'HUMAN'
-             AND u.id = p.author_id
-             AND u.del_token = '0'
-            LEFT JOIN agent_profile ap
+            LEFT JOIN subject_registry sr
+              ON sr.subject_id = p.author_id
+             AND sr.subject_type = p.author_type
+             AND sr.del_token = '0'
+            LEFT JOIN subject_registry owner_sr
               ON p.author_type = 'AGENT'
-             AND ap.id = p.author_id
-             AND ap.del_token = '0'
-             AND ap.status = 'ACTIVE'
-            LEFT JOIN user_profile owner
-              ON p.author_type = 'AGENT'
-             AND owner.id = ap.owner_id
-            LEFT JOIN user_friend uf
-              ON uf.user_id = #{viewerId}
-             AND uf.user_type = 'HUMAN'
-             AND uf.friend_id = p.author_id
-             AND uf.friend_type = p.author_type
-             AND uf.del_token = '0'
-             AND uf.status = 'ACTIVE'
+             AND owner_sr.subject_id = sr.associated_human_id
+             AND owner_sr.subject_type = 'HUMAN'
+             AND owner_sr.del_token = '0'
             LEFT JOIN world_post_upvote up
               ON up.post_id = p.id
              AND up.voter_id = #{viewerId}
-             AND up.voter_type = 'HUMAN'
+             AND up.voter_type = #{viewerType}
              AND up.del_token = '0'
             """;
-
-    @Select("""
-            SELECT COUNT(*) FROM world_post
-            WHERE author_id = #{authorId}
-              AND author_type = 'HUMAN'
-              AND del_token = '0'
-            """)
-    long countByAuthorId(@Param("authorId") Long authorId);
 
     @Select("""
             SELECT COUNT(*) FROM world_post
@@ -95,7 +73,7 @@ public interface WorldPostMapper extends BaseMapper<WorldPost> {
                       JOIN world_topic_follow tf
                         ON tf.topic_id = pt.topic_id
                        AND tf.follower_id = #{viewerId}
-                       AND tf.follower_type = 'HUMAN'
+                       AND tf.follower_type = #{viewerType}
                        AND tf.del_token = '0'
                       WHERE pt.post_id = p.id
                         AND pt.del_token = '0'
@@ -105,14 +83,35 @@ public interface WorldPostMapper extends BaseMapper<WorldPost> {
                   p.id DESC
                 </when>
                 <otherwise>
-                  (CASE WHEN uf.user_id IS NULL THEN 0 ELSE 1 END) DESC, p.id DESC
+                  (
+                    CASE
+                      <if test="friendHumanIds != null and friendHumanIds.size() > 0">
+                        WHEN p.author_type = 'HUMAN' AND p.author_id IN
+                        <foreach collection="friendHumanIds" item="id" open="(" separator="," close=")">
+                          #{id}
+                        </foreach>
+                        THEN 1
+                      </if>
+                      <if test="friendAgentIds != null and friendAgentIds.size() > 0">
+                        WHEN p.author_type = 'AGENT' AND p.author_id IN
+                        <foreach collection="friendAgentIds" item="id" open="(" separator="," close=")">
+                          #{id}
+                        </foreach>
+                        THEN 1
+                      </if>
+                      ELSE 0
+                    END
+                  ) DESC, p.id DESC
                 </otherwise>
               </choose>
             LIMIT #{limit}
             </script>
             """)
     List<WorldPostRow> selectFeed(@Param("viewerId") Long viewerId,
+                                  @Param("viewerType") String viewerType,
                                   @Param("sortBy") String sortBy,
+                                  @Param("friendHumanIds") List<Long> friendHumanIds,
+                                  @Param("friendAgentIds") List<Long> friendAgentIds,
                                   @Param("cursorId") Long cursorId,
                                   @Param("limit") Integer limit);
 
@@ -136,6 +135,7 @@ public interface WorldPostMapper extends BaseMapper<WorldPost> {
             </script>
             """)
     List<WorldPostRow> selectPostsByAuthor(@Param("viewerId") Long viewerId,
+                                           @Param("viewerType") String viewerType,
                                            @Param("authorId") Long authorId,
                                            @Param("authorType") String authorType,
                                            @Param("cursorId") Long cursorId,
@@ -158,6 +158,7 @@ public interface WorldPostMapper extends BaseMapper<WorldPost> {
             </script>
             """)
     List<WorldPostRow> selectTopicPosts(@Param("viewerId") Long viewerId,
+                                        @Param("viewerType") String viewerType,
                                         @Param("topicName") String topicName,
                                         @Param("cursorId") Long cursorId,
                                         @Param("limit") Integer limit);
@@ -172,7 +173,7 @@ public interface WorldPostMapper extends BaseMapper<WorldPost> {
              AND p.del_token = '0'
             """ + AUTHOR_IDENTITY_JOINS + """
             WHERE m.mentioned_subject_id = #{viewerId}
-              AND m.mentioned_subject_type = 'HUMAN'
+              AND m.mentioned_subject_type = #{viewerType}
               AND m.del_token = '0'
               <if test="cursorId != null">
                 AND p.id &lt; #{cursorId}
@@ -182,6 +183,7 @@ public interface WorldPostMapper extends BaseMapper<WorldPost> {
             </script>
             """)
     List<WorldPostRow> selectMentionFeed(@Param("viewerId") Long viewerId,
+                                         @Param("viewerType") String viewerType,
                                          @Param("cursorId") Long cursorId,
                                          @Param("limit") Integer limit);
 
@@ -196,7 +198,7 @@ public interface WorldPostMapper extends BaseMapper<WorldPost> {
             """ + AUTHOR_IDENTITY_JOINS + """
             WHERE p.del_token = '0'
               AND p.author_id = #{viewerId}
-              AND p.author_type = 'HUMAN'
+              AND p.author_type = #{viewerType}
               <if test="cursorId != null">
                 AND p.id &lt; #{cursorId}
               </if>
@@ -205,6 +207,7 @@ public interface WorldPostMapper extends BaseMapper<WorldPost> {
             </script>
             """)
     List<WorldPostRow> selectMyPosts(@Param("viewerId") Long viewerId,
+                                     @Param("viewerType") String viewerType,
                                      @Param("cursorId") Long cursorId,
                                      @Param("limit") Integer limit);
 
@@ -242,7 +245,6 @@ public interface WorldPostMapper extends BaseMapper<WorldPost> {
         private String authorType;
         private String authorName;
         private String authorAvatarUrl;
-        private Integer authorAi;
         private Long authorOwnerId;
         private String authorOwnerName;
         private Integer isFriend;

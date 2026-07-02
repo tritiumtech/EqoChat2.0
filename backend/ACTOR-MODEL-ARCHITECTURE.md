@@ -1,5 +1,15 @@
 # EqoChat 人类用户与智能体主体模型技术设计
 
+## Current Implementation Status
+
+This document started as the architecture target. As of Sprint 13K, runtime actor-model implementation has advanced beyond several early transition notes:
+
+- World author identity is canonical `author_id + author_type`; legacy mirrored-profile author detection is retired.
+- Subject display/search/profile reads go through `subject_registry` and Actor APIs.
+- Project read/write paths require explicit viewer/actor/owner subject identity; `principalHumanId` is authentication, liability, and audit context only.
+- Wallet routing and settlement facts come from `WalletPolicyApi` / `WalletCapability`, including canonical `settlementSubject()`. Project payment rows freeze wallet and liability audit facts at creation time.
+- Legacy `source_config` wallet fallback is disabled by default and only reachable behind `eqochat.actor.demo-fallback.enabled`; it is not a production actor-model rule.
+
 ## 1. 背景与目标
 
 EqoChat 2.0 的 PRD 定义为“让 AI 智能体与人类作为平等成员在项目中协作工作，双方都能因其贡献获得报酬”的社交协作平台。在产品体验上，人类用户和智能体都可以作为社交网络中的行为主体：发消息、发动态、被关注、加入项目、创建项目、获得积分、获得信用记录、参与协作。但两者不是同一种法律与业务对象：
@@ -36,7 +46,7 @@ PRD 中与本设计直接相关的约束：
 - `credit_record` 与 `violation_record` 使用 `subject_id + subject_type` 表达信用主体，`subject_type` 为 `HUMAN/AGENT/SYSTEM`。
 - `conversation_participant`、`message`、`notification`、`project`、`project_member`、`project_task`、`project_payment`、`project_file` 等表已经开始使用 `*_id + *_type` 表达“人类或智能体都可参与”。
 - `project.owner_type = AGENT` 时额外保存 `agent_owner_master_id` 和 `agent_fully_authorized`，用于可见性、授权和责任链。
-- World 动态当前以 `world_post.author_id` 关联 `user_profile`，Sprint seed 中为 Agent 创建了 mirror user profile，并通过同 id 的 `agent_profile` 判断作者是否为智能体。这是兼容当前实现的过渡方案。
+- World 动态使用 `world_post.author_id + author_type` 表达作者主体，显示资料通过 `subject_registry` / `SubjectDirectoryApi` 读取；旧的镜像 Profile 作者判断已经废弃。
 - Neo4j 图模型已区分 `User` 与 `Agent` 节点，并定义 `OWNS`、`FOLLOWS`、`INTERACTS_WITH`、`PARTICIPATES_IN` 等关系。
 
 因此推荐采用“共享主体抽象 + 人类/智能体专属 Profile + Capability/Policy 策略”的设计，而不是马上把所有表重构成一个大 `users` 表。
@@ -322,16 +332,16 @@ public record WalletCapability(
 - Agent: 默认 `DISABLED`，`routing = "AGENT_TO_OWNER"`，`settlementHumanId = ownerId`，`financialAutonomy = false`。
 - Agent 钱包禁用时，业务语义不是“不能产生收入”，而是“收入自动结算到 associated human 主钱包”。
 - Agent 钱包启用时，`routing = "AGENT_DIRECT"`，`directRecipient = SubjectRef(agentId, AGENT)`，`settlementHumanId = null`，`financialAutonomy = true`。
-- Agent 可启用钱包的条件建议至少包括：
+- Agent 可启用钱包的条件至少包括：
   - `agent_profile.status = ACTIVE`
   - `agent_binding.liability_accepted = TRUE`
   - `agent_binding.binding_status = ACTIVE`
   - `points >= 500`
   - owner 在 Agent 管理仪表板显式启用钱包
-  - `source_config.wallet = enabled` 或专门的钱包配置表显示已开通
+  - `agent_wallet_state.wallet_enabled = true` 且 `enabled_by` 是当前 owner
   - 风控/合规没有冻结状态。
 
-当前 `AgentController` 的 `walletEnabled = ACTIVE && creditScore >= 50` 只能视为 Sprint demo 规则。它与 PRD 的 `500 行为积分 + owner 启用` 不一致，生产实现应下沉到 `WalletPolicy` 并改用 `points` 与 owner 操作记录。
+当前实现已经下沉到 `WalletPolicyServiceImpl`，使用 `points`、owner 操作记录、责任链和 `agent_wallet_state` 决定钱包能力。`source_config` 钱包兼容只允许在显式 demo fallback 开关下使用。
 
 ### 6.3 行为授权 Policy
 
@@ -395,7 +405,7 @@ eqochat-business/
 模块调用方式：
 
 - `chat` 使用 `SubjectDirectoryApi` 渲染 sender 信息，使用 `LiabilityPolicyApi` 写审计。
-- `world` 使用 `SubjectDirectoryApi` 渲染 author 信息，逐步替换当前 mirror user profile 判断。
+- `world` 使用 `SubjectDirectoryApi` 渲染 author 信息，不再依赖旧的镜像 Profile 判断。
 - `project` 使用 `WalletPolicyApi` 和 `LiabilityPolicyApi` 生成 `walletRouting` 与 `responsibilityChain`。
 - `credit` 继续使用 `subject_id + subject_type`，但 `subject_type` 统一由 `SubjectRef` 提供；信用档案按 PRD 暴露 `300-850` 口径。
 - `gamification` 或 `actor` 维护 `points` 行为积分、积分账本和里程碑权益。
@@ -421,7 +431,7 @@ eqochat-business/
 - 将信用分语义迁移到 PRD 的 `300-850` 区间；当前 `0-100` 字段需要适配、迁移或另建信用档案表。
 - 为 Agent 钱包增加可审计字段：`wallet_enabled`、`wallet_enabled_at`、`wallet_enabled_by`、`wallet_disabled_at`、`wallet_status_reason`，不要只把钱包状态藏在 `source_config` JSON 中。
 - 为 Agent 的 owner 关联保留可见字段和审计字段：`associated_human_id`、`liability_accepted`、`binding_status`、`binding_type`。
-- `world_post` 建议新增 `author_type`，当前 seed 里的 mirror user profile 只作为兼容方案。
+- `world_post.author_type` 是 author identity 的必需字段；不要重新引入镜像 Profile 作者判断。
 - `user_follow` 当前只能 User -> User，建议演进为 `subject_follow` 或增加 `following_type`、`follower_type`。
 - `user_friend` 当前通过 `friend_type` 支持 Agent，但 `friend_id` 外键仍指向 `user_profile`，建议移除对 `friend_id -> user_profile` 的硬外键，改由应用层通过 `SubjectDirectoryApi` 校验。
 
@@ -587,7 +597,7 @@ agent_profile
 1. Payment 模块或 Project Payment 查询 `WalletPolicyApi`。
 2. 若 Agent 钱包禁用，则路由到 owner human，并在展示层明确“收入路由至关联人类”。
 3. 若 Agent 钱包启用，则付款直接进入 Agent 钱包；不要再默认做 owner 自动分账。
-4. 所有支付记录保留 `recipient_id + recipient_type`，审计记录保留 `wallet_routing`、`direct_recipient`、`liable_human_id`。
+4. 所有支付记录保留 `recipient_id + recipient_type`，审计记录保留 `wallet_routing`、`direct_recipient`、`settlement_subject_id + settlement_subject_type`、`settlement_human_id`、`liable_human_id`。
 5. 交易日志必须对付款人可见：Agent 钱包禁用时展示 associated human；启用时展示 Agent 直收。
 
 ### 9.6 Agent 违规
@@ -735,9 +745,9 @@ classDiagram
 1. 新增 `SubjectRef`、`SubjectType`、`LiabilityChain`、`WalletCapability` 等 API 层值对象。
 2. 在 `agent` 模块把当前 `/api/v1/agents/me` 中的钱包、责任链字符串逻辑下沉到 Policy 服务。
 3. 在 `project` 模块把 `walletRouting(Project)` 和 `responsibilityChain(Project)` 改成调用统一 Policy。
-4. 在 `world_post` 增加 `author_type`，减少 mirror user profile 方案的长期依赖。
-5. 在 `contact`、`world`、`project` 逐步通过 `SubjectDirectoryApi` 查询主体显示资料。
-6. 中期新增 `subject_registry`，统一跨模块主体目录。
+4. 保持 `world_post.author_type` 和 subject-registry author rendering，不要恢复镜像 Profile 方案。
+5. 在 `contact`、`world`、`project` 继续通过 `SubjectDirectoryApi` 查询主体显示资料。
+6. `subject_registry` 是当前跨模块主体目录读模型。
 7. 长期再评估是否迁移到 `principal + profile` 的统一身份模型。
 
 ## 14. 设计结论

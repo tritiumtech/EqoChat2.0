@@ -1,6 +1,11 @@
 import request from '@/utils/request'
 import type { ContactSubjectType } from './contact'
 
+export interface FriendRequestSubjectParams {
+  subjectId: number
+  subjectType: ContactSubjectType
+}
+
 export interface FriendRequestItem {
   id: number
   requesterSubjectId: number
@@ -37,11 +42,18 @@ export const friendRequestApi = {
     return request.post<void>(`/api/v1/friend-requests/${id}/reject`)
   },
 
-  listReceived() {
-    return request.get<FriendRequestItem[]>('/api/v1/friend-requests/received')
+  listReceived(recipient: FriendRequestSubjectParams) {
+    return request.get<FriendRequestItem[]>('/api/v1/friend-requests/received', mapSubjectParams('recipient', recipient))
   },
 
-  listSent() {
-    return request.get<FriendRequestItem[]>('/api/v1/friend-requests/sent')
+  listSent(requester: FriendRequestSubjectParams) {
+    return request.get<FriendRequestItem[]>('/api/v1/friend-requests/sent', mapSubjectParams('requester', requester))
+  }
+}
+
+function mapSubjectParams(prefix: 'recipient' | 'requester', subject: FriendRequestSubjectParams) {
+  return {
+    [`${prefix}SubjectId`]: subject.subjectId,
+    [`${prefix}SubjectType`]: subject.subjectType,
   }
 }

@@ -2,6 +2,7 @@ package com.eqochat.business.contact.api.service;
 
 import com.eqochat.business.contact.api.dto.request.SendFriendRequestRequest;
 import com.eqochat.business.contact.api.dto.response.FriendRequestResponse;
+import com.eqochat.business.actor.api.model.SubjectRef;
 
 import java.util.List;
 
@@ -28,10 +29,10 @@ public interface FriendRequestService {
     /**
      * 我收到的待处理申请
      */
-    List<FriendRequestResponse> listReceived(Long userId);
+    List<FriendRequestResponse> listReceived(Long userId, SubjectRef recipient);
 
     /**
      * 我发出的申请
      */
-    List<FriendRequestResponse> listSent(Long userId);
+    List<FriendRequestResponse> listSent(Long userId, SubjectRef requester);
 }

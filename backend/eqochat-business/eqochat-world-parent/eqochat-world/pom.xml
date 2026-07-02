@@ -24,11 +24,11 @@
         </dependency>
         <dependency>
             <groupId>com.eqochat</groupId>
-            <artifactId>eqochat-user-api</artifactId>
+            <artifactId>eqochat-contact-api</artifactId>
         </dependency>
         <dependency>
             <groupId>com.eqochat</groupId>
-            <artifactId>eqochat-user</artifactId>
+            <artifactId>eqochat-user-api</artifactId>
         </dependency>
         <dependency>
             <groupId>com.eqochat</groupId>

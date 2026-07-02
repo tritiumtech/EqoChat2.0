@@ -30,4 +30,10 @@ public class CreateProjectPaymentRequest {
     private String status;
 
     private String date;
+
+    @NotNull(message = "actor subject is required")
+    private Long actorSubjectId;
+
+    @NotNull(message = "actor subject type is required")
+    private SubjectType actorSubjectType;
 }

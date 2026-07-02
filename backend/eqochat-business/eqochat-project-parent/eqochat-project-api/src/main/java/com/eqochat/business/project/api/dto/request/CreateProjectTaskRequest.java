@@ -33,4 +33,10 @@ public class CreateProjectTaskRequest {
 
     @NotNull(message = "任务负责人类型不能为空")
     private SubjectType assigneeSubjectType;
+
+    @NotNull(message = "actor subject is required")
+    private Long actorSubjectId;
+
+    @NotNull(message = "actor subject type is required")
+    private SubjectType actorSubjectType;
 }

@@ -3,7 +3,7 @@
     <PageHeader
       :title="t('page.project.title')"
       :subtitle="t('page.project.subtitle')"
-      action-icon="＋"
+      action-icon="+"
       action-variant="bordered"
       action-size="md"
       @action-click="openCreateModal"
@@ -36,7 +36,7 @@
             <view class="project-status" :class="statusClass(p.status)">
               {{ statusText(p.status) }}
             </view>
-            <text class="project-chevron">›</text>
+            <text class="project-chevron">&gt;</text>
           </view>
 
           <view class="progress">
@@ -103,4 +103,3 @@ const statusText = props.statusText
 </script>
 
 <style scoped src="../project.styles.css"></style>
-

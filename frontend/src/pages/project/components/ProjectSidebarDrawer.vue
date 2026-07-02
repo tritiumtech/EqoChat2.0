@@ -9,7 +9,7 @@
             <text class="drawer-sub">{{ t('page.project.drawer.subtitle') }}</text>
           </view>
         </view>
-        <text class="sheet-close" @click="onClose">✕</text>
+        <text class="sheet-close" @click="onClose">x</text>
       </view>
 
       <view class="drawer-tabs">

@@ -1,50 +1,46 @@
 <template>
   <view class="page-header" :style="customStyle">
-    <view class="safe-area-top" />
+    <view class="page-header__inner">
+      <view v-if="title" class="header-row">
+        <view v-if="showBackIcon" class="back-icon-btn" @click="handleBackClick">
+          <text class="back-icon">&lt;</text>
+        </view>
 
-    <!-- 单行模式：返回图标 + 标题 -->
-    <view v-if="title" class="header-row">
-      <view v-if="showBackIcon" class="back-icon-btn" @click="handleBackClick">
-        <text class="back-icon">←</text>
+        <view class="titles">
+          <slot name="title-prefix" />
+          <text class="screen-title">{{ title }}</text>
+        </view>
+
+        <view class="actions">
+          <slot name="actions">
+            <IconBtn
+              v-if="actionIcon"
+              :icon="actionIcon"
+              :variant="actionVariant"
+              :size="actionSize"
+              @click="handleActionClick"
+            />
+          </slot>
+        </view>
       </view>
-      <view class="titles">
-        <slot name="title-prefix" />
-        <text class="screen-title">{{ title }}</text>
+
+      <view v-else-if="showBackIcon" class="back-only-row">
+        <view class="back-link" @click="handleBackClick">
+          <text class="back-glyph">&lt;</text>
+          <text v-if="backText" class="back-text">{{ backText }}</text>
+        </view>
       </view>
 
-      <view class="actions">
-        <slot name="actions">
-          <IconBtn
-            v-if="actionIcon"
-            :icon="actionIcon"
-            :variant="actionVariant"
-            :size="actionSize"
-            @click="handleActionClick"
-          />
-        </slot>
+      <view v-if="subtitle" class="subtitle-row">
+        <text class="screen-subtitle">{{ subtitle }}</text>
       </view>
-    </view>
 
-    <!-- 纯返回行模式（无标题） -->
-    <view v-else-if="showBackIcon" class="back-only-row">
-      <view class="back-link" @click="handleBackClick">
-        <text class="back-glyph">←</text>
-        <text v-if="backText" class="back-text">{{ backText }}</text>
+      <slot name="subtitle-custom" />
+      <slot name="search" />
+
+      <view v-if="hasTabs" class="tabs">
+        <slot name="tabs" />
       </view>
-    </view>
-
-    <!-- 副标题行 -->
-    <view v-if="subtitle" class="subtitle-row">
-      <text class="screen-subtitle">{{ subtitle }}</text>
-    </view>
-
-    <!-- 自定义副标题 slot -->
-    <slot name="subtitle-custom" />
-
-    <slot name="search" />
-
-    <view v-if="hasTabs" class="tabs">
-      <slot name="tabs" />
     </view>
   </view>
 </template>
@@ -55,7 +51,7 @@ import IconBtn from './IconBtn.vue'
 type ActionVariant = 'default' | 'bordered' | 'primary' | 'ghost'
 type ActionSize = 'sm' | 'md' | 'lg'
 
-const props = withDefaults(defineProps<{
+withDefaults(defineProps<{
   title?: string
   subtitle?: string
   actionIcon?: string
@@ -95,70 +91,73 @@ const handleBackClick = () => {
 
 .page-header {
   flex-shrink: 0;
-  padding: calc(var(--status-bar-height) + 16rpx) 32rpx 20rpx;
-  background: rgba(255, 255, 255, 0.8);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border-bottom: 1rpx solid rgba(0, 0, 0, 0.06);
-  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.04);
+  box-sizing: border-box;
+  padding: calc(var(--header-safe-padding-top) + 16rpx) 28rpx 18rpx;
+  background: rgba(255, 255, 255, 0.96);
+  border-bottom: 1rpx solid var(--c-border);
+  box-shadow: var(--c-shadow-soft);
 }
 
-.safe-area-top {
-  display: none;
+.page-header__inner {
+  width: 100%;
+  max-width: var(--page-content-max);
+  margin: 0 auto;
 }
 
+.header-row,
 .back-only-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  margin-bottom: 12rpx;
 }
 
+.header-row {
+  gap: 12rpx;
+  min-height: 72rpx;
+}
+
+.back-only-row {
+  justify-content: flex-start;
+  min-height: 64rpx;
+}
+
+.back-icon-btn,
 .back-link {
   display: flex;
   align-items: center;
-  padding: 10rpx 12rpx;
-  border-radius: 16rpx;
+  justify-content: center;
+  border-radius: var(--radius-action-icon);
+  color: var(--c-ink);
 }
 
+.back-icon-btn {
+  width: var(--action-icon-size-sm);
+  height: var(--action-icon-size-sm);
+  border: 1rpx solid var(--c-border);
+  background: var(--c-surface);
+}
+
+.back-link {
+  min-height: 56rpx;
+  padding: 0 16rpx;
+  gap: 8rpx;
+  border: 1rpx solid var(--c-border);
+  background: var(--c-surface);
+}
+
+.back-icon-btn:active,
 .back-link:active {
-  background: rgba(0, 0, 0, 0.04);
+  background: var(--c-surface-muted);
 }
 
+.back-icon,
 .back-glyph {
-  font-size: 28rpx;
-  color: var(--c-primary);
-  margin-right: 4rpx;
+  font-size: 30rpx;
+  font-weight: 700;
+  line-height: 1;
 }
 
 .back-text {
   font-size: 26rpx;
-  color: var(--c-primary);
-}
-
-.header-row {
-  display: flex;
-  align-items: center;
-  gap: 12rpx;
-   margin-bottom: 16rpx;
-}
-
-.back-icon-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 56rpx;
-  height: 56rpx;
-  border-radius: 16rpx;
-  margin-right: 4rpx;
-}
-
-.back-icon-btn:active {
-  background: rgba(0, 0, 0, 0.04);
-}
-
-.back-icon {
-  font-size: 32rpx;
   color: var(--c-ink);
 }
 
@@ -171,22 +170,25 @@ const handleBackClick = () => {
 }
 
 .screen-title {
-  font-size: 40rpx;
-  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 38rpx;
+  font-weight: 700;
   color: var(--c-ink);
   line-height: 1.2;
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
 }
 
 .subtitle-row {
-  margin-top: 4rpx;
+  margin-top: 6rpx;
 }
 
 .screen-subtitle {
   display: block;
-  font-size: 22rpx;
+  font-size: 24rpx;
   color: var(--c-muted);
-  line-height: 1.3;
+  line-height: 1.35;
 }
 
 .actions {
@@ -197,6 +199,6 @@ const handleBackClick = () => {
 }
 
 .tabs {
-  margin-top: 12rpx;
+  margin-top: 14rpx;
 }
 </style>

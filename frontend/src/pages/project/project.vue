@@ -116,7 +116,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import { useI18nWithFormat } from '@/composables/useI18nWithFormat'
 import FgTabbar from '@/tabbar/index.vue'
@@ -129,6 +129,7 @@ import UpdateBidModal from './components/modals/UpdateBidModal.vue'
 import TransferOwnershipModal from './components/modals/TransferOwnershipModal.vue'
 import ShareProjectModal from './components/modals/ShareProjectModal.vue'
 import { useUserStore } from '@/store/modules/user'
+import { useActiveSubjectStore } from '@/store/modules/activeSubject'
 import {
   projectApi,
   type ProjectDetail,
@@ -142,6 +143,7 @@ import {
 
 const { t, tf } = useI18nWithFormat()
 const userStore = useUserStore()
+const activeSubjectStore = useActiveSubjectStore()
 
 // 页面层同样设置为 shared，避免子组件样式隔离导致布局丢失（小程序端尤其明显）
 defineOptions({
@@ -181,6 +183,8 @@ const shareLoading = ref(false)
 
 const showCreateTaskModal = ref(false)
 const creatingTask = ref(false)
+const loadedSubjectKey = ref('')
+let projectLoadSeq = 0
 
 const canCreateProject = computed(() => {
   const nameOk = createName.value.trim().length > 0
@@ -216,15 +220,15 @@ const selectedTransferMember = computed(() => {
 
 const currentUserIsOwner = computed(() => {
   if (!projectDetail.value) return false
-  const currentUserId = Number(userStore.userInfo?.id)
-  if (!Number.isFinite(currentUserId)) return false
-  if (projectDetail.value.ownerSubjectType === 'HUMAN') {
-    return Number(projectDetail.value.ownerSubjectId) === currentUserId
-  }
-  if (projectDetail.value.ownerSubjectType === 'AGENT') {
-    return Number(projectDetail.value.liableHumanId ?? projectDetail.value.associatedHumanId) === currentUserId
-  }
-  return false
+  const subject = activeSubjectStore.currentSubject
+  if (!subject) return false
+  return Number(projectDetail.value.ownerSubjectId) === Number(subject.subjectId)
+    && String(projectDetail.value.ownerSubjectType || '').toUpperCase() === subject.subjectType
+})
+
+const currentSubjectKey = computed(() => {
+  const subject = activeSubjectStore.currentSubject
+  return subject ? `${subject.subjectType}:${subject.subjectId}` : ''
 })
 
 const isBusinessSubjectType = (type: unknown): type is ProjectBusinessSubjectType => type === 'HUMAN' || type === 'AGENT'
@@ -366,7 +370,10 @@ async function onApproveBidUpdate() {
 
   try {
     uni.showLoading({ title: t('common.loading'), mask: true })
-    await projectApi.requestBidUpdate(selectedProjectId.value, { newBid: nextBid })
+    await projectApi.requestBidUpdate(selectedProjectId.value, {
+      newBid: nextBid,
+      ...activeSubjectStore.projectActorParams(),
+    })
     await loadProjectAll(selectedProjectId.value)
     uni.showToast({ title: t('page.project.toasts.update_success'), icon: 'none' })
   } catch (err: any) {
@@ -393,7 +400,10 @@ async function onRejectBidUpdate() {
 
   try {
     uni.showLoading({ title: t('common.loading'), mask: true })
-    await projectApi.requestBidUpdate(selectedProjectId.value, { newBid: currentBid })
+    await projectApi.requestBidUpdate(selectedProjectId.value, {
+      newBid: currentBid,
+      ...activeSubjectStore.projectActorParams(),
+    })
     await loadProjectAll(selectedProjectId.value)
     uni.showToast({ title: t('page.project.toasts.bid_change_rejected'), icon: 'none' })
   } catch (err: any) {
@@ -463,7 +473,8 @@ function openProjectFile(downloadUrl?: string) {
 async function loadProjects() {
   loading.value = true
   try {
-    projects.value = await projectApi.listMyProjects()
+    await activeSubjectStore.ensureLoaded()
+    projects.value = await projectApi.listMyProjects(activeSubjectStore.projectViewerParams())
   } catch (err: any) {
     uni.showToast({ title: err?.message || t('toast.load_failed'), icon: 'none' })
     projects.value = []
@@ -473,17 +484,25 @@ async function loadProjects() {
 }
 
 async function loadProjectAll(id: number) {
+  const requestSeq = ++projectLoadSeq
   sidebarTab.value = 'tasks'
+  await activeSubjectStore.ensureLoaded()
+  const viewer = activeSubjectStore.projectViewerParams()
+  const requestedSubjectKey = currentSubjectKey.value
   const [detail, tasks, payments, files] = await Promise.all([
-    projectApi.getProjectDetail(id),
-    projectApi.listSidebarTasks(id),
-    projectApi.listSidebarPayments(id),
-    projectApi.listSidebarFiles(id),
+    projectApi.getProjectDetail(id, viewer),
+    projectApi.listSidebarTasks(id, viewer),
+    projectApi.listSidebarPayments(id, viewer),
+    projectApi.listSidebarFiles(id, viewer),
   ])
+  if (requestSeq !== projectLoadSeq || requestedSubjectKey !== currentSubjectKey.value) {
+    return
+  }
   projectDetail.value = detail
   sidebarTasks.value = tasks
   sidebarPayments.value = payments
   sidebarFiles.value = files
+  loadedSubjectKey.value = requestedSubjectKey
   selectedTransferMemberKey.value = detail?.members?.[0] ? memberSubjectKey(detail.members[0]) : null
 }
 
@@ -537,9 +556,13 @@ async function submitCreateTask(payload: {
       priority: payload.priority as 'low' | 'medium' | 'high',
       assigneeSubjectId: payload.assigneeSubjectId,
       assigneeSubjectType: payload.assigneeSubjectType,
+      ...activeSubjectStore.projectActorParams(),
     })
     showCreateTaskModal.value = false
-    sidebarTasks.value = await projectApi.listSidebarTasks(selectedProjectId.value)
+    sidebarTasks.value = await projectApi.listSidebarTasks(
+      selectedProjectId.value,
+      activeSubjectStore.projectViewerParams(),
+    )
     uni.showToast({ title: t('page.project.toasts.task_created'), icon: 'none' })
   } catch (err: any) {
     uni.showToast({ title: err?.message || t('toast.load_failed'), icon: 'none' })
@@ -558,8 +581,9 @@ function calculateDeposit() {
 
 async function submitCreateProject() {
   if (!canCreateProject.value) return
-  const ownerSubjectId = Number(userStore.userInfo?.id)
-  if (!Number.isFinite(ownerSubjectId) || ownerSubjectId <= 0) {
+  await activeSubjectStore.ensureLoaded()
+  const owner = activeSubjectStore.projectOwnerParams()
+  if (!owner) {
     uni.showToast({ title: t('toast.load_failed'), icon: 'none' })
     return
   }
@@ -569,8 +593,7 @@ async function submitCreateProject() {
     const created = await projectApi.createProject({
       name: createName.value.trim(),
       bid,
-      ownerSubjectId,
-      ownerSubjectType: 'HUMAN',
+      ...owner,
     })
     showCreateModal.value = false
     selectedProjectId.value = created.id
@@ -585,16 +608,27 @@ async function submitCreateProject() {
 
 function openUpdateBidModal() {
   if (!projectDetail.value) return
+  if (!currentUserIsOwner.value) {
+    uni.showToast({ title: t('page.project.toasts.owner_only'), icon: 'none' })
+    return
+  }
   updateBidStr.value = String(projectDetail.value.bid ?? 0)
   showUpdateBidModal.value = true
 }
 
 async function submitUpdateBid() {
   if (!canUpdateBid.value || selectedProjectId.value == null) return
+  if (!currentUserIsOwner.value) {
+    uni.showToast({ title: t('page.project.toasts.owner_only'), icon: 'none' })
+    return
+  }
   try {
     uni.showLoading({ title: t('common.loading'), mask: true })
     const newBid = Math.round(Number(updateBidStr.value))
-    await projectApi.requestBidUpdate(selectedProjectId.value, { newBid })
+    await projectApi.requestBidUpdate(selectedProjectId.value, {
+      newBid,
+      ...activeSubjectStore.projectActorParams(),
+    })
     showUpdateBidModal.value = false
     await loadProjectAll(selectedProjectId.value)
     uni.showToast({ title: t('page.project.toasts.update_success'), icon: 'none' })
@@ -607,6 +641,10 @@ async function submitUpdateBid() {
 
 function openTransferModal(member?: ProjectMember) {
   if (!projectDetail.value) return
+  if (!currentUserIsOwner.value) {
+    uni.showToast({ title: t('page.project.toasts.owner_only'), icon: 'none' })
+    return
+  }
   if (member) {
     selectedTransferMemberKey.value = memberSubjectKey(member)
   } else {
@@ -618,6 +656,10 @@ function openTransferModal(member?: ProjectMember) {
 
 async function submitTransferOwnership() {
   if (!selectedProjectId.value || !selectedTransferMember.value) return
+  if (!currentUserIsOwner.value) {
+    uni.showToast({ title: t('page.project.toasts.owner_only'), icon: 'none' })
+    return
+  }
   const newOwnerSubjectId = Number(selectedTransferMember.value.memberSubjectId)
   if (!Number.isFinite(newOwnerSubjectId) || newOwnerSubjectId <= 0) {
     uni.showToast({ title: t('toast.load_failed'), icon: 'none' })
@@ -633,6 +675,7 @@ async function submitTransferOwnership() {
     await projectApi.transferOwnership(selectedProjectId.value, {
       newOwnerSubjectId,
       newOwnerSubjectType,
+      ...activeSubjectStore.projectActorParams(),
     })
     showTransferModal.value = false
     await loadProjectAll(selectedProjectId.value)
@@ -656,7 +699,8 @@ async function loadShareLink(projectId: number) {
   if (shareLoading.value) return
   shareLoading.value = true
   try {
-    const resp = await projectApi.shareLink(projectId)
+    await activeSubjectStore.ensureLoaded()
+    const resp = await projectApi.shareLink(projectId, activeSubjectStore.projectViewerParams())
     shareUrl.value = resp.url
   } catch (err: any) {
     uni.showToast({ title: err?.message || t('toast.load_failed'), icon: 'none' })
@@ -693,13 +737,36 @@ function closeSidebar() {
 }
 
 function closeProject() {
+  projectLoadSeq += 1
   selectedProjectId.value = null
   projectDetail.value = null
   sidebarTasks.value = []
   sidebarPayments.value = []
   sidebarFiles.value = []
+  loadedSubjectKey.value = ''
   showSidebar.value = false
 }
+
+watch(currentSubjectKey, async (next, prev) => {
+  if (!prev || next === prev || selectedProjectId.value == null) return
+  projectLoadSeq += 1
+  projectDetail.value = null
+  sidebarTasks.value = []
+  sidebarPayments.value = []
+  sidebarFiles.value = []
+  loadedSubjectKey.value = ''
+  showSidebar.value = false
+  try {
+    await loadProjectAll(selectedProjectId.value)
+  } catch {
+    selectedProjectId.value = null
+    projectDetail.value = null
+    sidebarTasks.value = []
+    sidebarPayments.value = []
+    sidebarFiles.value = []
+    loadedSubjectKey.value = ''
+  }
+})
 
 onLoad((query) => {
   if (!userStore.isLoggedIn) return
@@ -718,7 +785,25 @@ onShow(async () => {
     uni.reLaunch({ url: '/pages/auth/login' })
     return
   }
+  await activeSubjectStore.ensureLoaded()
+  if (!activeSubjectStore.currentSubject) {
+    uni.reLaunch({ url: '/pages/auth/login' })
+    return
+  }
   await loadProjects()
+  if (selectedProjectId.value != null && loadedSubjectKey.value !== currentSubjectKey.value) {
+    try {
+      await loadProjectAll(selectedProjectId.value)
+    } catch {
+      selectedProjectId.value = null
+      projectDetail.value = null
+      sidebarTasks.value = []
+      sidebarPayments.value = []
+      sidebarFiles.value = []
+      loadedSubjectKey.value = ''
+    }
+    return
+  }
   // 如果从分享链接带参进入，则在项目详情加载失败时退回列表
   if (selectedProjectId.value != null && projectDetail.value == null) {
     try {

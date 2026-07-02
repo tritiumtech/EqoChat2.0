@@ -41,7 +41,7 @@
         <!-- 操作按钮区 -->
         <view class="action-section">
           <!-- 已是好友 -->
-          <view v-if="userInfo.isFriend" class="friend-status">
+          <view v-if="isFriendForActiveSubject" class="friend-status">
             <view class="status-icon">✓</view>
             <text class="status-text">{{ t('page.contact.already_friend') }}</text>
             <button class="action-btn chat-btn" @click="startChat">
@@ -51,13 +51,13 @@
 
           <!-- 已发送申请 -->
           <view v-else-if="hasSentRequest" class="friend-status">
-            <view class="status-icon">⏳</view>
+            <view class="status-icon">W</view>
             <text class="status-text">{{ t('page.contact.request_sent_waiting') }}</text>
           </view>
 
           <!-- 收到对方申请 -->
           <view v-else-if="hasReceivedRequest" class="friend-status received">
-            <view class="status-icon">👋</view>
+            <view class="status-icon">R</view>
             <text class="status-text">{{ t('page.contact.request_received_from') }}</text>
             <view class="request-actions">
               <button class="action-btn reject-btn" @click="handleReject">
@@ -72,7 +72,7 @@
           <!-- 可以添加 -->
           <view v-else class="add-section">
             <button class="add-friend-btn" @click="showRequestModal = true">
-              <text class="add-icon">＋</text>
+              <text class="add-icon">+</text>
               <text class="add-text">{{ t('page.contact.add_to_contacts') }}</text>
             </button>
           </view>
@@ -95,7 +95,7 @@
       <view class="modal-sheet" @click.stop>
         <view class="modal-header">
           <text class="modal-title">{{ t('page.contact.send_request_title') }}</text>
-          <text class="modal-close" @click="showRequestModal = false">✕</text>
+          <text class="modal-close" @click="showRequestModal = false">x</text>
         </view>
         <view class="modal-body">
           <view class="target-user">
@@ -144,19 +144,21 @@
 import { computed, ref } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import { useI18nWithFormat } from '@/composables/useI18nWithFormat'
-import { userApi, type UserSearchResult } from '@/api/modules/user'
+import { subjectApi, type SubjectPublicProfile } from '@/api/modules/subject'
 import { friendRequestApi, type FriendRequestItem } from '@/api/modules/friendRequest'
-import type { ContactSubjectType } from '@/api/modules/contact'
+import { contactApi, type ContactItem, type ContactSubjectType } from '@/api/modules/contact'
 import { conversationApi } from '@/api/modules/conversation'
 import { useUserStore } from '@/store/modules/user'
+import { useActiveSubjectStore } from '@/store/modules/activeSubject'
 import { getApiErrorMessage } from '@/utils/request'
 import PageHeader from '@/components/PageHeader.vue'
 
-const userInfo = ref<UserSearchResult | null>(null)
+const userInfo = ref<SubjectPublicProfile | null>(null)
 const loading = ref(false)
 const targetSubjectId = ref(0)
 const targetSubjectType = ref<ContactSubjectType>('HUMAN')
 const userStore = useUserStore()
+const activeSubjectStore = useActiveSubjectStore()
 const { t, tf } = useI18nWithFormat()
 
 // 好友申请相关
@@ -166,12 +168,21 @@ const requestError = ref('')
 const sending = ref(false)
 const receivedRequests = ref<FriendRequestItem[]>([])
 const sentRequests = ref<FriendRequestItem[]>([])
+const contacts = ref<ContactItem[]>([])
 
 // 是否在线
 const isOnline = computed(() => (userInfo.value?.status || '').toUpperCase() === 'ACTIVE')
 
 // 是否是智能体
 const isAgent = computed(() => targetSubjectType.value === 'AGENT')
+
+const isFriendForActiveSubject = computed(() =>
+  contacts.value.some(
+    (item) =>
+      item.targetSubjectId === targetSubjectId.value &&
+      item.targetSubjectType === targetSubjectType.value,
+  ),
+)
 
 // 能力标签
 const capabilities = computed(() => (userInfo.value as any)?.capabilities ?? [])
@@ -232,7 +243,12 @@ const loadUserProfile = async () => {
   
   loading.value = true
   try {
-    const data = await userApi.getUserPublicProfile(targetSubjectId.value)
+    await activeSubjectStore.ensureLoaded()
+    const data = await subjectApi.getPublicProfile(
+      targetSubjectType.value,
+      targetSubjectId.value,
+      activeSubjectStore.subjectViewerParams(),
+    )
     userInfo.value = data
   } catch (err: any) {
     uni.showToast({ title: err?.message || t('toast.load_failed'), icon: 'none' })
@@ -244,11 +260,21 @@ const loadUserProfile = async () => {
 // 加载好友申请状态
 const loadRequestStatus = async () => {
   try {
-    receivedRequests.value = await friendRequestApi.listReceived()
-    sentRequests.value = await friendRequestApi.listSent()
+    await activeSubjectStore.ensureLoaded()
+    receivedRequests.value = await friendRequestApi.listReceived(activeSubjectStore.friendRequestSubjectParams())
+    sentRequests.value = await friendRequestApi.listSent(activeSubjectStore.friendRequestSubjectParams())
   } catch {
     receivedRequests.value = []
     sentRequests.value = []
+  }
+}
+
+const loadContactStatus = async () => {
+  try {
+    await activeSubjectStore.ensureLoaded()
+    contacts.value = await contactApi.listContacts(activeSubjectStore.contactOwnerParams())
+  } catch {
+    contacts.value = []
   }
 }
 
@@ -260,13 +286,14 @@ const sendRequest = async () => {
   sending.value = true
   
   try {
-    const actorSubjectId = currentPrincipalHumanId()
-    if (!actorSubjectId) {
+    await activeSubjectStore.ensureLoaded()
+    const actor = activeSubjectStore.currentSubject
+    if (!actor?.subjectId) {
       throw new Error(t('toast.load_failed'))
     }
     await friendRequestApi.sendRequest({
-      actorSubjectId,
-      actorSubjectType: 'HUMAN',
+      actorSubjectId: actor.subjectId,
+      actorSubjectType: actor.subjectType,
       recipientSubjectId: targetSubjectId.value,
       recipientSubjectType: targetSubjectType.value,
       requestMessage: requestMessage.value?.trim() || undefined
@@ -275,9 +302,7 @@ const sendRequest = async () => {
     showRequestModal.value = false
     requestMessage.value = ''
     uni.showToast({ title: t('toast.request_sent'), icon: 'success' })
-    
-    // 刷新申请状态
-    await loadRequestStatus()
+    await Promise.all([loadRequestStatus(), loadContactStatus()])
   } catch (err: any) {
     requestError.value = getApiErrorMessage(err, t('toast.add_failed'))
   } finally {
@@ -293,9 +318,7 @@ const handleAccept = async () => {
   try {
     await friendRequestApi.accept(id)
     uni.showToast({ title: t('toast.request_accepted'), icon: 'success' })
-    
-    // 刷新状态
-    await Promise.all([loadUserProfile(), loadRequestStatus()])
+    await Promise.all([loadUserProfile(), loadRequestStatus(), loadContactStatus()])
   } catch (err: any) {
     uni.showToast({ title: err?.message || t('toast.load_failed'), icon: 'none' })
   }
@@ -309,8 +332,6 @@ const handleReject = async () => {
   try {
     await friendRequestApi.reject(id)
     uni.showToast({ title: t('toast.request_rejected'), icon: 'success' })
-    
-    // 刷新状态
     await loadRequestStatus()
   } catch (err: any) {
     uni.showToast({ title: err?.message || t('toast.load_failed'), icon: 'none' })
@@ -319,15 +340,17 @@ const handleReject = async () => {
 
 // 发起聊天
 const startChat = async () => {
-  if (!userInfo.value?.isFriend) {
+  if (!isFriendForActiveSubject.value) {
     uni.showToast({ title: t('page.contact.need_friend_to_chat'), icon: 'none' })
     return
   }
   
   try {
+    await activeSubjectStore.ensureLoaded()
     const data = await conversationApi.createConversation({
       targetSubjectId: targetSubjectId.value,
       targetSubjectType: targetSubjectType.value,
+      ...activeSubjectStore.conversationCreatorParams(),
     })
     const title = encodeURIComponent(userInfo.value.nickname || data.title || t('common.conversation'))
     uni.redirectTo({
@@ -347,18 +370,16 @@ function normalizeSubjectType(value: unknown): ContactSubjectType {
   return String(value || 'HUMAN').toUpperCase() === 'AGENT' ? 'AGENT' : 'HUMAN'
 }
 
-function currentPrincipalHumanId(): number {
-  return Number((userStore.userInfo as any)?.id ?? 0)
-}
-
-onShow(() => {
+onShow(async () => {
   if (!userStore.isLoggedIn) {
     uni.reLaunch({ url: '/pages/auth/login' })
     return
   }
   uni.setNavigationBarTitle({ title: t('page.contact.user_profile') })
+  await activeSubjectStore.ensureLoaded()
   loadUserProfile()
   loadRequestStatus()
+  loadContactStatus()
 })
 </script>
 

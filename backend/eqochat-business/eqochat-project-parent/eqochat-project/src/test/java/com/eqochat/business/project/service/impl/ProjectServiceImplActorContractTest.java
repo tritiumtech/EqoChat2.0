@@ -16,6 +16,7 @@ import com.eqochat.business.project.api.dto.request.CreateProjectRequest;
 import com.eqochat.business.project.api.dto.request.CreateProjectPaymentRequest;
 import com.eqochat.business.project.api.dto.request.CreateProjectTaskRequest;
 import com.eqochat.business.project.api.dto.request.TransferProjectOwnershipRequest;
+import com.eqochat.business.project.api.dto.request.UpdateProjectBidRequest;
 import com.eqochat.business.project.api.dto.response.ProjectDetailResponse;
 import com.eqochat.business.project.api.dto.response.ProjectFileResponse;
 import com.eqochat.business.project.api.dto.response.ProjectPaymentResponse;
@@ -50,6 +51,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -168,8 +170,11 @@ class ProjectServiceImplActorContractTest {
                 .priority("medium")
                 .assigneeSubjectId(0L)
                 .assigneeSubjectType(SubjectType.SYSTEM)
+                .actorSubjectId(9L)
+                .actorSubjectType(SubjectType.HUMAN)
                 .build();
         when(projectMapper.selectById(501L)).thenReturn(humanOwnedProject(501L, 9L));
+        when(liabilityPolicyApi.resolveLiability(SubjectRef.human(9L))).thenReturn(LiabilityChain.selfResponsible(9L));
 
         assertThatThrownBy(() -> service.createTask(9L, 501L, taskRequest))
                 .isInstanceOf(BizException.class)
@@ -180,6 +185,8 @@ class ProjectServiceImplActorContractTest {
                 .amount(100L)
                 .recipientSubjectId(0L)
                 .recipientSubjectType(SubjectType.SYSTEM)
+                .actorSubjectId(9L)
+                .actorSubjectType(SubjectType.HUMAN)
                 .build();
         assertThatThrownBy(() -> service.createPayment(9L, 501L, paymentRequest))
                 .isInstanceOf(BizException.class)
@@ -198,11 +205,92 @@ class ProjectServiceImplActorContractTest {
     }
 
     @Test
+    void projectWriteOperationsRequireExplicitActorSubject() {
+        when(projectMapper.selectById(501L)).thenReturn(humanOwnedProject(501L, 9L));
+
+        UpdateProjectBidRequest bidRequest = new UpdateProjectBidRequest();
+        bidRequest.setNewBid(200L);
+        assertThatThrownBy(() -> service.requestBidUpdate(9L, 501L, bidRequest))
+                .isInstanceOf(BizException.class)
+                .hasMessage("project.bid.actor.invalid");
+
+        TransferProjectOwnershipRequest transferRequest = new TransferProjectOwnershipRequest();
+        transferRequest.setNewOwnerSubjectId(9L);
+        transferRequest.setNewOwnerSubjectType(SubjectType.HUMAN);
+        assertThatThrownBy(() -> service.transferOwnership(9L, 501L, transferRequest))
+                .isInstanceOf(BizException.class)
+                .hasMessage("project.transfer.actor.invalid");
+
+        CreateProjectTaskRequest taskRequest = CreateProjectTaskRequest.builder()
+                .title("Task")
+                .value(100L)
+                .deadline("2026-07-01")
+                .priority("medium")
+                .assigneeSubjectId(9L)
+                .assigneeSubjectType(SubjectType.HUMAN)
+                .build();
+        assertThatThrownBy(() -> service.createTask(9L, 501L, taskRequest))
+                .isInstanceOf(BizException.class)
+                .hasMessage("project.task.actor.invalid");
+
+        CreateProjectPaymentRequest paymentRequest = CreateProjectPaymentRequest.builder()
+                .amount(100L)
+                .recipientSubjectId(9L)
+                .recipientSubjectType(SubjectType.HUMAN)
+                .build();
+        assertThatThrownBy(() -> service.createPayment(9L, 501L, paymentRequest))
+                .isInstanceOf(BizException.class)
+                .hasMessage("project.payment.actor.invalid");
+
+        verify(projectMapper, never()).updateById(any(Project.class));
+        verify(projectTaskMapper, never()).insert(any(ProjectTask.class));
+        verify(projectPaymentMapper, never()).insert(any(ProjectPayment.class));
+    }
+
+    @Test
+    void agentOwnerProjectRejectsPrincipalHumanActorForOwnerOnlyWrites() {
+        Project project = Project.builder()
+                .id(501L)
+                .name("Agent-owned")
+                .status(Project.ProjectStatus.ACTIVE)
+                .ownerId(101L)
+                .ownerType(Project.ProjectOwnerType.AGENT)
+                .agentOwnerMasterId(9L)
+                .build();
+        when(projectMapper.selectById(501L)).thenReturn(project);
+        when(liabilityPolicyApi.resolveLiability(SubjectRef.human(9L))).thenReturn(LiabilityChain.selfResponsible(9L));
+        when(projectMemberMapper.selectCount(any())).thenReturn(1L, 1L);
+
+        UpdateProjectBidRequest bidRequest = new UpdateProjectBidRequest();
+        bidRequest.setNewBid(200L);
+        bidRequest.setActorSubjectId(9L);
+        bidRequest.setActorSubjectType(SubjectType.HUMAN);
+
+        assertThatThrownBy(() -> service.requestBidUpdate(9L, 501L, bidRequest))
+                .isInstanceOf(BizException.class)
+                .hasMessage("project.bid.forbidden");
+
+        TransferProjectOwnershipRequest transferRequest = new TransferProjectOwnershipRequest();
+        transferRequest.setNewOwnerSubjectId(9L);
+        transferRequest.setNewOwnerSubjectType(SubjectType.HUMAN);
+        transferRequest.setActorSubjectId(9L);
+        transferRequest.setActorSubjectType(SubjectType.HUMAN);
+
+        assertThatThrownBy(() -> service.transferOwnership(9L, 501L, transferRequest))
+                .isInstanceOf(BizException.class)
+                .hasMessage("project.transfer.forbidden");
+
+        verify(projectMapper, never()).updateById(any(Project.class));
+    }
+
+    @Test
     void transferToAgentRequiresLiabilityResolvingToAuthenticatedHuman() {
         Project project = humanOwnedProject(501L, 9L);
         TransferProjectOwnershipRequest request = new TransferProjectOwnershipRequest();
         request.setNewOwnerSubjectId(101L);
         request.setNewOwnerSubjectType(SubjectType.AGENT);
+        request.setActorSubjectId(9L);
+        request.setActorSubjectType(SubjectType.HUMAN);
 
         when(projectMapper.selectById(501L)).thenReturn(project);
         when(liabilityPolicyApi.resolveLiability(SubjectRef.human(9L))).thenReturn(LiabilityChain.selfResponsible(9L));
@@ -222,6 +310,8 @@ class ProjectServiceImplActorContractTest {
         TransferProjectOwnershipRequest request = new TransferProjectOwnershipRequest();
         request.setNewOwnerSubjectId(101L);
         request.setNewOwnerSubjectType(SubjectType.AGENT);
+        request.setActorSubjectId(9L);
+        request.setActorSubjectType(SubjectType.HUMAN);
 
         when(projectMapper.selectById(501L)).thenReturn(project);
         when(liabilityPolicyApi.resolveLiability(SubjectRef.human(9L))).thenReturn(LiabilityChain.selfResponsible(9L));
@@ -254,9 +344,12 @@ class ProjectServiceImplActorContractTest {
                 .priority("high")
                 .assigneeSubjectId(101L)
                 .assigneeSubjectType(SubjectType.AGENT)
+                .actorSubjectId(9L)
+                .actorSubjectType(SubjectType.HUMAN)
                 .build();
 
         when(projectMapper.selectById(501L)).thenReturn(humanOwnedProject(501L, 9L));
+        when(liabilityPolicyApi.resolveLiability(SubjectRef.human(9L))).thenReturn(LiabilityChain.selfResponsible(9L));
         when(projectMemberMapper.selectOne(any())).thenReturn(ProjectMember.builder()
                 .projectId(501L)
                 .memberId(101L)
@@ -285,6 +378,60 @@ class ProjectServiceImplActorContractTest {
     }
 
     @Test
+    void explicitNonOwnerActorCannotUpdateOwnerOnlyProjectFields() {
+        UpdateProjectBidRequest bidRequest = new UpdateProjectBidRequest();
+        bidRequest.setNewBid(200L);
+        bidRequest.setActorSubjectId(101L);
+        bidRequest.setActorSubjectType(SubjectType.AGENT);
+
+        Project project = humanOwnedProject(501L, 9L);
+        when(projectMapper.selectById(501L)).thenReturn(project);
+        when(liabilityPolicyApi.resolveLiability(SubjectRef.agent(101L))).thenReturn(LiabilityChain.agentToHuman(101L, 9L));
+        when(projectMemberMapper.selectCount(any())).thenReturn(1L);
+
+        assertThatThrownBy(() -> service.requestBidUpdate(9L, 501L, bidRequest))
+                .isInstanceOf(BizException.class)
+                .hasMessage("project.bid.forbidden");
+
+        verify(projectMapper, never()).updateById(any(Project.class));
+    }
+
+    @Test
+    void explicitAgentActorCanCreateTaskWhenItIsAProjectMember() {
+        CreateProjectTaskRequest request = CreateProjectTaskRequest.builder()
+                .title("Agent work")
+                .value(100L)
+                .deadline("2026-07-01")
+                .priority("medium")
+                .assigneeSubjectId(101L)
+                .assigneeSubjectType(SubjectType.AGENT)
+                .actorSubjectId(101L)
+                .actorSubjectType(SubjectType.AGENT)
+                .build();
+
+        when(projectMapper.selectById(501L)).thenReturn(humanOwnedProject(501L, 9L));
+        when(liabilityPolicyApi.resolveLiability(SubjectRef.agent(101L))).thenReturn(LiabilityChain.agentToHuman(101L, 9L));
+        when(projectMemberMapper.selectCount(any())).thenReturn(1L);
+        when(projectMemberMapper.selectOne(any())).thenReturn(ProjectMember.builder()
+                .projectId(501L)
+                .memberId(101L)
+                .memberType(ProjectMember.MemberType.AGENT)
+                .masterId(9L)
+                .build());
+        when(subjectDirectoryApi.getSubject(SubjectRef.agent(101L))).thenReturn(activeSubject(101L, SubjectType.AGENT, "Nova", 9L, "Ava"));
+        doAnswer(invocation -> {
+            ProjectTask task = invocation.getArgument(0);
+            task.setId(901L);
+            return 1;
+        }).when(projectTaskMapper).insert(any(ProjectTask.class));
+
+        ProjectTaskResponse response = service.createTask(9L, 501L, request);
+
+        assertThat(response.getAssigneeSubjectType()).isEqualTo(SubjectType.AGENT);
+        assertThat(sqlOfCapturedProjectMemberCount()).contains("member_id", "member_type");
+    }
+
+    @Test
     void createPaymentPersistsAgentToOwnerFactsWithoutRewritingEarnedRecipient() {
         CreateProjectPaymentRequest request = CreateProjectPaymentRequest.builder()
                 .amount(42000L)
@@ -292,9 +439,12 @@ class ProjectServiceImplActorContractTest {
                 .recipientSubjectType(SubjectType.AGENT)
                 .status("invoiced")
                 .date("2026-08-01")
+                .actorSubjectId(9L)
+                .actorSubjectType(SubjectType.HUMAN)
                 .build();
 
         when(projectMapper.selectById(501L)).thenReturn(humanOwnedProject(501L, 9L));
+        when(liabilityPolicyApi.resolveLiability(SubjectRef.human(9L))).thenReturn(LiabilityChain.selfResponsible(9L));
         when(projectMemberMapper.selectOne(any())).thenReturn(ProjectMember.builder()
                 .projectId(501L)
                 .memberId(102L)
@@ -345,9 +495,12 @@ class ProjectServiceImplActorContractTest {
                 .amount(56000L)
                 .recipientSubjectId(101L)
                 .recipientSubjectType(SubjectType.AGENT)
+                .actorSubjectId(9L)
+                .actorSubjectType(SubjectType.HUMAN)
                 .build();
 
         when(projectMapper.selectById(501L)).thenReturn(humanOwnedProject(501L, 9L));
+        when(liabilityPolicyApi.resolveLiability(SubjectRef.human(9L))).thenReturn(LiabilityChain.selfResponsible(9L));
         when(projectMemberMapper.selectOne(any())).thenReturn(ProjectMember.builder()
                 .projectId(501L)
                 .memberId(101L)
@@ -391,9 +544,12 @@ class ProjectServiceImplActorContractTest {
                 .amount(100L)
                 .recipientSubjectId(999L)
                 .recipientSubjectType(SubjectType.AGENT)
+                .actorSubjectId(9L)
+                .actorSubjectType(SubjectType.HUMAN)
                 .build();
 
         when(projectMapper.selectById(501L)).thenReturn(humanOwnedProject(501L, 9L));
+        when(liabilityPolicyApi.resolveLiability(SubjectRef.human(9L))).thenReturn(LiabilityChain.selfResponsible(9L));
         when(projectMemberMapper.selectOne(any())).thenReturn(ProjectMember.builder()
                 .projectId(501L)
                 .memberId(999L)
@@ -424,10 +580,10 @@ class ProjectServiceImplActorContractTest {
                 .build();
 
         when(projectMapper.selectById(501L)).thenReturn(project);
-        when(liabilityPolicyApi.resolveLiability(SubjectRef.agent(101L))).thenReturn(LiabilityChain.agentToHuman(101L, 9L));
-        when(projectMemberMapper.selectCount(any())).thenReturn(0L, 0L);
+        when(liabilityPolicyApi.resolveLiability(SubjectRef.human(101L))).thenReturn(LiabilityChain.selfResponsible(101L));
+        when(projectMemberMapper.selectCount(any())).thenReturn(0L);
 
-        assertThatThrownBy(() -> service.getProjectDetail(101L, 501L))
+        assertThatThrownBy(() -> service.getProjectDetail(101L, 501L, 101L, SubjectType.HUMAN))
                 .isInstanceOf(BizException.class)
                 .hasMessage("project.forbidden");
 
@@ -436,22 +592,108 @@ class ProjectServiceImplActorContractTest {
     }
 
     @Test
-    void listMyProjectsQueriesOwnerAndMemberIdentityWithSubjectType() {
-        when(projectMemberMapper.selectList(any())).thenReturn(List.of(), List.of());
+    void listMyProjectsRequiresExplicitViewerSubject() {
+        assertThatThrownBy(() -> service.listMyProjects(101L, null, null))
+                .isInstanceOf(BizException.class)
+                .hasMessage("project.viewer.invalid");
+
+        verifyNoInteractions(projectMapper);
+        verifyNoInteractions(projectMemberMapper);
+    }
+
+    @Test
+    void listMyProjectsQueriesExplicitHumanOwnerAndMemberIdentityWithSubjectType() {
+        when(liabilityPolicyApi.resolveLiability(SubjectRef.human(101L))).thenReturn(LiabilityChain.selfResponsible(101L));
+        when(projectMemberMapper.selectList(any())).thenReturn(List.of());
         when(projectMapper.selectList(any())).thenReturn(List.of());
 
-        assertThat(service.listMyProjects(101L)).isEmpty();
+        assertThat(service.listMyProjects(101L, 101L, SubjectType.HUMAN)).isEmpty();
 
         assertThat(sqlOfCapturedProjectMemberSelectLists())
-                .hasSize(2)
+                .hasSize(1)
                 .allSatisfy(sql -> assertThat(sql).contains("member_type"));
-        assertThat(sqlOfCapturedProjectSelectList()).contains("owner_type", "agent_owner_master_id");
+        assertThat(sqlOfCapturedProjectSelectList()).contains("owner_type").doesNotContain("agent_owner_master_id");
+    }
+
+    @Test
+    void listMyProjectsWithExplicitAgentViewerUsesOnlyAgentSubjectIdentity() {
+        when(liabilityPolicyApi.resolveLiability(SubjectRef.agent(101L))).thenReturn(LiabilityChain.agentToHuman(101L, 9L));
+        when(projectMemberMapper.selectList(any())).thenReturn(
+                List.of(ProjectMember.builder()
+                        .projectId(501L)
+                        .memberId(101L)
+                        .memberType(ProjectMember.MemberType.AGENT)
+                        .masterId(9L)
+                        .build()),
+                List.of(ProjectMember.builder()
+                        .projectId(501L)
+                        .memberId(101L)
+                        .memberType(ProjectMember.MemberType.AGENT)
+                        .masterId(9L)
+                        .build())
+        );
+        Project agentOwned = Project.builder()
+                .id(501L)
+                .name("Agent project")
+                .status(Project.ProjectStatus.ACTIVE)
+                .ownerId(101L)
+                .ownerType(Project.ProjectOwnerType.AGENT)
+                .agentOwnerMasterId(9L)
+                .build();
+        when(projectMapper.selectList(any())).thenReturn(List.of(agentOwned));
+        when(projectMapper.selectBatchIds(any())).thenReturn(List.of(agentOwned));
+        when(subjectDirectoryApi.getSubject(SubjectRef.agent(101L)))
+                .thenReturn(activeSubject(101L, SubjectType.AGENT, "Nova", 9L, "Ava"));
+
+        assertThat(service.listMyProjects(9L, 101L, SubjectType.AGENT))
+                .extracting(item -> item.getOwnerSubjectType())
+                .containsExactly(SubjectType.AGENT);
+
+        List<String> memberSelectSql = sqlOfCapturedProjectMemberSelectLists();
+        assertThat(memberSelectSql).hasSize(2);
+        assertThat(memberSelectSql.get(0)).contains("member_id", "member_type").doesNotContain("master_id");
+        assertThat(memberSelectSql.get(1)).contains("project_id");
+        assertThat(sqlOfCapturedProjectSelectList()).contains("owner_id", "owner_type").doesNotContain("agent_owner_master_id");
+    }
+
+    @Test
+    void explicitAgentViewerDoesNotAccessHumanProjectWithSameNumericId() {
+        Project humanOwnedSameId = Project.builder()
+                .id(501L)
+                .name("Human same id")
+                .status(Project.ProjectStatus.ACTIVE)
+                .ownerId(101L)
+                .ownerType(Project.ProjectOwnerType.HUMAN)
+                .build();
+
+        when(projectMapper.selectById(501L)).thenReturn(humanOwnedSameId);
+        when(liabilityPolicyApi.resolveLiability(SubjectRef.agent(101L))).thenReturn(LiabilityChain.agentToHuman(101L, 9L));
+        when(projectMemberMapper.selectCount(any())).thenReturn(0L);
+
+        assertThatThrownBy(() -> service.getProjectDetail(9L, 501L, 101L, SubjectType.AGENT))
+                .isInstanceOf(BizException.class)
+                .hasMessage("project.forbidden");
+
+        assertThat(sqlOfCapturedProjectMemberCount()).contains("member_id", "member_type");
+    }
+
+    @Test
+    void explicitAgentViewerRequiresLiabilityToPrincipalHuman() {
+        when(liabilityPolicyApi.resolveLiability(SubjectRef.agent(101L))).thenReturn(LiabilityChain.agentToHuman(101L, 8L));
+
+        assertThatThrownBy(() -> service.listMyProjects(9L, 101L, SubjectType.AGENT))
+                .isInstanceOf(BizException.class)
+                .hasMessage("project.viewer.forbidden");
+
+        verifyNoInteractions(projectMapper);
+        verifyNoInteractions(projectMemberMapper);
     }
 
     @Test
     void sidebarResponsesExposeCanonicalTaskPaymentAndFileSubjects() {
         Project project = humanOwnedProject(501L, 9L);
         when(projectMapper.selectById(501L)).thenReturn(project);
+        when(liabilityPolicyApi.resolveLiability(SubjectRef.human(9L))).thenReturn(LiabilityChain.selfResponsible(9L));
         when(subjectDirectoryApi.getSubject(SubjectRef.agent(101L))).thenReturn(activeSubject(101L, SubjectType.AGENT, "Nova", 9L, "Ava"));
         when(projectTaskMapper.selectList(any())).thenReturn(List.of(ProjectTask.builder()
                 .id(1L)
@@ -500,9 +742,9 @@ class ProjectServiceImplActorContractTest {
                 .downloadUrl("https://example.test/brief.pdf")
                 .build()));
 
-        List<ProjectTaskResponse> tasks = service.listSidebarTasks(9L, 501L);
-        List<ProjectPaymentResponse> payments = service.listSidebarPayments(9L, 501L);
-        List<ProjectFileResponse> files = service.listSidebarFiles(9L, 501L);
+        List<ProjectTaskResponse> tasks = service.listSidebarTasks(9L, 501L, 9L, SubjectType.HUMAN);
+        List<ProjectPaymentResponse> payments = service.listSidebarPayments(9L, 501L, 9L, SubjectType.HUMAN);
+        List<ProjectFileResponse> files = service.listSidebarFiles(9L, 501L, 9L, SubjectType.HUMAN);
 
         assertThat(tasks.getFirst().getAssigneeSubjectId()).isEqualTo(101L);
         assertThat(tasks.getFirst().getAssigneeSubjectType()).isEqualTo(SubjectType.AGENT);
@@ -570,14 +812,21 @@ class ProjectServiceImplActorContractTest {
     @SuppressWarnings({"unchecked", "rawtypes"})
     private List<String> sqlOfCapturedProjectMemberCounts() {
         ArgumentCaptor<LambdaQueryWrapper<ProjectMember>> captor = ArgumentCaptor.forClass((Class) LambdaQueryWrapper.class);
-        verify(projectMemberMapper, times(2)).selectCount(captor.capture());
+        verify(projectMemberMapper, atLeastOnce()).selectCount(captor.capture());
         return captor.getAllValues().stream().map(ProjectServiceImplActorContractTest::sql).toList();
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private String sqlOfCapturedProjectMemberCount() {
+        ArgumentCaptor<LambdaQueryWrapper<ProjectMember>> captor = ArgumentCaptor.forClass((Class) LambdaQueryWrapper.class);
+        verify(projectMemberMapper).selectCount(captor.capture());
+        return sql(captor.getValue());
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"})
     private List<String> sqlOfCapturedProjectMemberSelectLists() {
         ArgumentCaptor<LambdaQueryWrapper<ProjectMember>> captor = ArgumentCaptor.forClass((Class) LambdaQueryWrapper.class);
-        verify(projectMemberMapper, times(2)).selectList(captor.capture());
+        verify(projectMemberMapper, atLeastOnce()).selectList(captor.capture());
         return captor.getAllValues().stream().map(ProjectServiceImplActorContractTest::sql).toList();
     }
 

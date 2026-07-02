@@ -2,7 +2,7 @@
   <view class="page">
     <PageHeader 
       :title="t('page.contact.title')"
-      action-icon="＋"
+      action-icon="+"
       action-variant="primary"
       action-size="md"
       @action-click="goToSearch"
@@ -16,7 +16,7 @@
 
     <!-- 新的朋友入口 -->
     <view class="new-friends-entry" @click="goToFriendRequests">
-      <view class="new-friends-icon">👋</view>
+      <view class="new-friends-icon">N</view>
       <view class="new-friends-body">
         <text class="new-friends-title">{{ t('page.contact.new_friends') }}</text>
         <text v-if="pendingRequestCount > 0" class="new-friends-subtitle">
@@ -25,7 +25,7 @@
       </view>
       <view class="new-friends-arrow">
         <text v-if="pendingRequestCount > 0" class="new-friends-badge">{{ pendingRequestCount > 99 ? '99+' : pendingRequestCount }}</text>
-        <text class="chev">›</text>
+        <text class="chev">&gt;</text>
       </view>
     </view>
 
@@ -130,6 +130,7 @@ import { useI18nWithFormat } from '@/composables/useI18nWithFormat'
 import { contactApi, type ContactItem as Contact } from '@/api/modules/contact'
 import { friendRequestApi, type FriendRequestItem } from '@/api/modules/friendRequest'
 import { useUserStore } from '@/store/modules/user'
+import { useActiveSubjectStore } from '@/store/modules/activeSubject'
 import { getApiErrorMessage } from '@/utils/request'
 import SearchBar from '@/components/SearchBar.vue'
 import PageHeader from '@/components/PageHeader.vue'
@@ -139,6 +140,7 @@ const contacts = ref<Contact[]>([])
 const receivedRequests = ref<FriendRequestItem[]>([])
 const loading = ref(false)
 const userStore = useUserStore()
+const activeSubjectStore = useActiveSubjectStore()
 const { t, tf } = useI18nWithFormat()
 
 const searchQuery = ref('')
@@ -242,10 +244,14 @@ const goToFriendRequests = () => {
 }
 
 const fetchContacts = async () => {
+  if (!activeSubjectStore.currentSubject) return
   loading.value = true
   try {
     const q = searchQuery.value.trim()
-    const list = await contactApi.listContacts({ q: q || undefined })
+    const list = await contactApi.listContacts({
+      q: q || undefined,
+      ...activeSubjectStore.contactOwnerParams(),
+    })
     contacts.value = list.map((item) => ({ ...item, tags: item.tags || [] }))
     if (tagFilter.value !== 'all' && !topicFilters.value.includes(tagFilter.value)) {
       tagFilter.value = 'all'
@@ -258,19 +264,25 @@ const fetchContacts = async () => {
 }
 
 const fetchReceivedRequests = async () => {
+  if (!activeSubjectStore.currentSubject) return
   try {
-    receivedRequests.value = await friendRequestApi.listReceived()
+    receivedRequests.value = await friendRequestApi.listReceived(activeSubjectStore.friendRequestSubjectParams())
   } catch {
     receivedRequests.value = []
   }
 }
 
-onShow(() => {
+onShow(async () => {
   if (!userStore.isLoggedIn) {
     uni.reLaunch({ url: '/pages/auth/login' })
     return
   }
   uni.setNavigationBarTitle({ title: t('page.contact.title') })
+  await activeSubjectStore.ensureLoaded()
+  if (!activeSubjectStore.currentSubject) {
+    uni.reLaunch({ url: '/pages/auth/login' })
+    return
+  }
   fetchContacts()
   fetchReceivedRequests()
 })
@@ -316,10 +328,14 @@ watch(searchQuery, () => {
 .new-friends-entry {
   display: flex;
   align-items: center;
-  gap: 24rpx;
-  padding: 24rpx 32rpx;
-  background: #ffffff;
-  border-bottom: 1rpx solid rgba(0, 0, 0, 0.06);
+  gap: 20rpx;
+  width: 100%;
+  max-width: var(--page-content-max);
+  margin: 0 auto;
+  padding: 22rpx 28rpx;
+  background: #fff;
+  border-bottom: 1rpx solid var(--c-border);
+  box-sizing: border-box;
 }
 
 .new-friends-entry:active {
@@ -327,14 +343,16 @@ watch(searchQuery, () => {
 }
 
 .new-friends-icon {
-  width: 80rpx;
-  height: 80rpx;
-  border-radius: var(--radius-lg);
-  background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: var(--radius-avatar);
+  background: var(--c-success);
+  color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 40rpx;
+  font-size: 26rpx;
+  font-weight: 800;
   flex-shrink: 0;
 }
 
@@ -399,19 +417,20 @@ watch(searchQuery, () => {
 
 .chips-inner {
   display: inline-flex;
-  gap: 16rpx;
-  padding: 20rpx 32rpx 24rpx;
+  gap: 12rpx;
+  padding: 18rpx 28rpx 22rpx;
+  max-width: var(--page-content-max);
 }
 
 .chip {
   flex-shrink: 0;
   padding: 12rpx 24rpx;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-control);
   font-size: 24rpx;
-  font-weight: 500;
-  background: rgba(243, 243, 245, 0.85);
+  font-weight: 700;
+  background: var(--c-surface-muted);
   color: var(--c-muted);
-  border: none;
+  border: 1rpx solid var(--c-border);
   margin: 0;
   line-height: 1.3;
 }
@@ -419,13 +438,16 @@ watch(searchQuery, () => {
 .chip.active {
   background: var(--c-primary);
   color: #fff;
-  box-shadow: 0 4rpx 12rpx rgba(3, 2, 19, 0.12);
+  box-shadow: none;
 }
 
 .list-zone {
-  flex: 0 0 auto;
+  flex: 1;
   min-height: 0;
   position: relative;
+  width: 100%;
+  max-width: var(--page-content-max);
+  margin: 0 auto;
 }
 
 .main-scroll {
@@ -480,14 +502,14 @@ watch(searchQuery, () => {
 
 .avatar {
   position: relative;
-  width: 96rpx;
-  height: 96rpx;
-  border-radius: var(--radius-lg);
+  width: var(--avatar-size);
+  height: var(--avatar-size);
+  border-radius: var(--radius-avatar);
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  box-shadow: 0 10rpx 24rpx rgba(0, 0, 0, 0.06);
+  box-shadow: none;
 }
 
 .avatar--photo {

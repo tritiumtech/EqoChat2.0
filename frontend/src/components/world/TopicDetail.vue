@@ -33,7 +33,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { useI18nWithFormat } from '@/composables/useI18nWithFormat'
-import { worldApi, type WorldPost, type WorldTopic } from '@/api/modules/world'
+import { worldApi, type WorldPost, type WorldSubjectParams, type WorldTopic } from '@/api/modules/world'
 import { getApiErrorMessage } from '@/utils/request'
 import PageHeader from '@/components/PageHeader.vue'
 import WorldPostCard from './WorldPostCard.vue'
@@ -44,6 +44,7 @@ const props = defineProps<{
   topicName: string
   topicList: WorldTopic[]
   normalizePost: (post: WorldPost) => WorldPost
+  viewer?: WorldSubjectParams
 }>()
 
 const emit = defineEmits<{
@@ -69,7 +70,12 @@ const queryTopicPosts = async (pageNo: number, pageSize: number) => {
   try {
     const isRefresh = pageNo === 1
     const reqCursorId = isRefresh ? undefined : cursorId.value
-    const res = await worldApi.listTopicPosts(props.topicName, { cursorId: reqCursorId, limit: pageSize })
+    const res = await worldApi.listTopicPosts(props.topicName, {
+      cursorId: reqCursorId,
+      limit: pageSize,
+      viewerSubjectId: props.viewer?.subjectId,
+      viewerSubjectType: props.viewer?.subjectType,
+    })
     const list = res.items.map(props.normalizePost)
 
     if (isRefresh) {

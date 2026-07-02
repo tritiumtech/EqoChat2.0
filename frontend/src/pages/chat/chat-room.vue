@@ -76,7 +76,7 @@
 
           <view class="input-row">
             <view class="circle-btn" @click="toggleVoice">
-              <text class="btn-glyph">🎤</text>
+              <text class="btn-glyph">V</text>
             </view>
 
             <view class="input-wrap">
@@ -95,7 +95,7 @@
             </view>
 
             <view class="circle-btn" @click="toggleEmoji">
-              <text class="btn-glyph">😊</text>
+              <text class="btn-glyph">E</text>
             </view>
 
             <button
@@ -104,11 +104,11 @@
               :disabled="!canSend"
               @click="send"
             >
-              <text class="btn-send-arrow">➤</text>
+              <text class="btn-send-arrow">&gt;</text>
             </button>
 
             <view v-else class="circle-btn" @click="toggleAttachments">
-              <text class="btn-glyph">＋</text>
+              <text class="btn-glyph">+</text>
             </view>
           </view>
 
@@ -127,19 +127,19 @@
 
           <view v-if="showAttachMenu" class="popover attach-pop">
             <view class="attach-item" @click="pickPhoto">
-              <text class="attach-ico">🖼️</text>
+              <text class="attach-ico">IMG</text>
               <text class="attach-txt">{{ t('page.chat.attach_photo') }}</text>
             </view>
             <view class="attach-item" @click="pickCamera">
-              <text class="attach-ico">📷</text>
+              <text class="attach-ico">CAM</text>
               <text class="attach-txt">{{ t('page.chat.attach_camera') }}</text>
             </view>
             <view class="attach-item" @click="pickFile">
-              <text class="attach-ico">📄</text>
+              <text class="attach-ico">DOC</text>
               <text class="attach-txt">{{ t('page.chat.attach_file') }}</text>
             </view>
             <view class="attach-item" @click="pickLocation">
-              <text class="attach-ico">📍</text>
+              <text class="attach-ico">LOC</text>
               <text class="attach-txt">{{ t('page.chat.attach_location') }}</text>
             </view>
           </view>
@@ -159,6 +159,7 @@ import { conversationApi, type MessageItem, type MessagePageResponse } from '@/a
 import { filesApi } from '@/api/modules/files'
 import { useUserStore } from '@/store/modules/user'
 import { useChatStore } from '@/store/modules/chat'
+import { useActiveSubjectStore } from '@/store/modules/activeSubject'
 import MessageBubble from '@/components/chat/MessageBubble.vue'
 import TypingIndicator from '@/components/chat/TypingIndicator.vue'
 import type { ChatMessagePayload } from '@/types/websocket'
@@ -184,6 +185,7 @@ interface ChatMessage {
 
 const userStore = useUserStore()
 const chatStore = useChatStore()
+const activeSubjectStore = useActiveSubjectStore()
 const { t } = useI18n({ useScope: 'global' })
 
 /** App 端关闭系统上推，避免与 z-paging 聊天记录倒置冲突；H5 无 onKeyboardHeightChange，需保留默认上推 */
@@ -227,6 +229,46 @@ const currentPrincipalHumanId = computed(() => {
   const fromToken = parsePrincipalHumanIdFromToken(token)
   return fromToken ?? 0
 })
+
+const normalizeSubjectType = (value?: string | null) => {
+  const subjectType = String(value || '').toUpperCase()
+  return subjectType === 'AGENT' ? 'AGENT' : 'HUMAN'
+}
+
+const activeChatSubject = computed(() => {
+  const selected = activeSubjectStore.selected
+  const selectedId = Number(selected?.subjectId)
+  if (Number.isFinite(selectedId) && selectedId > 0 && selected?.subjectType) {
+    return {
+      subjectId: selectedId,
+      subjectType: normalizeSubjectType(selected.subjectType),
+    }
+  }
+  const subject = activeSubjectStore.currentSubject
+  if (subject) {
+    return {
+      subjectId: subject.subjectId,
+      subjectType: normalizeSubjectType(subject.subjectType),
+    }
+  }
+  const humanId = currentPrincipalHumanId.value
+  return humanId > 0
+    ? { subjectId: humanId, subjectType: 'HUMAN' as const }
+    : null
+})
+
+const isActiveChatSubject = (subjectId?: number | string | null, subjectType?: string | null) => {
+  const active = activeChatSubject.value
+  if (!active) return false
+  return Number(subjectId) === active.subjectId && normalizeSubjectType(subjectType) === active.subjectType
+}
+
+const requireActiveChatSubject = () => {
+  const active = activeChatSubject.value
+  if (active) return active
+  uni.showToast({ title: t('toast.load_failed'), icon: 'none' })
+  return null
+}
 
 const conversationId = ref<number>(0)
 const title = ref(t('common.conversation'))
@@ -371,7 +413,7 @@ const toChatMessage = (item: MessageItem): ChatMessage => ({
   isAgent: String(item.senderSubjectType || '').toUpperCase() === 'AGENT',
   content: item.content || '',
   createTime: item.createTime,
-  isSelf: item.senderSubjectType === 'HUMAN' && item.senderSubjectId === currentPrincipalHumanId.value,
+  isSelf: isActiveChatSubject(item.senderSubjectId, item.senderSubjectType),
   messageType: item.messageType || 'TEXT',
   attachment: item.attachment,
 })
@@ -559,7 +601,7 @@ const { isConnected, sendMessage, sendReadReceipt, sendTyping } = useWebSocket({
     // 使用消息的完整 ID 作为处理标记，防止同一消息被多次处理
     const processKey = `msg_${id}_${createTime}`
     
-    const isSelfSubject = senderSubjectType === 'HUMAN' && senderSubjectId === currentPrincipalHumanId.value
+    const isSelfSubject = isActiveChatSubject(senderSubjectId, senderSubjectType)
     console.log('[onChatMessage] 收到消息:', { id, senderSubjectId, senderSubjectType, createTime, mt, isSelf: isSelfSubject })
     console.log('[onChatMessage] messageIdSet:', Array.from(messageIdSet))
     console.log('[onChatMessage] messages 数量:', messages.value.length)
@@ -605,7 +647,7 @@ const { isConnected, sendMessage, sendReadReceipt, sendTyping } = useWebSocket({
     const senderSubjectId = Number(payload.subjectId)
     const senderSubjectType = String(payload.subjectType || 'SYSTEM')
     if (!Number.isFinite(senderSubjectId) || senderSubjectId <= 0) return
-    if (senderSubjectType === 'HUMAN' && senderSubjectId === currentPrincipalHumanId.value) return
+    if (isActiveChatSubject(senderSubjectId, senderSubjectType)) return
 
     if (payload.isTyping) {
       otherTypingSubjectId.value = senderSubjectId
@@ -621,7 +663,9 @@ const { isConnected, sendMessage, sendReadReceipt, sendTyping } = useWebSocket({
 
 const sendTypingSafe = (isTyping: boolean) => {
   if (!conversationId.value) return false
-  return sendTyping(String(conversationId.value), isTyping)
+  const actor = requireActiveChatSubject()
+  if (!actor) return false
+  return sendTyping(String(conversationId.value), isTyping, actor)
 }
 
 const stopLocalTyping = () => {
@@ -658,13 +702,15 @@ const syncReadStatus = async (convId: string, msgId: string) => {
   if (syncingReadMessageIds.has(key)) return
   syncingReadMessageIds.add(key)
   try {
+    const actor = requireActiveChatSubject()
+    if (!actor) return
     if (isConnected.value) {
-      sendReadReceipt(convId, msgId)
+      sendReadReceipt(convId, msgId, actor)
     }
     await conversationApi.markRead(Number(convId), {
       messageId: Number(msgId),
-      readerSubjectId: currentPrincipalHumanId.value,
-      readerSubjectType: 'HUMAN',
+      readerSubjectId: actor.subjectId,
+      readerSubjectType: actor.subjectType,
     })
     chatStore.markConversationRead(Number(convId))
   } catch {
@@ -677,7 +723,7 @@ const syncReadStatus = async (convId: string, msgId: string) => {
 const loadConversationMeta = async () => {
   if (!conversationId.value) return
   try {
-    const meta = await conversationApi.getConversation(conversationId.value)
+    const meta = await conversationApi.getConversation(conversationId.value, activeSubjectStore.conversationViewerParams())
     if (meta?.title) {
       title.value = meta.title
       uni.setNavigationBarTitle({ title: meta.title })
@@ -696,7 +742,10 @@ const loadHistory = async () => {
     historyCursor.value = null
     historyHasMore.value = true
     historyLoadingMore.value = false
-    const pageRaw = await conversationApi.getMessages(conversationId.value, { limit: historyPageSize })
+    const pageRaw = await conversationApi.getMessages(conversationId.value, {
+      ...activeSubjectStore.conversationViewerParams(),
+      limit: historyPageSize,
+    })
     const page = normalizeMessagePage(pageRaw as unknown as MessagePageResponse | MessageItem[])
     const mapped = (page.items || []).map(toChatMessage)
     
@@ -738,6 +787,7 @@ const loadMoreHistory = async () => {
   historyLoadingMore.value = true
   try {
     const pageRaw = await conversationApi.getMessages(conversationId.value, {
+      ...activeSubjectStore.conversationViewerParams(),
       lastMessageId: historyCursor.value,
       limit: historyPageSize,
     })
@@ -790,6 +840,9 @@ const send = async () => {
   const hasAttachment = attachments.value.length > 0
   if (!hasText && !hasAttachment) return
 
+  const actor = requireActiveChatSubject()
+  if (!actor) return
+
   // 加锁
   isSending = true
   try {
@@ -831,9 +884,9 @@ const send = async () => {
     const now = new Date()
     const localMessage: ChatMessage = {
       id: localId,
-      senderSubjectId: currentPrincipalHumanId.value,
-      senderSubjectType: 'HUMAN',
-      isAgent: false,
+      senderSubjectId: actor.subjectId,
+      senderSubjectType: actor.subjectType,
+      isAgent: actor.subjectType === 'AGENT',
       content: hasText ? text : '',
       // 使用 ISO 字符串格式，与后端保持一致（UTC 时间）
       createTime: now.toISOString(),
@@ -851,19 +904,20 @@ const send = async () => {
         String(conversationId.value),
         wsContent,
         messageType,
-        metadata ? { metadata } : undefined
+        metadata ? { metadata } : undefined,
+        actor
       )
 
     if (ok) {
       const timer = setTimeout(() => {
         const target = messages.value.find(item => item.id === localId && item.local)
         if (target) {
-          sendHttpMessage(localId, wsContent, messageType, metadata)
+          sendHttpMessage(localId, wsContent, messageType, metadata, actor)
         }
       }, 4000) as unknown as number
       pendingTimers.set(localId, timer)
     } else {
-      await sendHttpMessage(localId, wsContent, messageType, metadata)
+      await sendHttpMessage(localId, wsContent, messageType, metadata, actor)
     }
 
     // 清空输入
@@ -882,15 +936,17 @@ const sendHttpMessage = async (
   localId: string,
   content: string,
   messageType: string,
-  metadata?: Record<string, unknown>
+  metadata?: Record<string, unknown>,
+  actor = requireActiveChatSubject()
 ) => {
+  if (!actor) return
   try {
     const saved = await conversationApi.sendMessage(conversationId.value, {
       content,
       messageType,
       metadata,
-      actorSubjectId: currentPrincipalHumanId.value,
-      actorSubjectType: 'HUMAN',
+      actorSubjectId: actor.subjectId,
+      actorSubjectType: actor.subjectType,
     })
     updateLocalMessage(localId, saved)
   } catch (err: any) {
@@ -934,7 +990,7 @@ const replaceLocalMessage = (
 ) => {
   console.log('[replaceLocalMessage] 开始替换:', { senderSubjectId, senderSubjectType, realId, createTime })
   
-  if (senderSubjectType !== 'HUMAN' || senderSubjectId !== currentPrincipalHumanId.value) {
+  if (!isActiveChatSubject(senderSubjectId, senderSubjectType)) {
     console.log('[replaceLocalMessage] sender subject 不匹配')
     return false
   }
@@ -1036,8 +1092,9 @@ const replaceLocalMessage = (
     createTime,
     local: false,
     failed: false,
-    senderSubjectType: 'HUMAN',
-    isAgent: false,
+    senderSubjectId,
+    senderSubjectType,
+    isAgent: senderSubjectType === 'AGENT',
     content: payloadContent,
     messageType: mt,
     attachment: parsedAttachment,
@@ -1121,6 +1178,8 @@ const markLocalFailed = (localId: string) => {
 
 const retrySend = (item: ChatMessage) => {
   if (!item.failed) return
+  const actor = requireActiveChatSubject()
+  if (!actor) return
   const localId = `retry-${Date.now()}`
   const mt = (item.messageType || 'TEXT').toString().toUpperCase()
   const metadata = mt !== 'TEXT' && item.attachment
@@ -1134,9 +1193,9 @@ const retrySend = (item: ChatMessage) => {
   const content = mt === 'TEXT' ? item.content || '' : ''
   appendChatMessage({
     id: localId,
-    senderSubjectId: currentPrincipalHumanId.value,
-    senderSubjectType: 'HUMAN',
-    isAgent: false,
+    senderSubjectId: actor.subjectId,
+    senderSubjectType: actor.subjectType,
+    isAgent: actor.subjectType === 'AGENT',
     content,
     createTime: new Date().toISOString(),
     isSelf: true,
@@ -1144,7 +1203,7 @@ const retrySend = (item: ChatMessage) => {
     messageType: mt,
     attachment: item.attachment,
   })
-  sendHttpMessage(localId, content, mt, metadata)
+  sendHttpMessage(localId, content, mt, metadata, actor)
 }
 
 const formatTime = (time?: string) => {
@@ -1185,12 +1244,14 @@ onLoad((query) => {
   }
 })
 
-onShow(() => {
+onShow(async () => {
   isPageVisible.value = true
   if (!userStore.isLoggedIn) {
     uni.reLaunch({ url: '/pages/auth/login' })
     return
   }
+  await activeSubjectStore.ensureLoaded()
+  chatStore.setCurrentActiveSubject(activeChatSubject.value)
   if (!ensureConversationId()) {
     uni.showToast({ title: t('toast.load_failed'), icon: 'none' })
     setTimeout(() => {
@@ -1490,7 +1551,11 @@ const goBack = () => {
 }
 
 .attach-ico {
-  font-size: 30rpx;
+  width: 52rpx;
+  font-size: 20rpx;
+  font-weight: 800;
+  color: var(--c-ink);
+  text-align: center;
 }
 
 .attach-txt {

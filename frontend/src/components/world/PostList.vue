@@ -10,7 +10,7 @@
     <template #top>
       <PageHeader
         :title="t('page.world.title')"
-        action-icon="⌕"
+        action-icon="S"
         action-variant="bordered"
         action-size="md"
         :has-tabs="true"
@@ -35,7 +35,7 @@
           <view class="sort-wrap">
             <button class="sort-btn" @click="showSortDropdown = !showSortDropdown">
               <text>{{ sortLabel }}</text>
-              <text class="chev">▼</text>
+              <text class="chev">v</text>
             </button>
             <view v-if="showSortDropdown" class="sort-menu">
               <view
@@ -50,7 +50,7 @@
             </view>
           </view>
           <button class="new-post-btn" @click="$emit('new-post')">
-            <text class="new-post-plus">＋</text>
+            <text class="new-post-plus">+</text>
             <text>{{ t('page.world.new_post_short') }}</text>
           </button>
         </view>
@@ -68,7 +68,7 @@
       />
     </view>
     <template #bottom>
-      <view style="height: 100rpx;"></view>
+      <view class="tabbar-spacer"></view>
     </template>
   </z-paging>
 </template>
@@ -76,7 +76,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useI18nWithFormat } from '@/composables/useI18nWithFormat'
-import { worldApi, type WorldPost, type WorldSort } from '@/api/modules/world'
+import { worldApi, type WorldPost, type WorldSort, type WorldSubjectParams } from '@/api/modules/world'
 import { getApiErrorMessage } from '@/utils/request'
 import PageHeader from '@/components/PageHeader.vue'
 import WorldPostCard from './WorldPostCard.vue'
@@ -88,6 +88,7 @@ const props = defineProps<{
   activeTabIndex: number
   sortOptions: { value: WorldSort; label: string }[]
   normalizePost: (post: WorldPost) => WorldPost
+  viewer?: WorldSubjectParams
 }>()
 
 const emit = defineEmits<{
@@ -112,7 +113,13 @@ const queryPosts = async (pageNo: number, pageSize: number) => {
   try {
     const isRefresh = pageNo === 1
     const reqCursorId = isRefresh ? undefined : cursorId.value
-    const res = await worldApi.listPosts({ sort: sortBy.value, cursorId: reqCursorId, limit: pageSize })
+    const res = await worldApi.listPosts({
+      sort: sortBy.value,
+      cursorId: reqCursorId,
+      limit: pageSize,
+      viewerSubjectId: props.viewer?.subjectId,
+      viewerSubjectType: props.viewer?.subjectType,
+    })
     const list = res.items.map(props.normalizePost)
     
     if (isRefresh) {
@@ -167,13 +174,16 @@ defineExpose({
 .sort-row {
   padding: 20rpx 24rpx;
   border-bottom: 1rpx solid var(--c-border);
-  background: rgba(255, 255, 255, 0.9);
+  background: #fff;
 }
 
 .sort-row-inner {
   display: flex;
   align-items: center;
   gap: 16rpx;
+  width: 100%;
+  max-width: var(--page-content-max);
+  margin: 0 auto;
 }
 
 .sort-wrap {
@@ -231,7 +241,7 @@ defineExpose({
   font-size: 24rpx;
   font-weight: 600;
   border: none;
-  box-shadow: 0 10rpx 20rpx rgba(3, 2, 19, 0.24);
+  box-shadow: var(--shadow-action);
 }
 
 .new-post-plus {
@@ -246,6 +256,14 @@ defineExpose({
 }
 
 .post-list-content {
+  width: 100%;
+  max-width: var(--page-content-max);
+  margin: 0 auto;
   padding: 20rpx 24rpx 0;
+  box-sizing: border-box;
+}
+
+.tabbar-spacer {
+  height: var(--page-pad-bottom-tabbar);
 }
 </style>

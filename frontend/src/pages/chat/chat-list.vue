@@ -2,7 +2,7 @@
   <view class="page">
     <PageHeader 
       :title="t('page.chat.title')"
-      action-icon="✎"
+      action-icon="+"
       action-variant="bordered"
       action-size="md"
       @action-click="onCompose"
@@ -22,7 +22,7 @@
     <view class="list-scroll" :class="{ 'with-connection-bar': showConnectionStatus }">
       <view v-if="loading" class="state">{{ t('common.loading') }}</view>
       <view v-else-if="filteredSorted.length === 0" class="state">
-        <EmptyState :title="t('common.empty_conversation')" icon="💬" />
+        <EmptyState :title="t('common.empty_conversation')" icon="C" />
       </view>
       <view
         v-else
@@ -35,7 +35,7 @@
         <view class="conv-inner">
           <view class="avatar-wrap">
             <view class="avatar" :style="avatarStyle(item)">
-              <text class="avatar-letter">{{ isAgentConversation(item) ? '🤖' : '👤' }}</text>
+              <text class="avatar-letter">{{ avatarText(item) }}</text>
             </view>
             <view v-if="isOnline(item)" class="online-dot" />
           </view>
@@ -76,6 +76,7 @@ import { useI18n } from 'vue-i18n'
 import { conversationApi, type ConversationSummary } from '../../api/modules/conversation'
 import { useUserStore } from '../../store/modules/user'
 import { useChatStore } from '../../store/modules/chat'
+import { useActiveSubjectStore } from '@/store/modules/activeSubject'
 import EmptyState from '../../components/EmptyState.vue'
 import SearchBar from '../../components/SearchBar.vue'
 import PageHeader from '../../components/PageHeader.vue'
@@ -89,6 +90,7 @@ const searchQuery = ref('')
 const pinIds = ref<Set<number>>(new Set())
 const userStore = useUserStore()
 const chatStore = useChatStore()
+const activeSubjectStore = useActiveSubjectStore()
 const { t } = useI18n({ useScope: 'global' })
 
 const loadPins = () => {
@@ -130,6 +132,12 @@ const avatarStyle = (item: ConversationSummary) => {
   const key = item.title || String(item.id)
   const c = avatarHue(key)
   return { background: `linear-gradient(135deg, ${c}f0, ${c}c0)` }
+}
+
+const avatarText = (item: ConversationSummary) => {
+  if (isAgentConversation(item)) return 'AI'
+  const title = String(item.title || '').trim()
+  return (title.slice(0, 1) || 'H').toUpperCase()
 }
 
 const isAgentConversation = (item: ConversationSummary) => {
@@ -185,7 +193,11 @@ const fetchConversations = async () => {
   loading.value = true
   try {
     const q = searchQuery.value.trim()
-    const list = await conversationApi.listConversations(q ? { q } : undefined)
+    const params = {
+      ...activeSubjectStore.conversationViewerParams(),
+      ...(q ? { q } : {}),
+    }
+    const list = await conversationApi.listConversations(params)
     conversations.value = list
     chatStore.setConversations(list)
   } catch (err: any) {
@@ -272,11 +284,17 @@ const handleConnectionBarClick = () => {
   }
 }
 
-onShow(() => {
+onShow(async () => {
   if (!userStore.isLoggedIn) {
     uni.reLaunch({ url: '/pages/auth/login' })
     return
   }
+  await activeSubjectStore.ensureLoaded()
+  if (!activeSubjectStore.currentSubject) {
+    uni.reLaunch({ url: '/pages/auth/login' })
+    return
+  }
+  chatStore.setCurrentActiveSubject(activeSubjectStore.currentSubject)
   loadPins()
   uni.setNavigationBarTitle({ title: t('page.chat.title') })
   void fetchConversations()
@@ -305,7 +323,7 @@ watch(
   height: 100vh;
   display: flex;
   flex-direction: column;
-  background: linear-gradient(165deg, var(--c-bg) 0%, var(--c-bg-2) 100%);
+  background: var(--c-page);
   box-sizing: border-box;
   overflow: hidden;
 }
@@ -378,7 +396,10 @@ watch(
   min-height: 0;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
-  padding: 12rpx 16rpx var(--page-pad-bottom-tabbar-loose);
+  width: 100%;
+  max-width: var(--page-content-max);
+  margin: 0 auto;
+  padding: 16rpx 20rpx var(--page-pad-bottom-tabbar-loose);
   box-sizing: border-box;
 }
 
@@ -393,23 +414,25 @@ watch(
 }
 
 .conv-wrap {
-  margin: 8rpx 4rpx;
-  border-radius: var(--radius-lg);
-  background: rgba(255, 255, 255, 0.72);
-  border: 1rpx solid rgba(0, 0, 0, 0.08);
-  box-shadow: 0 8rpx 18rpx rgba(0, 0, 0, 0.05);
+  margin: 0 0 12rpx;
+  border-radius: var(--radius-list-row);
+  background: var(--c-list-row);
+  border: 1rpx solid var(--c-border);
+  box-shadow: none;
 }
 
 .conv-wrap.pinned {
-  background: rgba(3, 2, 19, 0.04);
-  border: 1rpx solid rgba(3, 2, 19, 0.18);
+  background: var(--c-surface-muted);
+  border-color: var(--c-border-strong);
 }
 
 .conv-inner {
   display: flex;
   align-items: center;
-  gap: 20rpx;
-  padding: 20rpx 16rpx;
+  gap: 18rpx;
+  min-height: var(--list-row-height);
+  padding: 16rpx;
+  box-sizing: border-box;
 }
 
 .avatar-wrap {
@@ -418,31 +441,32 @@ watch(
 }
 
 .avatar {
-  width: 112rpx;
-  height: 112rpx;
-  border-radius: var(--radius-lg);
+  width: var(--avatar-size);
+  height: var(--avatar-size);
+  border-radius: var(--radius-avatar);
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: var(--c-shadow-soft);
+  box-shadow: none;
 }
 
 .avatar-letter {
-  font-size: 44rpx;
-  font-weight: 600;
+  font-size: 28rpx;
+  font-weight: 800;
   color: #fff;
+  letter-spacing: 0;
 }
 
 .online-dot {
   position: absolute;
-  right: -4rpx;
-  bottom: -4rpx;
-  width: 20rpx;
-  height: 20rpx;
+  right: -2rpx;
+  bottom: -2rpx;
+  width: 18rpx;
+  height: 18rpx;
   border-radius: 50%;
-  background: #10b981;
+  background: var(--c-success);
   border: 3rpx solid #fff;
-  box-shadow: 0 6rpx 10rpx rgba(0, 0, 0, 0.12);
+  box-shadow: none;
 }
 
 .body {
@@ -519,13 +543,13 @@ watch(
 }
 
 .pin-btn {
-  min-width: 76rpx;
-  height: 56rpx;
+  min-width: 68rpx;
+  height: 52rpx;
   padding: 0 10rpx;
   margin: 0;
-  border: 1rpx solid rgba(0, 0, 0, 0.08);
-  border-radius: 12rpx;
-  background: rgba(255, 255, 255, 0.75);
+  border: 1rpx solid var(--c-border);
+  border-radius: var(--radius-sm);
+  background: #fff;
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -537,8 +561,8 @@ watch(
 }
 
 .pin-btn.on {
-  background: rgba(3, 2, 19, 0.1);
-  border-color: rgba(3, 2, 19, 0.18);
+  background: var(--c-accent);
+  border-color: var(--c-border-strong);
 }
 
 .pin-glyph {

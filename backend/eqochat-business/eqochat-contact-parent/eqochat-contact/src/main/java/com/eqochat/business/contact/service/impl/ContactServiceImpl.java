@@ -10,10 +10,11 @@ import com.eqochat.business.actor.api.service.SubjectDirectoryApi;
 import com.eqochat.business.contact.api.dto.response.ContactDetailResponse;
 import com.eqochat.business.contact.api.dto.response.ContactResponse;
 import com.eqochat.business.contact.api.service.ContactService;
-import com.eqochat.business.contact.entity.UserContactTag;
-import com.eqochat.business.contact.mapper.UserContactTagMapper;
-import com.eqochat.business.user.entity.UserFriend;
-import com.eqochat.business.user.mapper.UserFriendMapper;
+import com.eqochat.business.contact.api.service.SubjectRelationshipApi;
+import com.eqochat.business.contact.entity.ContactRelationship;
+import com.eqochat.business.contact.entity.ContactTag;
+import com.eqochat.business.contact.mapper.ContactRelationshipMapper;
+import com.eqochat.business.contact.mapper.ContactTagMapper;
 import com.eqochat.business.world.api.service.WorldPostStatsApi;
 import com.eqochat.framework.common.BizException;
 import lombok.RequiredArgsConstructor;
@@ -33,10 +34,10 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 @Slf4j
-public class ContactServiceImpl implements ContactService {
+public class ContactServiceImpl implements ContactService, SubjectRelationshipApi {
 
-    private final UserFriendMapper userFriendMapper;
-    private final UserContactTagMapper userContactTagMapper;
+    private final ContactRelationshipMapper contactRelationshipMapper;
+    private final ContactTagMapper contactTagMapper;
     private final WorldPostStatsApi worldPostStatsApi;
     private final SubjectDirectoryApi subjectDirectoryApi;
     private final LiabilityPolicyApi liabilityPolicyApi;
@@ -45,16 +46,16 @@ public class ContactServiceImpl implements ContactService {
     public List<ContactResponse> listContacts(Long principalHumanId, SubjectRef owner) {
         SubjectRef ownerRef = requireRelationshipSubject(owner);
         requireAuthorizedLiability(principalHumanId, ownerRef, "contact.access.denied");
-        UserFriend.FriendType ownerType = toFriendType(ownerRef);
+        ContactRelationship.RelationshipSubjectType ownerType = toFriendType(ownerRef);
 
-        List<UserFriend> friends = userFriendMapper.findActiveFriendsByOwner(ownerRef.id(), ownerType);
+        List<ContactRelationship> friends = contactRelationshipMapper.findActiveFriendsByOwner(ownerRef.id(), ownerType);
         if (friends.isEmpty()) {
             return List.of();
         }
 
         Set<SubjectRef> targets = friends.stream()
                 .filter(friend -> friend.getFriendId() != null)
-                .map(friend -> toSubjectRef(friend.getFriendId(), normalizeFriendType(friend.getFriendType())))
+                .map(friend -> toSubjectRef(friend.getFriendId(), requireFriendType(friend.getFriendType())))
                 .collect(Collectors.toCollection(LinkedHashSet::new));
         Map<SubjectRef, SubjectSummaryResponse> subjects = subjectDirectoryApi.batchGetSubjects(targets);
 
@@ -69,7 +70,7 @@ public class ContactServiceImpl implements ContactService {
         SubjectRef ownerRef = requireRelationshipSubject(owner);
         SubjectRef targetRef = requireRelationshipSubject(target);
         requireAuthorizedLiability(principalHumanId, ownerRef, "contact.access.denied");
-        UserFriend relation = requireRelation(ownerRef, targetRef);
+        ContactRelationship relation = requireRelation(ownerRef, targetRef);
         SubjectSummaryResponse subject = requireSubject(targetRef);
         List<String> tags = selectTags(ownerRef, targetRef);
         int worldPostCount = (int) Math.min(Integer.MAX_VALUE,
@@ -104,8 +105,8 @@ public class ContactServiceImpl implements ContactService {
 
         if (!areFriends(ownerRef, targetRef)) {
             LocalDateTime now = LocalDateTime.now();
-            userFriendMapper.insert(relation(ownerRef, targetRef, "MANUAL", now));
-            userFriendMapper.insert(relation(targetRef, ownerRef, "MANUAL", now));
+            contactRelationshipMapper.insert(relation(ownerRef, targetRef, "MANUAL", now));
+            contactRelationshipMapper.insert(relation(targetRef, ownerRef, "MANUAL", now));
         }
 
         return toContactResponse(ownerRef, relation(ownerRef, targetRef, "MANUAL", LocalDateTime.now()),
@@ -120,11 +121,11 @@ public class ContactServiceImpl implements ContactService {
         requireRelation(ownerRef, targetRef);
 
         List<String> normalized = normalizeTags(tags);
-        UserFriend.FriendType ownerType = toFriendType(ownerRef);
-        UserFriend.FriendType targetType = toFriendType(targetRef);
-        userContactTagMapper.hardDeleteAll(ownerRef.id(), ownerType, targetRef.id(), targetType);
+        ContactRelationship.RelationshipSubjectType ownerType = toFriendType(ownerRef);
+        ContactRelationship.RelationshipSubjectType targetType = toFriendType(targetRef);
+        contactTagMapper.hardDeleteAll(ownerRef.id(), ownerType, targetRef.id(), targetType);
         for (String tag : normalized) {
-            userContactTagMapper.insert(UserContactTag.builder()
+            contactTagMapper.insert(ContactTag.builder()
                     .userId(ownerRef.id())
                     .userType(ownerType)
                     .friendId(targetRef.id())
@@ -138,13 +139,13 @@ public class ContactServiceImpl implements ContactService {
 
     private ContactResponse toContactResponse(
             SubjectRef owner,
-            UserFriend friend,
+            ContactRelationship friend,
             Map<SubjectRef, SubjectSummaryResponse> subjects
     ) {
         if (friend == null || friend.getFriendId() == null) {
             return null;
         }
-        SubjectRef target = toSubjectRef(friend.getFriendId(), normalizeFriendType(friend.getFriendType()));
+        SubjectRef target = toSubjectRef(friend.getFriendId(), requireFriendType(friend.getFriendType()));
         SubjectSummaryResponse subject = subjects.get(target);
         if (subject == null) {
             return null;
@@ -161,18 +162,35 @@ public class ContactServiceImpl implements ContactService {
                 .build();
     }
 
-    private UserFriend requireRelation(SubjectRef owner, SubjectRef target) {
-        return userFriendMapper.findByOwnerAndTarget(owner.id(), toFriendType(owner), target.id(), toFriendType(target))
-                .filter(relation -> relation.getStatus() == UserFriend.FriendStatus.ACTIVE)
+    private ContactRelationship requireRelation(SubjectRef owner, SubjectRef target) {
+        return contactRelationshipMapper.findByOwnerAndTarget(owner.id(), toFriendType(owner), target.id(), toFriendType(target))
+                .filter(relation -> relation.getStatus() == ContactRelationship.RelationshipStatus.ACTIVE)
                 .orElseThrow(() -> BizException.of("contact.not_friend"));
     }
 
-    private boolean areFriends(SubjectRef owner, SubjectRef target) {
-        return userFriendMapper.areFriends(owner.id(), toFriendType(owner), target.id(), toFriendType(target));
+    @Override
+    public boolean areFriends(SubjectRef owner, SubjectRef target) {
+        SubjectRef ownerRef = requireRelationshipSubject(owner);
+        SubjectRef targetRef = requireRelationshipSubject(target);
+        return contactRelationshipMapper.areFriends(ownerRef.id(), toFriendType(ownerRef), targetRef.id(), toFriendType(targetRef));
+    }
+
+    @Override
+    public List<SubjectRef> listFriends(SubjectRef owner) {
+        SubjectRef ownerRef = requireRelationshipSubject(owner);
+        List<ContactRelationship> friends = contactRelationshipMapper.findActiveFriendsByOwner(ownerRef.id(), toFriendType(ownerRef));
+        if (friends == null || friends.isEmpty()) {
+            return List.of();
+        }
+        return friends.stream()
+                .filter(friend -> friend != null && friend.getFriendId() != null)
+                .map(friend -> toSubjectRef(friend.getFriendId(), requireFriendType(friend.getFriendType())))
+                .distinct()
+                .toList();
     }
 
     private List<String> selectTags(SubjectRef owner, SubjectRef target) {
-        List<String> tags = userContactTagMapper.selectActiveTagNames(
+        List<String> tags = contactTagMapper.selectActiveTagNames(
                 owner.id(),
                 toFriendType(owner),
                 target.id(),
@@ -199,13 +217,13 @@ public class ContactServiceImpl implements ContactService {
         }
     }
 
-    private static UserFriend relation(SubjectRef owner, SubjectRef target, String source, LocalDateTime now) {
-        return UserFriend.builder()
+    private static ContactRelationship relation(SubjectRef owner, SubjectRef target, String source, LocalDateTime now) {
+        return ContactRelationship.builder()
                 .userId(owner.id())
                 .userType(toFriendType(owner))
                 .friendId(target.id())
                 .friendType(toFriendType(target))
-                .status(UserFriend.FriendStatus.ACTIVE)
+                .status(ContactRelationship.RelationshipStatus.ACTIVE)
                 .addSource(source)
                 .createTime(now)
                 .build();
@@ -218,19 +236,24 @@ public class ContactServiceImpl implements ContactService {
         return subject;
     }
 
-    private static SubjectRef toSubjectRef(Long id, UserFriend.FriendType type) {
-        return type == UserFriend.FriendType.AGENT ? SubjectRef.agent(id) : SubjectRef.human(id);
+    private static SubjectRef toSubjectRef(Long id, ContactRelationship.RelationshipSubjectType type) {
+        return type == ContactRelationship.RelationshipSubjectType.AGENT ? SubjectRef.agent(id) : SubjectRef.human(id);
     }
 
-    private static UserFriend.FriendType toFriendType(SubjectRef ref) {
+    private static ContactRelationship.RelationshipSubjectType toFriendType(SubjectRef ref) {
         if (ref.type() == SubjectType.SYSTEM) {
             throw BizException.of("contact.subject.invalid");
         }
-        return ref.type() == SubjectType.AGENT ? UserFriend.FriendType.AGENT : UserFriend.FriendType.HUMAN;
+        return ref.type() == SubjectType.AGENT
+                ? ContactRelationship.RelationshipSubjectType.AGENT
+                : ContactRelationship.RelationshipSubjectType.HUMAN;
     }
 
-    private static UserFriend.FriendType normalizeFriendType(UserFriend.FriendType type) {
-        return type != null ? type : UserFriend.FriendType.HUMAN;
+    private static ContactRelationship.RelationshipSubjectType requireFriendType(ContactRelationship.RelationshipSubjectType type) {
+        if (type == null) {
+            throw BizException.of("contact.subject.invalid");
+        }
+        return type;
     }
 
     private static String displayName(SubjectSummaryResponse subject) {

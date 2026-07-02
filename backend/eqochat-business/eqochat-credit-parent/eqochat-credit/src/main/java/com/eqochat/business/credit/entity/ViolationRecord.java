@@ -45,8 +45,14 @@ public class ViolationRecord {
     @TableField("reporter_id")
     private Long reporterId;
 
+    @TableField("reporter_type")
+    private SubjectType reporterType;
+
     @TableField("reviewer_id")
     private Long reviewerId;
+
+    @TableField("reviewer_type")
+    private SubjectType reviewerType;
 
     @TableField("status")
     private ViolationStatus status;

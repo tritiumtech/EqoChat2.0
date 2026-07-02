@@ -1,16 +1,16 @@
 <template>
   <u-search
     :model-value="modelValue"
-    shape="round"
+    shape="square"
     :placeholder="placeholder"
     :show-action="false"
     :clearabled="true"
     search-icon="search"
-    :search-icon-color="'#717182'"
-    :color="'#030213'"
-    :placeholder-color="'#717182'"
-    :bg-color="'rgba(255, 255, 255, 0.9)'"
-    :border-color="'rgba(0, 0, 0, 0.1)'"
+    search-icon-color="#6b7280"
+    color="#111827"
+    placeholder-color="#6b7280"
+    bg-color="#ffffff"
+    border-color="rgba(17, 24, 39, 0.12)"
     height="72rpx"
     :custom-style="{ width: '100%' }"
     @change="onChange"
@@ -19,14 +19,6 @@
 </template>
 
 <script setup lang="ts">
-function onChange(value: any) {
-  if (typeof value === 'string') {
-    emit('update:modelValue', value)
-    return
-  }
-  emit('update:modelValue', String(value ?? ''))
-}
-
 const emit = defineEmits<{
   (e: 'update:modelValue', value: string): void
 }>()
@@ -35,16 +27,21 @@ defineProps<{
   modelValue: string
   placeholder: string
 }>()
+
+function onChange(value: unknown) {
+  emit('update:modelValue', typeof value === 'string' ? value : String(value ?? ''))
+}
 </script>
 
 <style scoped>
 @import "@/styles/tokens.css";
 
-/* u-search 默认按 px 体系，做一层紧凑化以匹配项目现有视觉 */
 :deep(.u-search__content) {
-  padding: 0 14rpx !important;
-  border-radius: var(--radius-lg) !important;
+  box-sizing: border-box;
+  padding: 0 16rpx !important;
+  border-radius: var(--radius-control) !important;
   border-width: 1rpx !important;
+  box-shadow: none;
 }
 
 :deep(.u-search__content__input) {
@@ -52,12 +49,8 @@ defineProps<{
   font-size: 26rpx !important;
 }
 
-:deep(.u-search__content__icon) {
+:deep(.u-search__content__icon),
+:deep(.u-search__content__close) {
   transform: scale(0.92);
 }
-
-:deep(.u-search__content__close) {
-  transform: scale(0.9);
-}
 </style>
-

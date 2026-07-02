@@ -7,14 +7,13 @@ import com.eqochat.business.actor.api.model.SubjectStatus;
 import com.eqochat.business.actor.api.model.SubjectType;
 import com.eqochat.business.actor.api.service.LiabilityPolicyApi;
 import com.eqochat.business.actor.api.service.SubjectDirectoryApi;
-import com.eqochat.business.agent.mapper.AgentProfileMapper;
 import com.eqochat.business.contact.api.dto.request.SendFriendRequestRequest;
 import com.eqochat.business.contact.api.dto.response.FriendRequestResponse;
+import com.eqochat.business.contact.entity.ContactRelationship;
 import com.eqochat.business.contact.entity.FriendRequest;
+import com.eqochat.business.contact.mapper.ContactRelationshipMapper;
 import com.eqochat.business.contact.mapper.FriendRequestMapper;
 import com.eqochat.business.notification.api.service.NotificationService;
-import com.eqochat.business.user.entity.UserFriend;
-import com.eqochat.business.user.mapper.UserFriendMapper;
 import com.eqochat.framework.common.BizException;
 import org.apache.ibatis.annotations.Select;
 import org.junit.jupiter.api.BeforeEach;
@@ -44,15 +43,13 @@ class FriendRequestServiceImplActorContractTest {
     @Mock
     FriendRequestMapper friendRequestMapper;
     @Mock
-    UserFriendMapper userFriendMapper;
+    ContactRelationshipMapper contactRelationshipMapper;
     @Mock
     SubjectDirectoryApi subjectDirectoryApi;
     @Mock
     LiabilityPolicyApi liabilityPolicyApi;
     @Mock
     NotificationService notificationService;
-    @Mock
-    AgentProfileMapper agentProfileMapper;
 
     FriendRequestServiceImpl service;
 
@@ -60,11 +57,10 @@ class FriendRequestServiceImplActorContractTest {
     void setUp() {
         service = new FriendRequestServiceImpl(
                 friendRequestMapper,
-                userFriendMapper,
+                contactRelationshipMapper,
                 subjectDirectoryApi,
                 liabilityPolicyApi,
-                notificationService,
-                agentProfileMapper
+                notificationService
         );
     }
 
@@ -100,7 +96,7 @@ class FriendRequestServiceImplActorContractTest {
         when(subjectDirectoryApi.getSubject(SubjectRef.agent(101L))).thenReturn(activeSubject(101L, SubjectType.AGENT, "Nova"));
         when(subjectDirectoryApi.getSubject(SubjectRef.human(2L))).thenReturn(activeSubject(2L, SubjectType.HUMAN, "Ava"));
         when(liabilityPolicyApi.resolveLiability(SubjectRef.agent(101L))).thenReturn(LiabilityChain.agentToHuman(101L, 9L));
-        when(userFriendMapper.areFriends(101L, UserFriend.FriendType.AGENT, 2L, UserFriend.FriendType.HUMAN))
+        when(contactRelationshipMapper.areFriends(101L, ContactRelationship.RelationshipSubjectType.AGENT, 2L, ContactRelationship.RelationshipSubjectType.HUMAN))
                 .thenReturn(false);
         when(friendRequestMapper.findPendingRequest(101L, SubjectType.AGENT, 2L, SubjectType.HUMAN))
                 .thenReturn(Optional.empty());
@@ -149,27 +145,27 @@ class FriendRequestServiceImplActorContractTest {
         when(liabilityPolicyApi.resolveLiability(SubjectRef.human(2L))).thenReturn(LiabilityChain.selfResponsible(2L));
         when(subjectDirectoryApi.getSubject(SubjectRef.agent(101L))).thenReturn(activeSubject(101L, SubjectType.AGENT, "Nova"));
         when(subjectDirectoryApi.getSubject(SubjectRef.human(2L))).thenReturn(activeSubject(2L, SubjectType.HUMAN, "Ava"));
-        when(userFriendMapper.areFriends(101L, UserFriend.FriendType.AGENT, 2L, UserFriend.FriendType.HUMAN))
+        when(contactRelationshipMapper.areFriends(101L, ContactRelationship.RelationshipSubjectType.AGENT, 2L, ContactRelationship.RelationshipSubjectType.HUMAN))
                 .thenReturn(false);
-        when(userFriendMapper.areFriends(2L, UserFriend.FriendType.HUMAN, 101L, UserFriend.FriendType.AGENT))
+        when(contactRelationshipMapper.areFriends(2L, ContactRelationship.RelationshipSubjectType.HUMAN, 101L, ContactRelationship.RelationshipSubjectType.AGENT))
                 .thenReturn(false);
 
         service.accept(2L, 88L);
 
-        ArgumentCaptor<UserFriend> relationCaptor = ArgumentCaptor.forClass(UserFriend.class);
-        verify(userFriendMapper, org.mockito.Mockito.times(2)).insert(relationCaptor.capture());
+        ArgumentCaptor<ContactRelationship> relationCaptor = ArgumentCaptor.forClass(ContactRelationship.class);
+        verify(contactRelationshipMapper, org.mockito.Mockito.times(2)).insert(relationCaptor.capture());
         assertThat(relationCaptor.getAllValues())
                 .extracting(
-                        UserFriend::getUserId,
-                        UserFriend::getUserType,
-                        UserFriend::getFriendId,
-                        UserFriend::getFriendType,
-                        UserFriend::getStatus,
-                        UserFriend::getAddSource
+                        ContactRelationship::getUserId,
+                        ContactRelationship::getUserType,
+                        ContactRelationship::getFriendId,
+                        ContactRelationship::getFriendType,
+                        ContactRelationship::getStatus,
+                        ContactRelationship::getAddSource
                 )
                 .containsExactlyInAnyOrder(
-                        org.assertj.core.groups.Tuple.tuple(101L, UserFriend.FriendType.AGENT, 2L, UserFriend.FriendType.HUMAN, UserFriend.FriendStatus.ACTIVE, "FRIEND_REQUEST"),
-                        org.assertj.core.groups.Tuple.tuple(2L, UserFriend.FriendType.HUMAN, 101L, UserFriend.FriendType.AGENT, UserFriend.FriendStatus.ACTIVE, "FRIEND_REQUEST")
+                        org.assertj.core.groups.Tuple.tuple(101L, ContactRelationship.RelationshipSubjectType.AGENT, 2L, ContactRelationship.RelationshipSubjectType.HUMAN, ContactRelationship.RelationshipStatus.ACTIVE, "FRIEND_REQUEST"),
+                        org.assertj.core.groups.Tuple.tuple(2L, ContactRelationship.RelationshipSubjectType.HUMAN, 101L, ContactRelationship.RelationshipSubjectType.AGENT, ContactRelationship.RelationshipStatus.ACTIVE, "FRIEND_REQUEST")
                 );
         verify(notificationService).sendNotification(
                 eq(SubjectRef.agent(101L)),
@@ -193,6 +189,39 @@ class FriendRequestServiceImplActorContractTest {
                 .isInstanceOf(BizException.class)
                 .hasMessage("friend_request.subject.invalid");
         verify(friendRequestMapper, never()).insert(any(FriendRequest.class));
+    }
+
+    @Test
+    void explicitReceivedInboxIsAuthorizedAndScopedToThatSubjectOnly() {
+        when(liabilityPolicyApi.resolveLiability(SubjectRef.agent(101L))).thenReturn(LiabilityChain.agentToHuman(101L, 9L));
+        when(friendRequestMapper.findPendingByRecipientSubject(101L, SubjectType.AGENT)).thenReturn(List.of());
+
+        service.listReceived(9L, SubjectRef.agent(101L));
+
+        verify(friendRequestMapper).findPendingByRecipientSubject(101L, SubjectType.AGENT);
+    }
+
+    @Test
+    void explicitAgentSentInboxIsAuthorizedAndScopedToThatAgentOnly() {
+        when(liabilityPolicyApi.resolveLiability(SubjectRef.agent(101L))).thenReturn(LiabilityChain.agentToHuman(101L, 9L));
+        when(friendRequestMapper.findByRequesterSubject(101L, SubjectType.AGENT)).thenReturn(List.of());
+
+        service.listSent(9L, SubjectRef.agent(101L));
+
+        verify(friendRequestMapper).findByRequesterSubject(101L, SubjectType.AGENT);
+        verify(subjectDirectoryApi, never()).batchGetSubjects(any());
+    }
+
+    @Test
+    void explicitUnauthorizedAgentInboxIsRejectedBeforeMapperQuery() {
+        when(liabilityPolicyApi.resolveLiability(SubjectRef.agent(101L))).thenReturn(LiabilityChain.agentToHuman(101L, 8L));
+
+        assertThatThrownBy(() -> service.listReceived(9L, SubjectRef.agent(101L)))
+                .isInstanceOf(BizException.class)
+                .hasMessage("friend_request.not_recipient");
+
+        verify(friendRequestMapper, never()).findPendingByRecipientSubject(any(), any());
+        verify(friendRequestMapper, never()).findByRequesterSubject(any(), any());
     }
 
     private static SubjectSummaryResponse activeSubject(Long id, SubjectType type, String name) {

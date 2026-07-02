@@ -1,11 +1,7 @@
 /**
- * EqoChat 用户模块实现
- * 
- * 用户相关功能的实现，包括：
- * - 用户认证（登录、注册、验证码）
- * - 用户资料管理
- * - 用户关系（关注、好友）
- * 
- * 本模块仅用于运行时实现，不可被其他模块直接依赖。
+ * User runtime implementation.
+ *
+ * Owns authentication and human profile persistence. Subject relationships,
+ * contacts, and social graph state are owned by Actor, Contact, and World.
  */
 package com.eqochat.business.user;

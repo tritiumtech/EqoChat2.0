@@ -4,7 +4,7 @@
  */
 
 import { ref, onMounted, onUnmounted, type Ref } from 'vue'
-import { wsClient, MessageType, type WebSocketCallbacks, type ConnectionInfo } from '@/utils/websocket'
+import { wsClient, MessageType, type WebSocketCallbacks, type ConnectionInfo, type WebSocketSubjectRef } from '@/utils/websocket'
 import { useUserStore } from '@/store/modules/user'
 import type { ChatMessagePayload, TypingPayload, ReadReceiptPayload, PresencePayload } from '@/types/websocket'
 
@@ -17,9 +17,9 @@ export interface UseWebSocketReturn {
   connect: () => void
   disconnect: () => void
   reconnect: () => void
-  sendMessage: (conversationId: string, content: string, messageType?: string, options?: Partial<ChatMessagePayload>) => boolean
-  sendTyping: (conversationId: string, isTyping?: boolean) => boolean
-  sendReadReceipt: (conversationId: string, messageId: string) => boolean
+  sendMessage: (conversationId: string, content: string, messageType?: string, options?: Partial<ChatMessagePayload>, subject?: WebSocketSubjectRef) => boolean
+  sendTyping: (conversationId: string, isTyping?: boolean, subject?: WebSocketSubjectRef) => boolean
+  sendReadReceipt: (conversationId: string, messageId: string, subject?: WebSocketSubjectRef) => boolean
 }
 
 export interface UseWebSocketOptions extends WebSocketCallbacks {
@@ -162,23 +162,24 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
     conversationId: string,
     content: string,
     messageType: string = 'TEXT',
-    options?: Partial<ChatMessagePayload>
+    options?: Partial<ChatMessagePayload>,
+    subject?: WebSocketSubjectRef
   ): boolean => {
-    return wsClient.sendChatMessage(conversationId, content, messageType as any, options)
+    return wsClient.sendChatMessage(conversationId, content, messageType as any, options, subject)
   }
 
   /**
    * 发送输入状态
    */
-  const sendTyping = (conversationId: string, isTyping: boolean = true): boolean => {
-    return wsClient.sendTyping(conversationId, isTyping)
+  const sendTyping = (conversationId: string, isTyping: boolean = true, subject?: WebSocketSubjectRef): boolean => {
+    return wsClient.sendTyping(conversationId, isTyping, subject)
   }
 
   /**
    * 发送已读回执
    */
-  const sendReadReceipt = (conversationId: string, messageId: string): boolean => {
-    return wsClient.sendReadReceipt(conversationId, messageId)
+  const sendReadReceipt = (conversationId: string, messageId: string, subject?: WebSocketSubjectRef): boolean => {
+    return wsClient.sendReadReceipt(conversationId, messageId, subject)
   }
 
   /**

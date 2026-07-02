@@ -15,4 +15,10 @@ public class TransferProjectOwnershipRequest {
 
     @NotNull
     private SubjectType newOwnerSubjectType;
+
+    @NotNull
+    private Long actorSubjectId;
+
+    @NotNull
+    private SubjectType actorSubjectType;
 }

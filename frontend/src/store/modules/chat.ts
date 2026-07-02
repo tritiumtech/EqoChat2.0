@@ -5,12 +5,15 @@ import type { ConversationSummary } from '@/api/modules/conversation'
 import type { BaseMessage, ChatMessagePayload, SessionKickedPayload } from '@/types/websocket'
 import { wsClient } from '@/utils/websocket'
 import { useUserStore } from './user'
+import { useActiveSubjectStore } from './activeSubject'
 
 export const useChatStore = defineStore('chat', () => {
   const conversations = ref<ConversationSummary[]>([])
   const unreadCount = ref(0)
   const activeConversationId = ref<number | null>(null)
   const currentPrincipalHumanId = ref<number | null>(null)
+  const currentActiveSubjectId = ref<number | null>(null)
+  const currentActiveSubjectType = ref<'HUMAN' | 'AGENT' | null>(null)
   const isRealtimeConnected = ref(false)
   const wsListenerId = ref<string | null>(null)
   const isSessionKicked = ref(false)
@@ -31,11 +34,37 @@ export const useChatStore = defineStore('chat', () => {
     currentPrincipalHumanId.value = id
   }
 
+  const setCurrentActiveSubject = (subject?: { subjectId: number | null; subjectType: string } | null) => {
+    const subjectId = Number(subject?.subjectId)
+    const subjectType = String(subject?.subjectType || '').toUpperCase()
+    if (!Number.isFinite(subjectId) || subjectId <= 0 || (subjectType !== 'HUMAN' && subjectType !== 'AGENT')) {
+      currentActiveSubjectId.value = null
+      currentActiveSubjectType.value = null
+      return
+    }
+    currentActiveSubjectId.value = subjectId
+    currentActiveSubjectType.value = subjectType
+  }
+
   const setActiveConversation = (conversationId: number | null) => {
     activeConversationId.value = conversationId
     if (conversationId != null) {
       markConversationRead(conversationId)
     }
+  }
+
+  const resolveSelfSubject = () => {
+    const activeSubjectStore = useActiveSubjectStore()
+    const active = activeSubjectStore.currentSubject
+    const activeId = Number(active?.subjectId)
+    const activeType = String(active?.subjectType || '').toUpperCase()
+    if (Number.isFinite(activeId) && activeId > 0 && (activeType === 'HUMAN' || activeType === 'AGENT')) {
+      return { subjectId: activeId, subjectType: activeType }
+    }
+    if (currentActiveSubjectId.value != null && currentActiveSubjectType.value != null) {
+      return { subjectId: currentActiveSubjectId.value, subjectType: currentActiveSubjectType.value }
+    }
+    return null
   }
 
   const markConversationRead = (conversationId: number) => {
@@ -50,13 +79,28 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  const isForCurrentSubject = (message: BaseMessage) => {
+    const rawId = message.recipientSubjectId
+    const rawType = message.recipientSubjectType
+    if (rawId == null || rawType == null) return false
+    const selfSubject = resolveSelfSubject()
+    if (!selfSubject) return false
+    const recipientId = Number(rawId)
+    const recipientType = String(rawType).toUpperCase()
+    return recipientId === selfSubject.subjectId && recipientType === selfSubject.subjectType
+  }
+
   const handleIncomingMessage = (payload: ChatMessagePayload, message: BaseMessage) => {
+    if (!isForCurrentSubject(message)) return
     const conversationId = Number(payload.conversationId)
     if (!conversationId || Number.isNaN(conversationId)) return
     const senderSubjectId = Number(message.senderSubjectId)
-    const fromSelf = currentPrincipalHumanId.value != null
-      && senderSubjectId === currentPrincipalHumanId.value
-      && message.senderSubjectType === 'HUMAN'
+    const senderSubjectType = String(message.senderSubjectType || '').toUpperCase()
+    const selfSubject = resolveSelfSubject()
+    const fromActiveSubject = !!selfSubject
+      && senderSubjectId === selfSubject.subjectId
+      && senderSubjectType === selfSubject.subjectType
+    const fromSelf = fromActiveSubject
     const isActive = activeConversationId.value != null && Number(activeConversationId.value) === conversationId
 
     const idx = conversations.value.findIndex((x) => Number(x.id) === conversationId)
@@ -179,6 +223,7 @@ export const useChatStore = defineStore('chat', () => {
     setConversations,
     updateUnreadCount,
     setCurrentPrincipalHumanId,
+    setCurrentActiveSubject,
     setActiveConversation,
     markConversationRead,
     startRealtime,

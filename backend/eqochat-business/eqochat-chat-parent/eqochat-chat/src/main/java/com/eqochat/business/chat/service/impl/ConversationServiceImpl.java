@@ -65,8 +65,12 @@ public class ConversationServiceImpl extends ServiceImpl<ConversationMapper, Con
     private final ChatMessageRealtimeNotifier chatMessageRealtimeNotifier;
 
     @Override
-    public List<ConversationSummaryResponse> listConversations(Long principalHumanId) {
-        SubjectRef viewer = SubjectRef.human(principalHumanId);
+    public List<ConversationSummaryResponse> listConversations(
+            Long principalHumanId,
+            Long viewerSubjectId,
+            SubjectType viewerSubjectType
+    ) {
+        SubjectRef viewer = resolveAuthorizedViewer(principalHumanId, viewerSubjectId, viewerSubjectType);
         List<ConversationParticipant> participants = participantService.listByParticipant(viewer);
         if (participants.isEmpty()) {
             return List.of();
@@ -120,7 +124,11 @@ public class ConversationServiceImpl extends ServiceImpl<ConversationMapper, Con
 
     @Override
     public ConversationSummaryResponse createConversation(Long principalHumanId, CreateConversationRequest request) {
-        SubjectRef creator = SubjectRef.human(principalHumanId);
+        SubjectRef creator = resolveAuthorizedSubject(
+                principalHumanId,
+                request.getCreatorSubjectId(),
+                request.getCreatorSubjectType()
+        );
         SubjectRef target = new SubjectRef(request.getTargetSubjectId(), request.getTargetSubjectType());
         validateChatSubject(target);
         if (creator.equals(target)) {
@@ -166,8 +174,13 @@ public class ConversationServiceImpl extends ServiceImpl<ConversationMapper, Con
     }
 
     @Override
-    public ConversationSummaryResponse getConversation(Long principalHumanId, Long conversationId) {
-        SubjectRef viewer = SubjectRef.human(principalHumanId);
+    public ConversationSummaryResponse getConversation(
+            Long principalHumanId,
+            Long conversationId,
+            Long viewerSubjectId,
+            SubjectType viewerSubjectType
+    ) {
+        SubjectRef viewer = resolveAuthorizedViewer(principalHumanId, viewerSubjectId, viewerSubjectType);
         ConversationParticipant participant = requireParticipant(conversationId, viewer);
         Conversation conversation = requireConversation(conversationId);
         Message lastMessage = resolveLastMessage(conversation, Map.of());
@@ -181,8 +194,15 @@ public class ConversationServiceImpl extends ServiceImpl<ConversationMapper, Con
     }
 
     @Override
-    public PageResponse<MessageResponse> getMessages(Long principalHumanId, Long conversationId, Long lastMessageId, Integer limit) {
-        SubjectRef viewer = SubjectRef.human(principalHumanId);
+    public PageResponse<MessageResponse> getMessages(
+            Long principalHumanId,
+            Long conversationId,
+            Long lastMessageId,
+            Integer limit,
+            Long viewerSubjectId,
+            SubjectType viewerSubjectType
+    ) {
+        SubjectRef viewer = resolveAuthorizedViewer(principalHumanId, viewerSubjectId, viewerSubjectType);
         requireParticipant(conversationId, viewer);
 
         int pageSize = limit == null ? 20 : Math.max(1, Math.min(limit, 100));
@@ -302,9 +322,10 @@ public class ConversationServiceImpl extends ServiceImpl<ConversationMapper, Con
                 if (subject != null) {
                     title = subject.getDisplayName();
                     avatarUrl = subject.getAvatarUrl();
-                    online = target.type() == SubjectType.HUMAN
-                            ? webSocketSessionManager.isPrincipalHumanOnline(String.valueOf(target.id()))
-                            : null;
+                    online = webSocketSessionManager.isSubjectOnline(
+                            String.valueOf(target.id()),
+                            target.type().name()
+                    );
                 }
             }
         }
@@ -382,6 +403,19 @@ public class ConversationServiceImpl extends ServiceImpl<ConversationMapper, Con
         SubjectRef actor = new SubjectRef(requestedId, requestedType);
         validateChatSubject(actor);
         return actor;
+    }
+
+    private SubjectRef resolveAuthorizedSubject(Long principalHumanId, Long requestedId, SubjectType requestedType) {
+        SubjectRef subject = resolveActor(requestedId, requestedType);
+        requireAuthorizedLiability(principalHumanId, subject);
+        return subject;
+    }
+
+    private SubjectRef resolveAuthorizedViewer(Long principalHumanId, Long requestedId, SubjectType requestedType) {
+        if (requestedId == null || requestedType == null || requestedType == SubjectType.SYSTEM) {
+            throw BizException.of("conv.viewer.invalid");
+        }
+        return resolveAuthorizedSubject(principalHumanId, requestedId, requestedType);
     }
 
     private Long requireAuthorizedLiability(Long principalHumanId, SubjectRef actor) {

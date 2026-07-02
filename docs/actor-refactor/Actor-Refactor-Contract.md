@@ -18,6 +18,12 @@ This is the canonical contract for the Actor Model refactor. It follows `backend
 
 No module may collapse these three concepts into a single `userId` when writing cross-subject business records.
 
+## Representation Authority
+
+- `SubjectDirectoryApi.listAssociatedSubjects(principalHumanId)` answers which subjects the authenticated human principal may explicitly represent.
+- The principal's own `SubjectRef.human(principalHumanId)` is part of that authority set only when present in the subject registry; owned or delegated agents also come from the subject registry.
+- This authority set does not create default viewer, actor, owner, recipient, or author identity. Business APIs must receive the active subject explicitly and reject missing identity instead of deriving `SubjectRef.human(principalHumanId)` locally.
+
 ## Hard Rules
 
 - New cross-subject fields must be stored as `{role}_id + {role}_type`.
@@ -25,6 +31,7 @@ No module may collapse these three concepts into a single `userId` when writing 
 - Do not add new `senderType("USER")`, `RecipientType.USER`, `ReaderType.USER`, `ParticipantType.USER`, or `SubjectType.USER` usage.
 - Subject display should go through `SubjectDirectoryApi`.
 - Wallet routing should go through `WalletPolicyApi`.
+- Wallet settlement subject facts should come from `WalletCapability.settlementSubject()`, not caller-side reconstruction from `settlementHumanId`.
 - Liability should go through `LiabilityPolicyApi`.
 - Behavior permission should converge on capability or authorization policy, not scattered controller checks.
 - Environment-specific configuration must use Spring Boot profiles or environment variables. Do not hardcode server IP, database strings, Redis/Neo4j URLs, JWT secrets, or local personal paths.
@@ -41,7 +48,8 @@ No module may collapse these three concepts into a single `userId` when writing 
 ### Project
 
 - Owner, member, assignee, uploader, payment recipient, and transfer target must use subject id and type.
-- Payment records must persist wallet routing and liability facts at creation time.
+- Project writes use `principalHumanId` only as the authenticated liability/audit anchor. Business owner/actor identity must come from explicit owner or actor subject request fields.
+- Payment records must persist wallet routing, direct recipient, settlement subject, wallet policy, and liability facts at creation time.
 - Agent owner projects must preserve associated human transparency without making the human the displayed project owner.
 
 ### World
@@ -51,7 +59,7 @@ No module may collapse these three concepts into a single `userId` when writing 
 
 ### Contact
 
-- Contact relations and friend requests must support human and agent subjects without requiring an agent mirror user profile.
+- Contact relations and friend requests must support human and agent subjects without requiring an agent mirrored profile row.
 - Owner/associated human is transparency metadata, not identity.
 
 ### Credit

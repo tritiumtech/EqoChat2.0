@@ -1,5 +1,8 @@
 package com.eqochat.business.user.service.impl;
 
+import com.eqochat.business.actor.api.dto.response.SubjectSummaryResponse;
+import com.eqochat.business.actor.api.model.SubjectRef;
+import com.eqochat.business.actor.api.service.SubjectDirectoryApi;
 import com.eqochat.framework.common.ApiErrorCodes;
 import com.eqochat.framework.common.BizException;
 import com.eqochat.framework.common.I18nUtil;
@@ -18,8 +21,6 @@ import com.eqochat.framework.sms.SmsSender;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.dao.DataAccessException;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -38,12 +39,11 @@ public class AuthServiceImpl implements AuthService {
     private final StringRedisTemplate redisTemplate;
     private final SmsSender smsSender;
     private final UserSessionApi userSessionApi;
-    private final JdbcTemplate jdbcTemplate;
+    private final SubjectDirectoryApi subjectDirectoryApi;
     
     private static final String VERIFY_CODE_PREFIX = "verify:code:";
     private static final String VERIFY_EMAIL_CODE_PREFIX = "verify:email:";
     private static final String DID_PREFIX = "did:eqochat:user:";
-    private static final String DEMO_POINTS_KEY_PREFIX = "demo.user.points.";
     /**
      * token 过期时间（秒），与 jwt.expiration(毫秒) 保持一致：5 天
      */
@@ -300,6 +300,7 @@ public class AuthServiceImpl implements AuthService {
      * 转换为UserInfoResponse
      */
     private UserInfoResponse convertToUserInfo(UserProfile user) {
+        SubjectSummaryResponse subject = resolveHumanSubject(user);
         return UserInfoResponse.builder()
                 .id(user.getId())
                 .did(user.getDid())
@@ -310,27 +311,45 @@ public class AuthServiceImpl implements AuthService {
                 .avatarUrl(user.getAvatarUrl())
                 .bio(user.getBio())
                 .status(user.getStatus().name())
-                .creditScore(user.getCreditScore())
-                .points(resolvePoints(user))
+                .creditScore(resolveCreditScore(user, subject))
+                .points(resolvePoints(subject))
                 .lastLoginAt(user.getLastLoginAt())
                 .createTime(user.getCreateTime())
                 .build();
     }
 
-    private Integer resolvePoints(UserProfile user) {
-        int fallback = user.getCreditScore() != null ? Math.max(0, user.getCreditScore()) : 0;
-        if (user.getId() == null) {
-            return fallback;
+    private SubjectSummaryResponse resolveHumanSubject(UserProfile user) {
+        if (user == null || user.getId() == null) {
+            return null;
         }
         try {
-            Integer configured = jdbcTemplate.queryForObject(
-                    "SELECT CAST(config_value AS SIGNED) FROM system_config WHERE config_key = ? AND del_token = '0' LIMIT 1",
-                    Integer.class,
-                    DEMO_POINTS_KEY_PREFIX + user.getId()
-            );
-            return configured != null ? configured : fallback;
-        } catch (DataAccessException ignored) {
-            return fallback;
+            return subjectDirectoryApi.getSubject(SubjectRef.human(user.getId()));
+        } catch (RuntimeException ignored) {
+            return null;
         }
+    }
+
+    private Integer resolveCreditScore(UserProfile user, SubjectSummaryResponse subject) {
+        if (subject != null && subject.getCreditScore() != null) {
+            return subject.getCreditScore();
+        }
+        return adaptCreditScore(user != null ? user.getCreditScore() : null);
+    }
+
+    private Integer resolvePoints(SubjectSummaryResponse subject) {
+        return subject != null && subject.getPoints() != null ? Math.max(0, subject.getPoints()) : 0;
+    }
+
+    private Integer adaptCreditScore(Integer score) {
+        if (score == null) {
+            return 300;
+        }
+        if (score >= 300 && score <= 850) {
+            return score;
+        }
+        if (score >= 0 && score <= 100) {
+            return Math.min(850, Math.max(300, Math.round(300 + (score * 5.5f))));
+        }
+        return Math.min(850, Math.max(300, score));
     }
 }

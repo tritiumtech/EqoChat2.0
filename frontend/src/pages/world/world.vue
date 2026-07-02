@@ -2,11 +2,12 @@
   <view class="page">
     <!-- 话题详情 -->
     <TopicDetail
-      v-if="selectedTopic"
+      v-if="worldReady && selectedTopic"
       ref="topicDetailRef"
       :topic-name="selectedTopic"
       :topic-list="topicList"
       :normalize-post="normalizePost"
+      :viewer="activeWorldSubject"
       @back="selectedTopic = null"
       @open-detail="detailTarget = $event"
       @upvote="toggleUpvote"
@@ -16,12 +17,13 @@
 
     <!-- Posts Tab -->
     <PostList
-      v-else-if="activeTab === 'posts'"
+      v-else-if="worldReady && activeTab === 'posts'"
       ref="postListRef"
       :tab-options="tabOptions"
       :active-tab-index="activeTabIndex"
       :sort-options="sortOptions"
       :normalize-post="normalizePost"
+      :viewer="activeWorldSubject"
       @tab-change="onTabChange"
       @new-post="openNewPost"
       @open-detail="detailTarget = $event"
@@ -32,10 +34,11 @@
 
     <!-- Topics Tab -->
     <TopicList
-      v-else-if="activeTab === 'topics'"
+      v-else-if="worldReady && activeTab === 'topics'"
       ref="topicListRef"
       :tab-options="tabOptions"
       :active-tab-index="activeTabIndex"
+      :viewer="activeWorldSubject"
       @tab-change="onTabChange"
       @open-topic="openTopic"
       @toggle-follow="toggleFollow"
@@ -43,17 +46,20 @@
 
     <!-- My Tab -->
     <MyPostList
-      v-else
+      v-else-if="worldReady"
       ref="myPostListRef"
       :tab-options="tabOptions"
       :active-tab-index="activeTabIndex"
       :normalize-post="normalizePost"
+      :viewer="activeWorldSubject"
       @tab-change="onTabChange"
       @open-detail="detailTarget = $event"
       @upvote="toggleUpvote"
       @reply="onReplyTap"
       @share="openShare"
     />
+
+    <view v-else class="state">{{ t('common.loading') }}</view>
 
     <!-- Modals -->
     <WorldNewPostModal
@@ -104,6 +110,7 @@
       v-if="detailTarget"
       ref="detailRef"
       :post="detailTarget"
+      :viewer="activeWorldSubject"
       @back="detailTarget = null"
       @upvote="detailTarget && toggleUpvote(detailTarget)"
       @reply="detailTarget && onReplyTap(detailTarget)"
@@ -121,6 +128,7 @@ import { useI18nWithFormat } from '@/composables/useI18nWithFormat'
 import { worldApi, type WorldMediaType, type WorldMentionedSubject, type WorldPost, type WorldSort, type WorldTopic } from '@/api/modules/world'
 import { contactApi, type ContactItem } from '@/api/modules/contact'
 import { getApiErrorMessage } from '@/utils/request'
+import { useActiveSubjectStore } from '@/store/modules/activeSubject'
 import { useUserStore } from '@/store/modules/user'
 import PostList from '@/components/world/PostList.vue'
 import TopicList from '@/components/world/TopicList.vue'
@@ -133,11 +141,13 @@ import WorldShareModal from '@/components/world/WorldShareModal.vue'
 import FgTabbar from '@/tabbar/index.vue'
 
 const { t } = useI18nWithFormat()
+const activeSubjectStore = useActiveSubjectStore()
 const userStore = useUserStore()
 
 type SortOption = WorldSort
 
 const activeTab = ref<'posts' | 'topics' | 'my'>('posts')
+const worldReady = ref(false)
 const selectedTopic = ref<string | null>(null)
 const topicList = ref<WorldTopic[]>([])
 
@@ -192,9 +202,9 @@ const activeTabIndex = computed(() => {
   return 0
 })
 
-const principalHumanId = computed(() => {
-  const id = Number(userStore.userInfo?.id)
-  return Number.isFinite(id) && id > 0 ? id : 0
+const activeWorldSubject = computed(() => {
+  const subject = activeSubjectStore.currentSubject
+  return subject ? { subjectId: subject.subjectId, subjectType: subject.subjectType } : undefined
 })
 
 const canSubmitPost = computed(() => {
@@ -234,6 +244,20 @@ watch(activeTab, (v) => {
   }
 })
 
+watch(
+  () => activeSubjectStore.currentSubject
+    ? `${activeSubjectStore.currentSubject.subjectType}:${activeSubjectStore.currentSubject.subjectId}`
+    : '',
+  () => {
+    postListRef.value?.reload()
+    topicListRef.value?.reload()
+    myPostListRef.value?.reload()
+    topicDetailRef.value?.reload()
+    detailRef.value?.loadReplies()
+    loadMentionFriends()
+  },
+)
+
 // Topic handlers
 function openTopic(topic: WorldTopic) {
   selectedTopic.value = topic.name
@@ -242,7 +266,7 @@ function openTopic(topic: WorldTopic) {
 async function toggleFollow(topic: WorldTopic) {
   try {
     const wasFollowing = Boolean(topic.followed ?? topic.favorite)
-    const result = await worldApi.followTopic(topic.name, !wasFollowing)
+    const result = await worldApi.followTopic(topic.name, !wasFollowing, activeWorldSubject.value)
     const following = typeof result?.following === 'boolean' ? result.following : !wasFollowing
     topic.followed = following
     topic.favorite = following
@@ -283,7 +307,7 @@ function normalizePost(post: WorldPost): WorldPost {
 
 async function toggleUpvote(post: WorldPost) {
   try {
-    await worldApi.upvotePost(post.id)
+    await worldApi.upvotePost(post.id, activeWorldSubject.value)
     post.upvoted = !post.upvoted
     post.upvotes += post.upvoted ? 1 : -1
   } catch (err: any) {
@@ -305,13 +329,14 @@ function closeReply() {
 
 async function submitReply() {
   if (!replyTarget.value || !replyContent.value.trim()) return
-  if (!principalHumanId.value) {
+  const actor = activeWorldSubject.value
+  if (!actor?.subjectId) {
     uni.showToast({ title: t('auth.login_required'), icon: 'none' })
     return
   }
   replyPosting.value = true
   try {
-    await worldApi.replyToPost(replyTarget.value.id, replyContent.value.trim(), principalHumanId.value, 'HUMAN')
+    await worldApi.replyToPost(replyTarget.value.id, replyContent.value.trim(), actor.subjectId, actor.subjectType)
     replyTarget.value.replies++
     closeReply()
     uni.showToast({ title: t('toast.success'), icon: 'success' })
@@ -426,7 +451,8 @@ function clearMedia() {
 
 async function submitNewPost() {
   if (!canSubmitPost.value) return
-  if (!principalHumanId.value) {
+  const actor = activeWorldSubject.value
+  if (!actor?.subjectId) {
     uni.showToast({ title: t('auth.login_required'), icon: 'none' })
     return
   }
@@ -434,8 +460,8 @@ async function submitNewPost() {
   try {
     const mediaType: WorldMediaType = localVideoPath.value ? 'VIDEO' : localImagePath.value ? 'IMAGE' : 'TEXT'
     await worldApi.createPost({
-      actorSubjectId: principalHumanId.value,
-      actorSubjectType: 'HUMAN',
+      actorSubjectId: actor.subjectId,
+      actorSubjectType: actor.subjectType,
       content: newPostContent.value.trim(),
       mediaType,
       imageUrl: localImagePath.value || undefined,
@@ -454,15 +480,30 @@ async function submitNewPost() {
 
 // Lifecycle
 const loadMentionFriends = async () => {
+  if (!activeSubjectStore.currentSubject) {
+    mentionFriends.value = []
+    return
+  }
   try {
-    mentionFriends.value = await contactApi.listContacts()
+    mentionFriends.value = await contactApi.listContacts(activeSubjectStore.contactOwnerParams())
   } catch {
     mentionFriends.value = []
   }
 }
 
-onShow(() => {
+onShow(async () => {
+  worldReady.value = false
+  if (!userStore.isLoggedIn) {
+    uni.reLaunch({ url: '/pages/auth/login' })
+    return
+  }
   uni.setNavigationBarTitle({ title: t('page.world.title') })
+  await activeSubjectStore.ensureLoaded()
+  if (!activeSubjectStore.currentSubject) {
+    uni.reLaunch({ url: '/pages/auth/login' })
+    return
+  }
+  worldReady.value = true
   loadMentionFriends()
 })
 </script>
@@ -474,7 +515,16 @@ onShow(() => {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  background: linear-gradient(165deg, var(--c-bg) 0%, var(--c-bg-2) 100%);
+  background: var(--c-page);
   box-sizing: border-box;
+}
+
+.state {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--c-muted);
+  font-size: 26rpx;
 }
 </style>

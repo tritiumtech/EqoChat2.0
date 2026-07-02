@@ -8,13 +8,15 @@ import com.eqochat.business.actor.api.model.WalletCapability;
 import com.eqochat.business.actor.api.service.LiabilityPolicyApi;
 import com.eqochat.business.actor.api.service.SubjectDirectoryApi;
 import com.eqochat.business.actor.api.service.WalletPolicyApi;
+import com.eqochat.business.contact.api.service.SubjectRelationshipApi;
 import com.eqochat.business.notification.api.service.NotificationService;
-import com.eqochat.business.user.mapper.UserFriendMapper;
-import com.eqochat.business.user.mapper.UserProfileMapper;
 import com.eqochat.business.world.api.dto.request.CreateWorldPostReplyRequest;
 import com.eqochat.business.world.api.dto.request.CreateWorldPostRequest;
 import com.eqochat.business.world.api.dto.response.WorldPostResponse;
 import com.eqochat.business.world.config.WorldModuleProperties;
+import com.eqochat.business.world.WorldService;
+import com.eqochat.business.world.WorldUploadService;
+import com.eqochat.business.world.controller.world.WorldController;
 import com.eqochat.business.world.entity.WorldPost;
 import com.eqochat.business.world.entity.WorldPostMention;
 import com.eqochat.business.world.entity.WorldPostReply;
@@ -31,7 +33,10 @@ import com.eqochat.business.world.mapper.WorldPostUpvoteMapper;
 import com.eqochat.business.world.mapper.WorldTopicFollowMapper;
 import com.eqochat.business.world.mapper.WorldTopicMapper;
 import com.eqochat.framework.common.BizException;
+import com.eqochat.framework.common.PageResponse;
+import com.eqochat.framework.common.UserContext;
 import org.apache.ibatis.annotations.Select;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -51,6 +56,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -73,9 +79,7 @@ class WorldServiceImplActorAuthorTest {
     @Mock
     WorldPostReplyUpvoteMapper worldPostReplyUpvoteMapper;
     @Mock
-    UserProfileMapper userProfileMapper;
-    @Mock
-    UserFriendMapper userFriendMapper;
+    SubjectRelationshipApi subjectRelationshipApi;
     @Mock
     NotificationService notificationService;
     @Mock
@@ -98,14 +102,18 @@ class WorldServiceImplActorAuthorTest {
                 worldTopicFollowMapper,
                 worldPostReplyMapper,
                 worldPostReplyUpvoteMapper,
-                userProfileMapper,
-                userFriendMapper,
+                subjectRelationshipApi,
                 notificationService,
                 new WorldModuleProperties(),
                 subjectDirectoryApi,
                 liabilityPolicyApi,
                 walletPolicyApi
         );
+    }
+
+    @AfterEach
+    void tearDown() {
+        UserContext.clear();
     }
 
     @Test
@@ -310,31 +318,45 @@ class WorldServiceImplActorAuthorTest {
     }
 
     @Test
-    void mapperSqlUsesStoredAuthorTypeWithoutAgentProfileInference() throws Exception {
+    void mapperSqlUsesRegistryOnlyAuthorIdentityProjection() throws Exception {
         String selectFeed = selectSql("selectFeed");
         String selectByAuthor = selectSql("selectPostsByAuthor");
         String selectMyPosts = selectSql("selectMyPosts");
 
         assertThat(selectFeed).doesNotContain("COALESCE(p.author_type");
         assertThat(selectFeed).doesNotContain("CASE WHEN ap.id IS NULL");
+        assertThat(selectFeed).contains("LEFT JOIN subject_registry sr");
+        assertThat(selectFeed).contains("sr.subject_id = p.author_id");
+        assertThat(selectFeed).contains("sr.subject_type = p.author_type");
+        assertThat(selectFeed).contains("COALESCE(sr.display_name, CONCAT('AGENT:', p.author_id))");
+        assertThat(selectFeed).contains("COALESCE(sr.display_name, CONCAT('HUMAN:', p.author_id))");
+        assertThat(selectFeed).contains("sr.avatar_url AS author_avatar_url");
+        assertThat(selectFeed).contains("sr.associated_human_id AS author_owner_id");
+        assertThat(selectFeed).contains("LEFT JOIN subject_registry owner_sr");
+        assertThat(selectFeed).contains("owner_sr.subject_id = sr.associated_human_id");
+        assertThat(selectFeed).doesNotContain("LEFT JOIN user_profile");
+        assertThat(selectFeed).doesNotContain("LEFT JOIN agent_profile");
+        assertThat(selectFeed).doesNotContain("ap.owner_id");
+        assertThat(selectFeed).doesNotContain("owner.nickname");
         assertThat(selectFeed).contains("p.author_type AS author_type");
-        assertThat(selectFeed).contains("p.author_type = 'HUMAN'");
         assertThat(selectFeed).contains("p.author_type = 'AGENT'");
-        assertThat(selectFeed).contains("uf.user_id = #{viewerId}");
-        assertThat(selectFeed).contains("uf.user_type = 'HUMAN'");
-        assertThat(selectFeed).contains("uf.friend_type = p.author_type");
+        assertThat(selectFeed).doesNotContain("user_friend");
+        assertThat(selectFeed).doesNotContain("uf.");
+        assertThat(selectFeed).contains("friendHumanIds");
+        assertThat(selectFeed).contains("friendAgentIds");
         assertThat(selectFeed).contains("up.voter_id = #{viewerId}");
-        assertThat(selectFeed).contains("up.voter_type = 'HUMAN'");
+        assertThat(selectFeed).contains("up.voter_type = #{viewerType}");
         assertThat(selectFeed).contains("tf.follower_id = #{viewerId}");
-        assertThat(selectFeed).contains("tf.follower_type = 'HUMAN'");
+        assertThat(selectFeed).contains("tf.follower_type = #{viewerType}");
         assertThat(selectByAuthor).contains("p.author_type = #{authorType}");
-        assertThat(selectMyPosts).contains("p.author_type = 'HUMAN'");
+        assertThat(selectMyPosts).contains("p.author_type = #{viewerType}");
     }
 
     @Test
     void engagementMapperSqlUsesSubjectColumns() throws Exception {
         String postUpvote = selectSql(WorldPostUpvoteMapper.class, "findActive");
         String replyUpvote = selectSql(WorldPostReplyUpvoteMapper.class, "findActive");
+        String replyUpvotesByViewer = selectSql(WorldPostReplyUpvoteMapper.class, "selectActiveByVoterAndReplyIds");
         String topicFollow = selectSql(WorldTopicFollowMapper.class, "findActive");
         String topicList = selectSql(WorldTopicMapper.class, "selectTopTopicsWithCursor");
         String mentionList = selectSql(WorldPostMentionMapper.class, "selectMentionedSubjectsByPostId");
@@ -344,13 +366,15 @@ class WorldServiceImplActorAuthorTest {
         assertThat(postUpvote).doesNotContain("user_id =");
         assertThat(replyUpvote).contains("voter_id = #{voterId}", "voter_type = #{voterType}");
         assertThat(replyUpvote).doesNotContain("user_id =");
+        assertThat(replyUpvotesByViewer).contains("voter_id = #{voterId}", "voter_type = #{voterType}");
+        assertThat(replyUpvotesByViewer).doesNotContain("user_id =");
         assertThat(topicFollow).contains("follower_id = #{followerId}", "follower_type = #{followerType}");
         assertThat(topicFollow).doesNotContain("user_id =");
-        assertThat(topicList).contains("f.follower_id = #{viewerId}", "f.follower_type = 'HUMAN'");
+        assertThat(topicList).contains("f.follower_id = #{viewerId}", "f.follower_type = #{viewerType}");
         assertThat(mentionList).contains("mentioned_subject_id", "mentioned_subject_type");
         assertThat(mentionList).doesNotContain("mentioned_user_id");
         assertThat(mentionFeed).contains("m.mentioned_subject_id = #{viewerId}");
-        assertThat(mentionFeed).contains("m.mentioned_subject_type = 'HUMAN'");
+        assertThat(mentionFeed).contains("m.mentioned_subject_type = #{viewerType}");
         assertThat(mentionFeed).doesNotContain("mentioned_user_id");
     }
 
@@ -437,7 +461,7 @@ class WorldServiceImplActorAuthorTest {
         when(worldPostUpvoteMapper.findActive(10L, 2L, "HUMAN")).thenReturn(null);
         when(worldPostUpvoteMapper.findAny(10L, 2L, "HUMAN")).thenReturn(null);
 
-        assertThat(service.toggleUpvote(2L, 10L)).isTrue();
+        assertThat(service.toggleUpvote(2L, SubjectRef.human(2L), 10L)).isTrue();
 
         ArgumentCaptor<WorldPostUpvote> postUpvote = ArgumentCaptor.forClass(WorldPostUpvote.class);
         verify(worldPostUpvoteMapper).insert(postUpvote.capture());
@@ -448,7 +472,7 @@ class WorldServiceImplActorAuthorTest {
         when(worldPostReplyUpvoteMapper.findActive(11L, 2L, "HUMAN")).thenReturn(null);
         when(worldPostReplyUpvoteMapper.findAny(11L, 2L, "HUMAN")).thenReturn(null);
 
-        assertThat(service.toggleReplyUpvote(2L, 11L)).isTrue();
+        assertThat(service.toggleReplyUpvote(2L, SubjectRef.human(2L), 11L)).isTrue();
 
         ArgumentCaptor<WorldPostReplyUpvote> replyUpvote = ArgumentCaptor.forClass(WorldPostReplyUpvote.class);
         verify(worldPostReplyUpvoteMapper).insert(replyUpvote.capture());
@@ -459,7 +483,7 @@ class WorldServiceImplActorAuthorTest {
         when(worldTopicFollowMapper.findActive(12L, 2L, "HUMAN")).thenReturn(null);
         when(worldTopicFollowMapper.findAny(12L, 2L, "HUMAN")).thenReturn(null);
 
-        assertThat(service.toggleTopicFollow(2L, "java")).isTrue();
+        assertThat(service.toggleTopicFollow(2L, SubjectRef.human(2L), "java")).isTrue();
 
         ArgumentCaptor<WorldTopicFollow> topicFollow = ArgumentCaptor.forClass(WorldTopicFollow.class);
         verify(worldTopicFollowMapper).insert(topicFollow.capture());
@@ -468,9 +492,189 @@ class WorldServiceImplActorAuthorTest {
     }
 
     @Test
+    void agentViewerReadPathsPassCanonicalSubjectTypeToMappers() {
+        SubjectRef viewer = SubjectRef.agent(101L);
+        when(liabilityPolicyApi.resolveLiability(viewer)).thenReturn(LiabilityChain.agentToHuman(101L, 2L));
+        when(subjectRelationshipApi.listFriends(viewer)).thenReturn(List.of());
+        when(worldPostMapper.selectFeed(101L, "AGENT", "friends", List.of(), List.of(), null, 21)).thenReturn(List.of());
+        when(worldTopicMapper.selectTopTopicsWithCursor(101L, "AGENT", null, 21)).thenReturn(List.of());
+        when(worldPostMapper.selectTopicPosts(101L, "AGENT", "java", null, 21)).thenReturn(List.of());
+        when(worldPostMapper.selectMentionFeed(101L, "AGENT", null, 21)).thenReturn(List.of());
+        when(worldPostMapper.selectMyPosts(101L, "AGENT", null, 21)).thenReturn(List.of());
+        WorldPostReply reply = WorldPostReply.builder()
+                .id(31L)
+                .authorId(2L)
+                .authorType("HUMAN")
+                .content("reply")
+                .upvoteCount(1)
+                .delToken(0L)
+                .build();
+        when(worldPostReplyMapper.selectList(any())).thenReturn(List.of(reply));
+        when(worldPostReplyUpvoteMapper.selectActiveByVoterAndReplyIds(101L, "AGENT", List.of(31L)))
+                .thenReturn(List.of(WorldPostReplyUpvote.builder().replyId(31L).voterId(101L).voterType("AGENT").build()));
+        when(subjectDirectoryApi.getSubject(SubjectRef.human(2L)))
+                .thenReturn(SubjectSummaryResponse.builder().id(2L).type(SubjectType.HUMAN).displayName("Ava").build());
+
+        service.listFeed(2L, viewer, "friends", null, null);
+        service.listTopics(2L, viewer, 20, null);
+        service.listTopicPosts(2L, viewer, "java", null, null);
+        service.listMentionedMe(2L, viewer, null, null);
+        service.listMyPosts(2L, viewer, null, null);
+        var replies = service.listReplies(2L, viewer, 30L, null, null);
+
+        verify(worldPostMapper).selectFeed(101L, "AGENT", "friends", List.of(), List.of(), null, 21);
+        verify(worldTopicMapper).selectTopTopicsWithCursor(101L, "AGENT", null, 21);
+        verify(worldPostMapper).selectTopicPosts(101L, "AGENT", "java", null, 21);
+        verify(worldPostMapper).selectMentionFeed(101L, "AGENT", null, 21);
+        verify(worldPostMapper).selectMyPosts(101L, "AGENT", null, 21);
+        verify(worldPostReplyUpvoteMapper).selectActiveByVoterAndReplyIds(101L, "AGENT", List.of(31L));
+        assertThat(replies).hasSize(1);
+        assertThat(replies.get(0).isUpvoted()).isTrue();
+    }
+
+    @Test
+    void agentEngagementWritesUseAgentSubjectFields() {
+        SubjectRef actor = SubjectRef.agent(101L);
+        when(liabilityPolicyApi.resolveLiability(actor)).thenReturn(LiabilityChain.agentToHuman(101L, 2L));
+        when(worldPostMapper.selectById(10L)).thenReturn(WorldPost.builder().id(10L).delToken(0L).build());
+        when(worldPostUpvoteMapper.findActive(10L, 101L, "AGENT")).thenReturn(null);
+        when(worldPostUpvoteMapper.findAny(10L, 101L, "AGENT")).thenReturn(null);
+
+        assertThat(service.toggleUpvote(2L, actor, 10L)).isTrue();
+
+        ArgumentCaptor<WorldPostUpvote> postUpvote = ArgumentCaptor.forClass(WorldPostUpvote.class);
+        verify(worldPostUpvoteMapper).insert(postUpvote.capture());
+        assertThat(postUpvote.getValue().getVoterId()).isEqualTo(101L);
+        assertThat(postUpvote.getValue().getVoterType()).isEqualTo("AGENT");
+
+        when(worldPostReplyMapper.selectById(11L)).thenReturn(WorldPostReply.builder().id(11L).delToken(0L).build());
+        when(worldPostReplyUpvoteMapper.findActive(11L, 101L, "AGENT")).thenReturn(null);
+        when(worldPostReplyUpvoteMapper.findAny(11L, 101L, "AGENT")).thenReturn(null);
+
+        assertThat(service.toggleReplyUpvote(2L, actor, 11L)).isTrue();
+
+        ArgumentCaptor<WorldPostReplyUpvote> replyUpvote = ArgumentCaptor.forClass(WorldPostReplyUpvote.class);
+        verify(worldPostReplyUpvoteMapper).insert(replyUpvote.capture());
+        assertThat(replyUpvote.getValue().getVoterId()).isEqualTo(101L);
+        assertThat(replyUpvote.getValue().getVoterType()).isEqualTo("AGENT");
+
+        when(worldTopicMapper.selectByName("java")).thenReturn(WorldTopic.builder().id(12L).name("java").build());
+        when(worldTopicFollowMapper.findActive(12L, 101L, "AGENT")).thenReturn(null);
+        when(worldTopicFollowMapper.findAny(12L, 101L, "AGENT")).thenReturn(null);
+
+        assertThat(service.toggleTopicFollow(2L, actor, "java")).isTrue();
+
+        ArgumentCaptor<WorldTopicFollow> topicFollow = ArgumentCaptor.forClass(WorldTopicFollow.class);
+        verify(worldTopicFollowMapper).insert(topicFollow.capture());
+        assertThat(topicFollow.getValue().getFollowerId()).isEqualTo(101L);
+        assertThat(topicFollow.getValue().getFollowerType()).isEqualTo("AGENT");
+    }
+
+    @Test
+    void unauthorizedAgentViewerAndActorAreRejected() {
+        SubjectRef agent = SubjectRef.agent(101L);
+        when(liabilityPolicyApi.resolveLiability(agent)).thenReturn(LiabilityChain.agentToHuman(101L, 9L));
+
+        assertThatThrownBy(() -> service.listFeed(2L, agent, "friends", null, null))
+                .isInstanceOf(BizException.class)
+                .hasMessage("world.actor.forbidden");
+
+        assertThatThrownBy(() -> service.toggleUpvote(2L, agent, 10L))
+                .isInstanceOf(BizException.class)
+                .hasMessage("world.actor.forbidden");
+    }
+
+    @Test
+    void systemViewerAndActorAreRejected() {
+        SubjectRef system = SubjectRef.system(0L);
+
+        assertThatThrownBy(() -> service.listMentionedMe(2L, system, null, null))
+                .isInstanceOf(BizException.class)
+                .hasMessage("world.actor.invalid");
+
+        assertThatThrownBy(() -> service.toggleReplyUpvote(2L, system, 11L))
+                .isInstanceOf(BizException.class)
+                .hasMessage("world.actor.invalid");
+    }
+
+    @Test
+    void sameNumericHumanAndAgentEngagementDoNotCollide() {
+        when(worldPostMapper.selectById(20L)).thenReturn(WorldPost.builder().id(20L).delToken(0L).build());
+        when(worldPostUpvoteMapper.findActive(20L, 101L, "HUMAN")).thenReturn(null);
+        when(worldPostUpvoteMapper.findAny(20L, 101L, "HUMAN")).thenReturn(null);
+        when(worldPostUpvoteMapper.findActive(20L, 101L, "AGENT")).thenReturn(null);
+        when(worldPostUpvoteMapper.findAny(20L, 101L, "AGENT")).thenReturn(null);
+        when(worldPostReplyMapper.selectById(21L)).thenReturn(WorldPostReply.builder().id(21L).delToken(0L).build());
+        when(worldPostReplyUpvoteMapper.findActive(21L, 101L, "HUMAN")).thenReturn(null);
+        when(worldPostReplyUpvoteMapper.findAny(21L, 101L, "HUMAN")).thenReturn(null);
+        when(worldPostReplyUpvoteMapper.findActive(21L, 101L, "AGENT")).thenReturn(null);
+        when(worldPostReplyUpvoteMapper.findAny(21L, 101L, "AGENT")).thenReturn(null);
+        when(worldTopicMapper.selectByName("java")).thenReturn(WorldTopic.builder().id(22L).name("java").build());
+        when(worldTopicFollowMapper.findActive(22L, 101L, "HUMAN")).thenReturn(null);
+        when(worldTopicFollowMapper.findAny(22L, 101L, "HUMAN")).thenReturn(null);
+        when(worldTopicFollowMapper.findActive(22L, 101L, "AGENT")).thenReturn(null);
+        when(worldTopicFollowMapper.findAny(22L, 101L, "AGENT")).thenReturn(null);
+        when(liabilityPolicyApi.resolveLiability(SubjectRef.agent(101L))).thenReturn(LiabilityChain.agentToHuman(101L, 2L));
+
+        assertThat(service.toggleUpvote(101L, SubjectRef.human(101L), 20L)).isTrue();
+        assertThat(service.toggleUpvote(2L, SubjectRef.agent(101L), 20L)).isTrue();
+        assertThat(service.toggleReplyUpvote(101L, SubjectRef.human(101L), 21L)).isTrue();
+        assertThat(service.toggleReplyUpvote(2L, SubjectRef.agent(101L), 21L)).isTrue();
+        assertThat(service.toggleTopicFollow(101L, SubjectRef.human(101L), "java")).isTrue();
+        assertThat(service.toggleTopicFollow(2L, SubjectRef.agent(101L), "java")).isTrue();
+
+        ArgumentCaptor<WorldPostUpvote> captor = ArgumentCaptor.forClass(WorldPostUpvote.class);
+        verify(worldPostUpvoteMapper, times(2)).insert(captor.capture());
+        assertThat(captor.getAllValues())
+                .extracting(WorldPostUpvote::getVoterId, WorldPostUpvote::getVoterType)
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple(101L, "HUMAN"),
+                        org.assertj.core.groups.Tuple.tuple(101L, "AGENT")
+                );
+
+        ArgumentCaptor<WorldPostReplyUpvote> replyCaptor = ArgumentCaptor.forClass(WorldPostReplyUpvote.class);
+        verify(worldPostReplyUpvoteMapper, times(2)).insert(replyCaptor.capture());
+        assertThat(replyCaptor.getAllValues())
+                .extracting(WorldPostReplyUpvote::getVoterId, WorldPostReplyUpvote::getVoterType)
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple(101L, "HUMAN"),
+                        org.assertj.core.groups.Tuple.tuple(101L, "AGENT")
+                );
+
+        ArgumentCaptor<WorldTopicFollow> followCaptor = ArgumentCaptor.forClass(WorldTopicFollow.class);
+        verify(worldTopicFollowMapper, times(2)).insert(followCaptor.capture());
+        assertThat(followCaptor.getAllValues())
+                .extracting(WorldTopicFollow::getFollowerId, WorldTopicFollow::getFollowerType)
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple(101L, "HUMAN"),
+                        org.assertj.core.groups.Tuple.tuple(101L, "AGENT")
+                );
+    }
+
+    @Test
+    void sameNumericHumanAndAgentReadPathsDoNotCollideForMentionsAndMyPosts() {
+        when(worldPostMapper.selectMentionFeed(101L, "HUMAN", null, 21)).thenReturn(List.of());
+        when(worldPostMapper.selectMyPosts(101L, "HUMAN", null, 21)).thenReturn(List.of());
+        when(liabilityPolicyApi.resolveLiability(SubjectRef.agent(101L))).thenReturn(LiabilityChain.agentToHuman(101L, 2L));
+        when(worldPostMapper.selectMentionFeed(101L, "AGENT", null, 21)).thenReturn(List.of());
+        when(worldPostMapper.selectMyPosts(101L, "AGENT", null, 21)).thenReturn(List.of());
+
+        service.listMentionedMe(101L, SubjectRef.human(101L), null, null);
+        service.listMyPosts(101L, SubjectRef.human(101L), null, null);
+        service.listMentionedMe(2L, SubjectRef.agent(101L), null, null);
+        service.listMyPosts(2L, SubjectRef.agent(101L), null, null);
+
+        verify(worldPostMapper).selectMentionFeed(101L, "HUMAN", null, 21);
+        verify(worldPostMapper).selectMyPosts(101L, "HUMAN", null, 21);
+        verify(worldPostMapper).selectMentionFeed(101L, "AGENT", null, 21);
+        verify(worldPostMapper).selectMyPosts(101L, "AGENT", null, 21);
+    }
+
+    @Test
     void agentPostRowRendersCanonicalAgentAuthor() {
         WorldPostMapper.WorldPostRow row = row(10L, 101L, "AGENT");
-        when(worldPostMapper.selectFeed(2L, "friends", null, 21)).thenReturn(List.of(row));
+        when(subjectRelationshipApi.listFriends(SubjectRef.human(2L))).thenReturn(List.of());
+        when(worldPostMapper.selectFeed(2L, "HUMAN", "friends", List.of(), List.of(), null, 21)).thenReturn(List.of(row));
         when(worldPostMapper.selectTopicNamesByPostId(10L)).thenReturn(List.of());
         when(subjectDirectoryApi.getSubject(SubjectRef.agent(101L)))
                 .thenReturn(SubjectSummaryResponse.builder()
@@ -484,7 +688,7 @@ class WorldServiceImplActorAuthorTest {
         when(walletPolicyApi.resolveWallet(SubjectRef.agent(101L)))
                 .thenReturn(WalletCapability.agentToOwner(101L, 2L, "owner wallet route"));
 
-        WorldPostResponse item = service.listFeed(2L, "friends", null, null).getItems().get(0);
+        WorldPostResponse item = service.listFeed(2L, SubjectRef.human(2L), "friends", null, null).getItems().get(0);
 
         assertThat(item.getAuthor().getId()).isEqualTo(101L);
         assertThat(item.getAuthor().getType()).isEqualTo("agent");
@@ -493,26 +697,106 @@ class WorldServiceImplActorAuthorTest {
     }
 
     @Test
+    void feedFriendOrderingAndFlagsUseRelationshipApiBoundary() {
+        WorldPostMapper.WorldPostRow agentFriend = row(10L, 101L, "AGENT");
+        WorldPostMapper.WorldPostRow humanFriend = row(11L, 3L, "HUMAN");
+        WorldPostMapper.WorldPostRow stranger = row(12L, 4L, "HUMAN");
+        SubjectRef viewer = SubjectRef.human(2L);
+        when(subjectRelationshipApi.listFriends(viewer))
+                .thenReturn(List.of(SubjectRef.agent(101L), SubjectRef.human(3L)));
+        when(worldPostMapper.selectFeed(2L, "HUMAN", "friends", List.of(3L), List.of(101L), null, 21))
+                .thenReturn(List.of(agentFriend, humanFriend, stranger));
+        when(worldPostMapper.selectTopicNamesByPostId(10L)).thenReturn(List.of());
+        when(worldPostMapper.selectTopicNamesByPostId(11L)).thenReturn(List.of());
+        when(worldPostMapper.selectTopicNamesByPostId(12L)).thenReturn(List.of());
+        when(subjectDirectoryApi.getSubject(SubjectRef.agent(101L)))
+                .thenReturn(SubjectSummaryResponse.builder().id(101L).type(SubjectType.AGENT).displayName("Nova").build());
+        when(subjectDirectoryApi.getSubject(SubjectRef.human(3L)))
+                .thenReturn(SubjectSummaryResponse.builder().id(3L).type(SubjectType.HUMAN).displayName("Ada").build());
+        when(subjectDirectoryApi.getSubject(SubjectRef.human(4L)))
+                .thenReturn(SubjectSummaryResponse.builder().id(4L).type(SubjectType.HUMAN).displayName("Lin").build());
+        when(walletPolicyApi.resolveWallet(SubjectRef.agent(101L)))
+                .thenReturn(WalletCapability.agentDirect(101L));
+
+        List<WorldPostResponse> items = service.listFeed(2L, SubjectRef.human(2L), "friends", null, null).getItems();
+
+        assertThat(items)
+                .extracting(WorldPostResponse::isFriend)
+                .containsExactly(true, true, false);
+        verify(subjectRelationshipApi).listFriends(viewer);
+        verify(worldPostMapper).selectFeed(2L, "HUMAN", "friends", List.of(3L), List.of(101L), null, 21);
+    }
+
+    @Test
     void listPostsByAuthorScopesFriendCheckByHumanViewerSubjectType() {
-        when(userFriendMapper.areFriends(2L, com.eqochat.business.user.entity.UserFriend.FriendType.HUMAN,
-                101L, com.eqochat.business.user.entity.UserFriend.FriendType.AGENT))
-                .thenReturn(true);
+        when(subjectRelationshipApi.areFriends(SubjectRef.human(2L), SubjectRef.agent(101L))).thenReturn(true);
+        when(worldPostMapper.selectPostsByAuthor(2L, "HUMAN", 101L, "AGENT", null, 21))
+                .thenReturn(List.of());
 
-        service.listPostsByAuthor(2L, 101L, "AGENT", null, 20);
+        service.listPostsByAuthor(2L, SubjectRef.human(2L), SubjectRef.agent(101L), null, 20);
 
-        verify(userFriendMapper).areFriends(2L, com.eqochat.business.user.entity.UserFriend.FriendType.HUMAN,
-                101L, com.eqochat.business.user.entity.UserFriend.FriendType.AGENT);
+        verify(subjectRelationshipApi).areFriends(SubjectRef.human(2L), SubjectRef.agent(101L));
+    }
+
+    @Test
+    void listPostsByAuthorScopesFriendCheckByAgentViewerSubjectType() {
+        when(liabilityPolicyApi.resolveLiability(SubjectRef.agent(101L))).thenReturn(LiabilityChain.agentToHuman(101L, 2L));
+        when(subjectRelationshipApi.areFriends(SubjectRef.agent(101L), SubjectRef.human(2L))).thenReturn(true);
+        when(worldPostMapper.selectPostsByAuthor(101L, "AGENT", 2L, "HUMAN", null, 21))
+                .thenReturn(List.of());
+
+        service.listPostsByAuthor(2L, SubjectRef.agent(101L), SubjectRef.human(2L), null, 20);
+
+        verify(subjectRelationshipApi).areFriends(SubjectRef.agent(101L), SubjectRef.human(2L));
     }
 
     @Test
     void legacyUserAuthorTypeIsRejected() {
         WorldPostMapper.WorldPostRow row = row(10L, 2L, "USER");
-        when(worldPostMapper.selectFeed(2L, "friends", null, 21)).thenReturn(List.of(row));
-        when(worldPostMapper.selectTopicNamesByPostId(10L)).thenReturn(List.of());
+        when(subjectRelationshipApi.listFriends(SubjectRef.human(2L))).thenReturn(List.of());
+        when(worldPostMapper.selectFeed(2L, "HUMAN", "friends", List.of(), List.of(), null, 21)).thenReturn(List.of(row));
 
-        assertThatThrownBy(() -> service.listFeed(2L, "friends", null, null))
+        assertThatThrownBy(() -> service.listFeed(2L, SubjectRef.human(2L), "friends", null, null))
                 .isInstanceOf(BizException.class)
                 .hasMessage("world.author.type.invalid");
+    }
+
+    @Test
+    void engagementControllerRequiresActorSubjectAndDoesNotUseViewerFallback() {
+        WorldService worldService = org.mockito.Mockito.mock(WorldService.class);
+        WorldUploadService uploadService = org.mockito.Mockito.mock(WorldUploadService.class);
+        WorldController controller = new WorldController(worldService, uploadService);
+        UserContext.setCurrentUser(2L);
+
+        assertThatThrownBy(() -> controller.toggleUpvote(10L, null, null))
+                .isInstanceOf(BizException.class)
+                .hasMessage("world.actor.invalid");
+
+        verifyNoInteractions(worldService);
+        when(worldService.toggleUpvote(2L, SubjectRef.agent(101L), 10L)).thenReturn(true);
+
+        assertThat(controller.toggleUpvote(10L, 101L, "AGENT").getData().get("upvoted")).isEqualTo(true);
+
+        verify(worldService).toggleUpvote(2L, SubjectRef.agent(101L), 10L);
+    }
+
+    @Test
+    void readControllerRequiresViewerSubjectAndDoesNotUsePrincipalFallback() {
+        WorldService worldService = org.mockito.Mockito.mock(WorldService.class);
+        WorldUploadService uploadService = org.mockito.Mockito.mock(WorldUploadService.class);
+        WorldController controller = new WorldController(worldService, uploadService);
+        UserContext.setCurrentUser(2L);
+
+        assertThatThrownBy(() -> controller.listPosts("friends", null, null, null, null))
+                .isInstanceOf(BizException.class)
+                .hasMessage("world.actor.invalid");
+
+        verifyNoInteractions(worldService);
+        when(worldService.listFeed(2L, SubjectRef.human(2L), "friends", null, null)).thenReturn(PageResponse.empty());
+
+        controller.listPosts("friends", null, null, 2L, "HUMAN");
+
+        verify(worldService).listFeed(2L, SubjectRef.human(2L), "friends", null, null);
     }
 
     private static WorldPostMapper.WorldPostRow row(Long id, Long authorId, String authorType) {

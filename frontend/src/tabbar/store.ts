@@ -19,7 +19,7 @@ const tabbarList = reactive<CustomTabBarItem[]>(
 
 if (customTabbarEnable && BULGE_ENABLE) {
   if (tabbarList.length % 2) {
-    console.error('有鼓包时 tabbar 数量必须是偶数，否则样式很奇怪！！')
+    console.error('Bulge tabbar requires an even number of configured items.')
   }
   tabbarList.splice(tabbarList.length / 2, 0, {
     isBulge: true,

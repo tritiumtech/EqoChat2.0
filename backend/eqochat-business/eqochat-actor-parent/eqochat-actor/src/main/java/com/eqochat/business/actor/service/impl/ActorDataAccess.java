@@ -3,9 +3,6 @@ package com.eqochat.business.actor.service.impl;
 import com.eqochat.business.actor.api.model.CreditProfileSummary;
 import com.eqochat.business.actor.api.model.SubjectRef;
 import com.eqochat.business.actor.api.model.SubjectStatus;
-import com.eqochat.business.actor.api.model.SubjectType;
-import com.eqochat.business.agent.entity.AgentProfile;
-import com.eqochat.business.user.entity.UserProfile;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
@@ -25,6 +22,7 @@ class ActorDataAccess {
 
     private static final String DEMO_USER_POINTS_PREFIX = "demo.user.points.";
     private static final String DEMO_AGENT_POINTS_PREFIX = "demo.agent.points.";
+    private static final int STATUS_REASON_MAX_LENGTH = 200;
 
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
@@ -146,6 +144,64 @@ class ActorDataAccess {
         }
     }
 
+    boolean upsertAgentWalletState(Long agentId, boolean enabled, Long operatorHumanId, String reason) {
+        if (agentId == null || operatorHumanId == null || !tableExists("agent_wallet_state")) {
+            return false;
+        }
+        String statusReason = boundedStatusReason(reason);
+        if (enabled) {
+            jdbcTemplate.update(
+                    """
+                    INSERT INTO agent_wallet_state (
+                        agent_id, wallet_enabled, enabled_at, enabled_by, disabled_at, disabled_by,
+                        status_reason, del_token, create_by, update_by, create_time, update_time
+                    )
+                    VALUES (?, TRUE, NOW(), ?, NULL, NULL, ?, '0', ?, ?, NOW(), NOW())
+                    ON DUPLICATE KEY UPDATE
+                        wallet_enabled = TRUE,
+                        enabled_at = NOW(),
+                        enabled_by = VALUES(enabled_by),
+                        disabled_at = NULL,
+                        disabled_by = NULL,
+                        status_reason = VALUES(status_reason),
+                        del_token = '0',
+                        update_by = VALUES(update_by),
+                        update_time = NOW()
+                    """,
+                    agentId,
+                    operatorHumanId,
+                    statusReason,
+                    operatorHumanId,
+                    operatorHumanId
+            );
+            return true;
+        }
+
+        jdbcTemplate.update(
+                """
+                INSERT INTO agent_wallet_state (
+                    agent_id, wallet_enabled, enabled_at, enabled_by, disabled_at, disabled_by,
+                    status_reason, del_token, create_by, update_by, create_time, update_time
+                )
+                VALUES (?, FALSE, NULL, NULL, NOW(), ?, ?, '0', ?, ?, NOW(), NOW())
+                ON DUPLICATE KEY UPDATE
+                    wallet_enabled = FALSE,
+                    disabled_at = NOW(),
+                    disabled_by = VALUES(disabled_by),
+                    status_reason = VALUES(status_reason),
+                    del_token = '0',
+                    update_by = VALUES(update_by),
+                    update_time = NOW()
+                """,
+                agentId,
+                operatorHumanId,
+                statusReason,
+                operatorHumanId,
+                operatorHumanId
+        );
+        return true;
+    }
+
     boolean sourceConfigWalletEnabled(String raw) {
         if (!demoFallbackEnabled) {
             return false;
@@ -193,7 +249,7 @@ class ActorDataAccess {
                 .toList();
     }
 
-    SubjectStatus userStatus(UserProfile profile) {
+    SubjectStatus userStatus(ActorSourceRepository.Human profile) {
         if (profile == null || profile.getStatus() == null) {
             return SubjectStatus.UNKNOWN;
         }
@@ -201,10 +257,11 @@ class ActorDataAccess {
             case ACTIVE -> SubjectStatus.ACTIVE;
             case INACTIVE -> SubjectStatus.INACTIVE;
             case BANNED -> SubjectStatus.BANNED;
+            case UNKNOWN -> SubjectStatus.UNKNOWN;
         };
     }
 
-    SubjectStatus agentStatus(AgentProfile profile) {
+    SubjectStatus agentStatus(ActorSourceRepository.Agent profile) {
         if (profile == null || profile.getStatus() == null) {
             return SubjectStatus.UNKNOWN;
         }
@@ -212,6 +269,7 @@ class ActorDataAccess {
             case ACTIVE -> SubjectStatus.ACTIVE;
             case INACTIVE -> SubjectStatus.INACTIVE;
             case SUSPENDED -> SubjectStatus.SUSPENDED;
+            case UNKNOWN -> SubjectStatus.UNKNOWN;
         };
     }
 
@@ -236,7 +294,7 @@ class ActorDataAccess {
         return "BASE";
     }
 
-    String displayName(UserProfile profile) {
+    String displayName(ActorSourceRepository.Human profile) {
         if (profile == null) {
             return null;
         }
@@ -252,7 +310,7 @@ class ActorDataAccess {
         return "User";
     }
 
-    String displayName(AgentProfile profile) {
+    String displayName(ActorSourceRepository.Agent profile) {
         if (profile == null) {
             return null;
         }
@@ -287,6 +345,16 @@ class ActorDataAccess {
 
     private static int clamp(int value, int min, int max) {
         return Math.max(min, Math.min(max, value));
+    }
+
+    private static String boundedStatusReason(String reason) {
+        if (!StringUtils.hasText(reason)) {
+            return null;
+        }
+        String trimmed = reason.trim();
+        return trimmed.length() <= STATUS_REASON_MAX_LENGTH
+                ? trimmed
+                : trimmed.substring(0, STATUS_REASON_MAX_LENGTH);
     }
 
     record AgentWalletState(boolean walletEnabled, Long enabledBy, String statusReason) {

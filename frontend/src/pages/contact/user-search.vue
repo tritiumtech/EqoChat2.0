@@ -18,7 +18,7 @@
           @confirm="handleSearch"
         />
         <view v-if="searchKeyword" class="clear-btn" @click="clearSearch">
-          <text class="clear-icon">✕</text>
+          <text class="clear-icon">x</text>
         </view>
       </view>
       <button class="search-btn" :disabled="!canSearch" @click="handleSearch">
@@ -40,7 +40,7 @@
       </view>
 
       <!-- 未找到 -->
-      <view v-else-if="!searchResult" class="state-empty">
+      <view v-else-if="searchResults.length === 0" class="state-empty">
         <view class="empty-icon-wrap">
           <u-icon name="search" :size="48" color="#717182" />
         </view>
@@ -49,28 +49,38 @@
       </view>
 
       <!-- 搜索结果 -->
-      <view v-else class="result-card" @click="goToUserProfile(searchResult.id)">
+      <block v-else>
+      <view
+        v-for="item in searchResults"
+        :key="`${item.subjectType}:${item.subjectId}`"
+        class="result-card"
+        @click="goToUserProfile(item)"
+      >
         <view class="user-avatar-wrap">
           <image
-            v-if="searchResult.avatarUrl"
+            v-if="item.avatarUrl"
             class="user-avatar"
-            :src="searchResult.avatarUrl"
+            :src="item.avatarUrl"
             mode="aspectFill"
           />
-          <view v-else class="user-avatar avatar-gradient" :style="avatarStyle(searchResult)">
-            <text class="avatar-text">{{ (searchResult.nickname || '?').slice(0, 1) }}</text>
+          <view v-else class="user-avatar avatar-gradient" :style="avatarStyle(item)">
+            <text class="avatar-text">{{ (item.displayName || item.nickname || '?').slice(0, 1) }}</text>
           </view>
         </view>
         <view class="user-info">
-          <text class="user-name">{{ searchResult.nickname }}</text>
-          <text class="user-account">{{ t('page.contact.user_id') }}: {{ searchResult.id }}</text>
-          <text v-if="searchResult.bio" class="user-bio">{{ searchResult.bio }}</text>
-          <view v-if="searchResult.isFriend" class="friend-badge">
+          <view class="name-line">
+            <text class="user-name">{{ item.displayName || item.nickname }}</text>
+            <text v-if="item.subjectType === 'AGENT'" class="agent-badge">{{ t('page.world.ai_agent') }}</text>
+          </view>
+          <text class="user-account">{{ item.subjectType }}: {{ item.subjectId }}</text>
+          <text v-if="item.bio" class="user-bio">{{ item.bio }}</text>
+          <view v-if="item.isFriend" class="friend-badge">
             <text class="friend-badge-text">{{ t('page.world.friend') }}</text>
           </view>
         </view>
-        <text class="result-arrow">›</text>
+        <text class="result-arrow">&gt;</text>
       </view>
+      </block>
     </view>
 
     <!-- 搜索历史 -->
@@ -86,7 +96,7 @@
           class="history-item"
           @click="quickSearch(keyword)"
         >
-          <text class="history-icon">🕐</text>
+          <text class="history-icon">T</text>
           <text class="history-text">{{ keyword }}</text>
         </view>
       </view>
@@ -98,19 +108,21 @@
 import { computed, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { useI18nWithFormat } from '@/composables/useI18nWithFormat'
-import { userApi, type UserSearchResult } from '@/api/modules/user'
+import { subjectApi, type SubjectSearchResult } from '@/api/modules/subject'
 import { useUserStore } from '@/store/modules/user'
+import { useActiveSubjectStore } from '@/store/modules/activeSubject'
 import { getApiErrorMessage } from '@/utils/request'
 import PageHeader from '@/components/PageHeader.vue'
 
 const { t } = useI18nWithFormat()
 const userStore = useUserStore()
+const activeSubjectStore = useActiveSubjectStore()
 
 // 搜索关键词
 const searchKeyword = ref('')
 const loading = ref(false)
 const hasSearched = ref(false)
-const searchResult = ref<UserSearchResult | null>(null)
+const searchResults = ref<SubjectSearchResult[]>([])
 const searchHistory = ref<string[]>([])
 
 // 是否可以搜索（输入不为空即可）
@@ -119,10 +131,10 @@ const canSearch = computed(() => {
 })
 
 // 头像样式
-const avatarStyle = (user: UserSearchResult) => {
+const avatarStyle = (user: SubjectSearchResult) => {
   const hues = ['#14B8A6', '#3B82F6', '#8B5CF6', '#EC4899', '#F59E0B', '#10B981', '#6366F1', '#EF4444']
   let h = 0
-  const s = user.nickname || String(user.id)
+  const s = user.displayName || user.nickname || String(user.subjectId)
   for (let i = 0; i < s.length; i++) h = s.charCodeAt(i) + ((h << 5) - h)
   const c = hues[Math.abs(h) % hues.length]!
   return { background: `linear-gradient(135deg, ${c}f0, ${c}c0)` }
@@ -137,7 +149,7 @@ const goBack = () => {
 const clearSearch = () => {
   searchKeyword.value = ''
   hasSearched.value = false
-  searchResult.value = null
+  searchResults.value = []
 }
 
 // 执行搜索
@@ -152,16 +164,18 @@ const handleSearch = async () => {
   hasSearched.value = true
 
   try {
-    const result = await userApi.searchUserByAccount({
-      keyword: keyword
+    await activeSubjectStore.ensureLoaded()
+    const result = await subjectApi.search({
+      keyword: keyword,
+      ...activeSubjectStore.subjectViewerParams(),
     })
     
-    searchResult.value = result
+    searchResults.value = result
     // 添加到搜索历史
     addToHistory(keyword)
   } catch (err: any) {
     uni.showToast({ title: getApiErrorMessage(err, t('toast.load_failed')), icon: 'none' })
-    searchResult.value = null
+    searchResults.value = []
   } finally {
     loading.value = false
   }
@@ -189,8 +203,10 @@ const clearHistory = () => {
 }
 
 // 跳转到用户资料页
-const goToUserProfile = (userId: number) => {
-  uni.navigateTo({ url: `/pages/contact/user-profile?targetSubjectType=HUMAN&targetSubjectId=${userId}` })
+const goToUserProfile = (subject: SubjectSearchResult) => {
+  uni.navigateTo({
+    url: `/pages/contact/user-profile?targetSubjectType=${subject.subjectType}&targetSubjectId=${subject.subjectId}`
+  })
 }
 
 // 加载搜索历史
@@ -360,6 +376,7 @@ onShow(() => {
   border: 1rpx solid rgba(0, 0, 0, 0.08);
   border-radius: var(--radius-xl);
   box-shadow: var(--c-shadow-soft);
+  margin-bottom: 16rpx;
 }
 
 .result-card:active {
@@ -405,6 +422,23 @@ onShow(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.name-line {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.agent-badge {
+  padding: 4rpx 10rpx;
+  border-radius: var(--radius-md);
+  font-size: 20rpx;
+  color: #7c3aed;
+  border: 1rpx solid rgba(124, 58, 237, 0.2);
+  background: rgba(124, 58, 237, 0.08);
 }
 
 .user-account {

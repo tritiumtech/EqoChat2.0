@@ -15,31 +15,36 @@ public interface WorldTopicMapper extends BaseMapper<WorldTopic> {
                    (CASE WHEN f.follower_id IS NULL THEN 0 ELSE 1 END) AS is_following
             FROM world_topic t
             LEFT JOIN world_topic_follow f
-              ON f.topic_id = t.id
+             ON f.topic_id = t.id
              AND f.follower_id = #{viewerId}
-             AND f.follower_type = 'HUMAN'
+             AND f.follower_type = #{viewerType}
              AND f.del_token = '0'
             WHERE t.del_token = '0'
             ORDER BY t.follower_count DESC, t.post_count DESC, t.id DESC
             LIMIT #{limit}
             """)
-    List<WorldTopicRow> selectTopTopics(@Param("viewerId") Long viewerId, @Param("limit") Integer limit);
+    List<WorldTopicRow> selectTopTopics(@Param("viewerId") Long viewerId,
+                                        @Param("viewerType") String viewerType,
+                                        @Param("limit") Integer limit);
 
     @Select("""
             SELECT t.*,
                    (CASE WHEN f.follower_id IS NULL THEN 0 ELSE 1 END) AS is_following
             FROM world_topic t
             LEFT JOIN world_topic_follow f
-              ON f.topic_id = t.id
+             ON f.topic_id = t.id
              AND f.follower_id = #{viewerId}
-             AND f.follower_type = 'HUMAN'
+             AND f.follower_type = #{viewerType}
              AND f.del_token = '0'
             WHERE t.del_token = '0'
               AND (#{cursorId} IS NULL OR t.id < #{cursorId})
             ORDER BY t.follower_count DESC, t.post_count DESC, t.id DESC
             LIMIT #{limit}
             """)
-    List<WorldTopicRow> selectTopTopicsWithCursor(@Param("viewerId") Long viewerId, @Param("cursorId") Long cursorId, @Param("limit") Integer limit);
+    List<WorldTopicRow> selectTopTopicsWithCursor(@Param("viewerId") Long viewerId,
+                                                  @Param("viewerType") String viewerType,
+                                                  @Param("cursorId") Long cursorId,
+                                                  @Param("limit") Integer limit);
 
     @Select("""
             SELECT t.*

@@ -19,6 +19,8 @@ export interface ConversationSummary {
 export interface CreateConversationRequest {
   targetSubjectId: number
   targetSubjectType: SubjectType
+  creatorSubjectId?: number
+  creatorSubjectType?: SubjectType
   title?: string
   avatarUrl?: string
 }
@@ -59,20 +61,34 @@ export interface MarkConversationReadRequest {
   readerSubjectType: SubjectType
 }
 
+export interface ConversationViewerParams {
+  viewerSubjectId: number
+  viewerSubjectType: SubjectType
+}
+
+export interface ListConversationParams extends ConversationViewerParams {
+  q?: string
+}
+
+export interface MessageListParams extends ConversationViewerParams {
+  lastMessageId?: number
+  limit?: number
+}
+
 export const conversationApi = {
-  listConversations(params?: { q?: string }) {
+  listConversations(params: ListConversationParams) {
     return request.get<ConversationSummary[]>('/api/v1/conversations', params)
   },
 
-  getConversation(conversationId: number) {
-    return request.get<ConversationSummary>(`/api/v1/conversations/${conversationId}`)
+  getConversation(conversationId: number, params: ConversationViewerParams) {
+    return request.get<ConversationSummary>(`/api/v1/conversations/${conversationId}`, params)
   },
 
   createConversation(data: CreateConversationRequest) {
     return request.post<ConversationSummary>('/api/v1/conversations', data)
   },
 
-  getMessages(conversationId: number, params?: { lastMessageId?: number; limit?: number }) {
+  getMessages(conversationId: number, params: MessageListParams) {
     return request.get<MessagePageResponse>(`/api/v1/conversations/${conversationId}/messages`, params)
   },
 

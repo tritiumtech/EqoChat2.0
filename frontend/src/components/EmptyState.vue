@@ -33,16 +33,18 @@ defineProps<{
 }
 
 .empty-icon {
-  width: 120rpx;
-  height: 120rpx;
+  width: 104rpx;
+  height: 104rpx;
   margin: 0 auto 16rpx;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #ffe6d8 0%, #fff7f2 100%);
+  border-radius: var(--radius-avatar);
+  background: var(--c-surface-muted);
+  border: 1rpx solid var(--c-border);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #ff7a59;
-  font-size: 48rpx;
+  color: var(--c-muted);
+  font-size: 34rpx;
+  font-weight: 800;
 }
 
 .empty-title {
@@ -61,4 +63,3 @@ defineProps<{
   margin-top: 20rpx;
 }
 </style>
-

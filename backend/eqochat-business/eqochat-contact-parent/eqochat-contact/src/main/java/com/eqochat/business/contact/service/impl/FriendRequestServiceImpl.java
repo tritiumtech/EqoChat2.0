@@ -7,16 +7,14 @@ import com.eqochat.business.actor.api.model.SubjectStatus;
 import com.eqochat.business.actor.api.model.SubjectType;
 import com.eqochat.business.actor.api.service.LiabilityPolicyApi;
 import com.eqochat.business.actor.api.service.SubjectDirectoryApi;
-import com.eqochat.business.agent.entity.AgentProfile;
-import com.eqochat.business.agent.mapper.AgentProfileMapper;
 import com.eqochat.business.contact.api.dto.request.SendFriendRequestRequest;
 import com.eqochat.business.contact.api.dto.response.FriendRequestResponse;
 import com.eqochat.business.contact.api.service.FriendRequestService;
+import com.eqochat.business.contact.entity.ContactRelationship;
 import com.eqochat.business.contact.entity.FriendRequest;
+import com.eqochat.business.contact.mapper.ContactRelationshipMapper;
 import com.eqochat.business.contact.mapper.FriendRequestMapper;
 import com.eqochat.business.notification.api.service.NotificationService;
-import com.eqochat.business.user.entity.UserFriend;
-import com.eqochat.business.user.mapper.UserFriendMapper;
 import com.eqochat.framework.common.BizException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -40,11 +38,10 @@ import java.util.stream.Collectors;
 public class FriendRequestServiceImpl implements FriendRequestService {
 
     private final FriendRequestMapper friendRequestMapper;
-    private final UserFriendMapper userFriendMapper;
+    private final ContactRelationshipMapper contactRelationshipMapper;
     private final SubjectDirectoryApi subjectDirectoryApi;
     private final LiabilityPolicyApi liabilityPolicyApi;
     private final NotificationService notificationService;
-    private final AgentProfileMapper agentProfileMapper;
 
     @Override
     @Transactional
@@ -58,7 +55,7 @@ public class FriendRequestServiceImpl implements FriendRequestService {
         SubjectSummaryResponse recipientSummary = requireActiveSubject(recipient);
         requireAuthorizedLiability(principalHumanId, requester);
 
-        if (userFriendMapper.areFriends(
+        if (contactRelationshipMapper.areFriends(
                 requester.id(), toFriendType(requester), recipient.id(), toFriendType(recipient))) {
             throw BizException.of("friend_request.already_friends");
         }
@@ -122,12 +119,12 @@ public class FriendRequestServiceImpl implements FriendRequestService {
         friendRequestMapper.updateById(fr);
 
         boolean inserted = false;
-        if (!userFriendMapper.areFriends(requester.id(), toFriendType(requester), recipient.id(), toFriendType(recipient))) {
-            userFriendMapper.insert(relation(requester, recipient, now));
+        if (!contactRelationshipMapper.areFriends(requester.id(), toFriendType(requester), recipient.id(), toFriendType(recipient))) {
+            contactRelationshipMapper.insert(relation(requester, recipient, now));
             inserted = true;
         }
-        if (!userFriendMapper.areFriends(recipient.id(), toFriendType(recipient), requester.id(), toFriendType(requester))) {
-            userFriendMapper.insert(relation(recipient, requester, now));
+        if (!contactRelationshipMapper.areFriends(recipient.id(), toFriendType(recipient), requester.id(), toFriendType(requester))) {
+            contactRelationshipMapper.insert(relation(recipient, requester, now));
             inserted = true;
         }
 
@@ -166,22 +163,22 @@ public class FriendRequestServiceImpl implements FriendRequestService {
     }
 
     @Override
-    public List<FriendRequestResponse> listReceived(Long principalHumanId) {
-        List<FriendRequest> list = principalSubjects(principalHumanId).stream()
-                .flatMap(subject -> friendRequestMapper
-                        .findPendingByRecipientSubject(subject.id(), subject.type())
-                        .stream())
+    public List<FriendRequestResponse> listReceived(Long principalHumanId, SubjectRef recipient) {
+        SubjectRef subject = requireAuthorizedInboxSubject(principalHumanId, recipient);
+        List<FriendRequest> list = friendRequestMapper
+                .findPendingByRecipientSubject(subject.id(), subject.type())
+                .stream()
                 .sorted(Comparator.comparing(FriendRequest::getCreateTime, Comparator.nullsLast(Comparator.reverseOrder())))
                 .toList();
         return toResponseList(list, true);
     }
 
     @Override
-    public List<FriendRequestResponse> listSent(Long principalHumanId) {
-        List<FriendRequest> list = principalSubjects(principalHumanId).stream()
-                .flatMap(subject -> friendRequestMapper
-                        .findByRequesterSubject(subject.id(), subject.type())
-                        .stream())
+    public List<FriendRequestResponse> listSent(Long principalHumanId, SubjectRef requester) {
+        SubjectRef subject = requireAuthorizedInboxSubject(principalHumanId, requester);
+        List<FriendRequest> list = friendRequestMapper
+                .findByRequesterSubject(subject.id(), subject.type())
+                .stream()
                 .sorted(Comparator.comparing(FriendRequest::getCreateTime, Comparator.nullsLast(Comparator.reverseOrder())))
                 .toList();
         return toResponseList(list, false);
@@ -217,9 +214,9 @@ public class FriendRequestServiceImpl implements FriendRequestService {
         return FriendRequestResponse.builder()
                 .id(fr.getId())
                 .requesterSubjectId(fr.getRequesterId())
-                .requesterSubjectType(subjectTypeOrHuman(fr.getRequesterType()))
+                .requesterSubjectType(requireSubjectType(fr.getRequesterType()))
                 .recipientSubjectId(fr.getRecipientId())
-                .recipientSubjectType(subjectTypeOrHuman(fr.getRecipientType()))
+                .recipientSubjectType(requireSubjectType(fr.getRecipientType()))
                 .requestMessage(fr.getRequestMessage())
                 .status(fr.getStatus() != null ? fr.getStatus().name() : null)
                 .createTime(fr.getCreateTime())
@@ -249,24 +246,21 @@ public class FriendRequestServiceImpl implements FriendRequestService {
         }
     }
 
-    private List<SubjectRef> principalSubjects(Long principalHumanId) {
-        List<SubjectRef> subjects = new ArrayList<>();
-        subjects.add(SubjectRef.human(principalHumanId));
-        for (AgentProfile agent : agentProfileMapper.findActiveByOwnerId(principalHumanId)) {
-            if (agent != null && agent.getId() != null) {
-                subjects.add(SubjectRef.agent(agent.getId()));
-            }
-        }
-        return subjects;
+    private SubjectRef requireAuthorizedInboxSubject(Long principalHumanId, SubjectRef explicitSubject) {
+        SubjectRef subject = requireRelationshipSubject(
+                explicitSubject != null ? explicitSubject.id() : null,
+                explicitSubject != null ? explicitSubject.type() : null);
+        requireAuthorizedLiability(principalHumanId, subject);
+        return subject;
     }
 
-    private static UserFriend relation(SubjectRef owner, SubjectRef target, LocalDateTime now) {
-        return UserFriend.builder()
+    private static ContactRelationship relation(SubjectRef owner, SubjectRef target, LocalDateTime now) {
+        return ContactRelationship.builder()
                 .userId(owner.id())
                 .userType(toFriendType(owner))
                 .friendId(target.id())
                 .friendType(toFriendType(target))
-                .status(UserFriend.FriendStatus.ACTIVE)
+                .status(ContactRelationship.RelationshipStatus.ACTIVE)
                 .addSource("FRIEND_REQUEST")
                 .createTime(now)
                 .build();
@@ -280,22 +274,27 @@ public class FriendRequestServiceImpl implements FriendRequestService {
     }
 
     private static SubjectRef requesterRef(FriendRequest fr) {
-        return requireRelationshipSubject(fr.getRequesterId(), subjectTypeOrHuman(fr.getRequesterType()));
+        return requireRelationshipSubject(fr.getRequesterId(), requireSubjectType(fr.getRequesterType()));
     }
 
     private static SubjectRef recipientRef(FriendRequest fr) {
-        return requireRelationshipSubject(fr.getRecipientId(), subjectTypeOrHuman(fr.getRecipientType()));
+        return requireRelationshipSubject(fr.getRecipientId(), requireSubjectType(fr.getRecipientType()));
     }
 
-    private static SubjectType subjectTypeOrHuman(SubjectType type) {
-        return type != null ? type : SubjectType.HUMAN;
+    private static SubjectType requireSubjectType(SubjectType type) {
+        if (type == null) {
+            throw BizException.of("friend_request.subject.invalid");
+        }
+        return type;
     }
 
-    private static UserFriend.FriendType toFriendType(SubjectRef ref) {
+    private static ContactRelationship.RelationshipSubjectType toFriendType(SubjectRef ref) {
         if (ref.type() == SubjectType.SYSTEM) {
             throw BizException.of("friend_request.subject.invalid");
         }
-        return ref.type() == SubjectType.AGENT ? UserFriend.FriendType.AGENT : UserFriend.FriendType.HUMAN;
+        return ref.type() == SubjectType.AGENT
+                ? ContactRelationship.RelationshipSubjectType.AGENT
+                : ContactRelationship.RelationshipSubjectType.HUMAN;
     }
 
     private static String resolveDisplayName(SubjectSummaryResponse subject) {
@@ -307,9 +306,9 @@ public class FriendRequestServiceImpl implements FriendRequestService {
     private static String friendRequestPayload(FriendRequest fr) {
         return "{\"requestId\":" + fr.getId()
                 + ",\"requesterSubjectId\":" + fr.getRequesterId()
-                + ",\"requesterSubjectType\":\"" + subjectTypeOrHuman(fr.getRequesterType()).name()
+                + ",\"requesterSubjectType\":\"" + requireSubjectType(fr.getRequesterType()).name()
                 + "\",\"recipientSubjectId\":" + fr.getRecipientId()
-                + ",\"recipientSubjectType\":\"" + subjectTypeOrHuman(fr.getRecipientType()).name()
+                + ",\"recipientSubjectType\":\"" + requireSubjectType(fr.getRecipientType()).name()
                 + "\"}";
     }
 }

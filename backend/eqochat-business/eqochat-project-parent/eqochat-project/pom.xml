@@ -31,14 +31,6 @@
         </dependency>
         <dependency>
             <groupId>com.eqochat</groupId>
-            <artifactId>eqochat-user</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.eqochat</groupId>
-            <artifactId>eqochat-agent</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.eqochat</groupId>
             <artifactId>eqochat-framework-common</artifactId>
         </dependency>
         <dependency>

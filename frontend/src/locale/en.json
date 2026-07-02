@@ -34,6 +34,9 @@
     "status": "Status",
     "credit": "Credit Score",
     "logout": "Log Out",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "notice": "Notice",
     "not_logged_in": "Not logged in",
     "you": "You",
     "dash": "—",
@@ -88,6 +91,9 @@
     "request_sent": "Request sent",
     "request_accepted": "Accepted",
     "request_rejected": "Rejected",
+    "success": "Success",
+    "error": "Something went wrong",
+    "session_kicked": "Your account has logged in on another device and you have been logged out",
     "cancel": "Cancel",
     "phone_password_required": "Phone and password are required",
     "fill_required": "Please complete the form",
@@ -116,6 +122,12 @@
     "contacts": "Contacts",
     "me": "Me",
     "project": "Projects"
+  },
+  "auth": {
+    "login_required": "Please log in first",
+    "session_kicked": "Your account has logged in on another device",
+    "session_expired": "Session expired, please login again",
+    "relogin": "Login Again"
   },
   "page": {
     "index": {
@@ -185,6 +197,13 @@
       "pinned": "Pinned",
       "typing_label_default": "Someone",
       "typing_text": "{label} is typing…",
+      "session_kicked": "Signed out on another device",
+      "login_prompt": "Login Required",
+      "session_kicked_message": "Your account has logged in on another device. Please log in again.",
+      "relogin": "Login Again",
+      "connecting": "Connecting...",
+      "connection_success": "Connected",
+      "connection_failed": "Reconnect failed",
       "connection_disconnected": "Connection disconnected",
       "click_to_reconnect": "Click to reconnect"
     },
@@ -340,6 +359,7 @@
       "language": "Language",
       "zh": "Chinese",
       "en": "English",
+      "logout_confirm": "Are you sure you want to log out?",
       "level_short": "Lv.{n} · {name}",
       "points": "{n} pts",
       "points_to_level": "{n} pts to {name}",
@@ -358,16 +378,24 @@
       "menu_privacy_desc": "Account protection",
       "menu_help": "Help & Feedback",
       "menu_help_desc": "Support & suggestions",
+      "menu_payment_methods": "Payment Methods",
+      "menu_payment_methods_desc": "Cards and payout settings",
       "level_abbr": "Lv.{n}",
       "notif_filter_mention": "Mentions",
       "menu_my_agents": "My Agents",
       "menu_my_agents_desc": "Manage & collaborate",
+      "active_subject_label": "Acting as",
+      "active_subject_unselected": "Select subject",
       "my_agents": {
         "title": "My Agents",
         "loading": "Loading...",
         "empty": "No agents",
         "credit_score_label": "Credit Score：",
-        "wallet_enabled": "Wallet enabled"
+        "wallet_enabled": "Wallet enabled",
+        "wallet_disabled": "Wallet disabled",
+        "enable_wallet": "Enable wallet",
+        "disable_wallet": "Disable wallet",
+        "wallet_updated": "Wallet updated"
       }
     },
     "project": {

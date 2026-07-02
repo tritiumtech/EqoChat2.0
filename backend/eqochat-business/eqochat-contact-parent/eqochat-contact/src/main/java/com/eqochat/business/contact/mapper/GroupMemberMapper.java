@@ -1,6 +1,8 @@
 package com.eqochat.business.contact.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.eqochat.business.actor.api.model.SubjectRef;
+import com.eqochat.business.actor.api.model.SubjectType;
 import com.eqochat.business.contact.entity.GroupMember;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -15,13 +17,26 @@ public interface GroupMemberMapper extends BaseMapper<GroupMember> {
     @Select("SELECT * FROM group_member WHERE group_id = #{groupId} AND del_token = '0'")
     List<GroupMember> findByGroupId(@Param("groupId") Long groupId);
     
-    @Select("SELECT * FROM group_member WHERE user_id = #{userId} AND del_token = '0'")
-    List<GroupMember> findByUserId(@Param("userId") Long userId);
+    default List<GroupMember> findByMember(SubjectRef member) {
+        return member == null ? List.of() : findByMember(member.id(), member.type());
+    }
+
+    @Select("SELECT * FROM group_member WHERE user_id = #{memberId} AND member_type = #{memberType} AND del_token = '0'")
+    List<GroupMember> findByMember(
+            @Param("memberId") Long memberId,
+            @Param("memberType") SubjectType memberType
+    );
     
-    @Select("SELECT * FROM group_member WHERE group_id = #{groupId} AND user_id = #{userId} AND del_token = '0' LIMIT 1")
-    Optional<GroupMember> findByGroupAndUser(
-            @Param("groupId") Long groupId, 
-            @Param("userId") Long userId);
+    default Optional<GroupMember> findByGroupAndMember(Long groupId, SubjectRef member) {
+        return member == null ? Optional.empty() : findByGroupAndMember(groupId, member.id(), member.type());
+    }
+
+    @Select("SELECT * FROM group_member WHERE group_id = #{groupId} AND user_id = #{memberId} AND member_type = #{memberType} AND del_token = '0' LIMIT 1")
+    Optional<GroupMember> findByGroupAndMember(
+            @Param("groupId") Long groupId,
+            @Param("memberId") Long memberId,
+            @Param("memberType") SubjectType memberType
+    );
     
     @Select("SELECT * FROM group_member WHERE group_id = #{groupId} AND role = 'OWNER' AND del_token = '0' LIMIT 1")
     Optional<GroupMember> findOwnerByGroupId(@Param("groupId") Long groupId);
@@ -32,6 +47,14 @@ public interface GroupMemberMapper extends BaseMapper<GroupMember> {
     @Select("SELECT COUNT(*) FROM group_member WHERE group_id = #{groupId} AND del_token = '0'")
     long countByGroupId(@Param("groupId") Long groupId);
     
-    @Select("SELECT EXISTS(SELECT 1 FROM group_member WHERE group_id = #{groupId} AND user_id = #{userId} AND del_token = '0')")
-    boolean isMember(@Param("groupId") Long groupId, @Param("userId") Long userId);
+    default boolean isMember(Long groupId, SubjectRef member) {
+        return member != null && isMember(groupId, member.id(), member.type());
+    }
+
+    @Select("SELECT EXISTS(SELECT 1 FROM group_member WHERE group_id = #{groupId} AND user_id = #{memberId} AND member_type = #{memberType} AND del_token = '0')")
+    boolean isMember(
+            @Param("groupId") Long groupId,
+            @Param("memberId") Long memberId,
+            @Param("memberType") SubjectType memberType
+    );
 }

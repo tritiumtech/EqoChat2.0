@@ -11,9 +11,8 @@ import com.eqochat.business.actor.api.model.WalletCapability;
 import com.eqochat.business.actor.api.service.LiabilityPolicyApi;
 import com.eqochat.business.actor.api.service.SubjectDirectoryApi;
 import com.eqochat.business.actor.api.service.WalletPolicyApi;
+import com.eqochat.business.contact.api.service.SubjectRelationshipApi;
 import com.eqochat.business.world.config.WorldModuleProperties;
-import com.eqochat.business.user.entity.UserFriend;
-import com.eqochat.business.user.entity.UserProfile;
 import com.eqochat.business.world.entity.WorldPost;
 import com.eqochat.business.world.entity.WorldPostReply;
 import com.eqochat.business.world.entity.WorldPostMention;
@@ -29,8 +28,6 @@ import com.eqochat.business.world.api.dto.response.WorldPostResponse;
 import com.eqochat.business.world.api.dto.response.WorldPostReplyResponse;
 import com.eqochat.business.world.api.dto.response.WorldShareLinkResponse;
 import com.eqochat.business.world.api.dto.response.WorldTopicResponse;
-import com.eqochat.business.user.mapper.UserFriendMapper;
-import com.eqochat.business.user.mapper.UserProfileMapper;
 import com.eqochat.business.world.mapper.WorldPostMentionMapper;
 import com.eqochat.business.world.mapper.WorldPostMapper;
 import com.eqochat.business.world.mapper.WorldPostReplyMapper;
@@ -73,8 +70,7 @@ public class WorldServiceImpl implements WorldService {
     private final WorldTopicFollowMapper worldTopicFollowMapper;
     private final WorldPostReplyMapper worldPostReplyMapper;
     private final WorldPostReplyUpvoteMapper worldPostReplyUpvoteMapper;
-    private final UserProfileMapper userProfileMapper;
-    private final UserFriendMapper userFriendMapper;
+    private final SubjectRelationshipApi subjectRelationshipApi;
     private final NotificationService notificationService;
     private final WorldModuleProperties worldModuleProperties;
     private final SubjectDirectoryApi subjectDirectoryApi;
@@ -82,12 +78,21 @@ public class WorldServiceImpl implements WorldService {
     private final WalletPolicyApi walletPolicyApi;
 
     @Override
-    public PageResponse<WorldPostResponse> listFeed(Long viewerId, String sortBy, Long cursorId, Integer limit) {
+    public PageResponse<WorldPostResponse> listFeed(Long principalHumanId, SubjectRef viewer, String sortBy, Long cursorId, Integer limit) {
+        SubjectRef resolvedViewer = requireAuthorizedSubject(principalHumanId, viewer);
         int size = sanitizeLimit(limit, DEFAULT_LIMIT);
         String sort = normalizeSort(sortBy);
+        FriendLookup friendLookup = "friends".equals(sort) ? loadFriendLookup(resolvedViewer) : null;
 
         // 查询多一条用于判断是否有更多
-        List<WorldPostMapper.WorldPostRow> rows = worldPostMapper.selectFeed(viewerId, sort, cursorId, size + 1);
+        List<WorldPostMapper.WorldPostRow> rows = worldPostMapper.selectFeed(
+                resolvedViewer.id(),
+                resolvedViewer.type().name(),
+                sort,
+                friendLookup != null ? friendLookup.humanIds() : List.of(),
+                friendLookup != null ? friendLookup.agentIds() : List.of(),
+                cursorId,
+                size + 1);
         boolean hasMore = rows.size() > size;
         if (hasMore) {
             rows = rows.subList(0, size);
@@ -96,6 +101,7 @@ public class WorldServiceImpl implements WorldService {
         if (rows.isEmpty()) {
             return PageResponse.empty();
         }
+        markFriendRows(resolvedViewer, rows, friendLookup);
 
         Map<Long, List<String>> topicsByPostId = rows.stream()
                 .map(WorldPostMapper.WorldPostRow::getId)
@@ -112,22 +118,26 @@ public class WorldServiceImpl implements WorldService {
 
     @Override
     public PageResponse<WorldPostResponse> listPostsByAuthor(
-            Long viewerId,
-            Long authorId,
-            String authorType,
+            Long principalHumanId,
+            SubjectRef viewer,
+            SubjectRef author,
             Long cursorId,
             Integer limit
     ) {
-        if (authorId == null) {
+        if (author == null || author.id() == null) {
             throw BizException.of("world.author.required");
         }
-        SubjectType type = parseAuthorType(authorType);
-        if (!areFriends(viewerId, authorId, type)) {
+        if (author.type() == null || author.type() == SubjectType.SYSTEM) {
+            throw BizException.of("world.author.type.invalid");
+        }
+        SubjectRef resolvedViewer = requireAuthorizedSubject(principalHumanId, viewer);
+        if (!areFriends(resolvedViewer, author)) {
             throw BizException.of("contact.not_friend");
         }
         int size = sanitizeLimit(limit, DEFAULT_LIMIT);
         List<WorldPostMapper.WorldPostRow> rows =
-                worldPostMapper.selectPostsByAuthor(viewerId, authorId, type.name(), cursorId, size + 1);
+                worldPostMapper.selectPostsByAuthor(
+                        resolvedViewer.id(), resolvedViewer.type().name(), author.id(), author.type().name(), cursorId, size + 1);
         boolean hasMore = rows.size() > size;
         if (hasMore) {
             rows = rows.subList(0, size);
@@ -135,6 +145,7 @@ public class WorldServiceImpl implements WorldService {
         if (rows.isEmpty()) {
             return PageResponse.empty();
         }
+        markFriendRows(resolvedViewer, rows, null);
         Map<Long, List<String>> topicsByPostId = rows.stream()
                 .map(WorldPostMapper.WorldPostRow::getId)
                 .collect(Collectors.toMap(id -> id, worldPostMapper::selectTopicNamesByPostId));
@@ -222,8 +233,7 @@ public class WorldServiceImpl implements WorldService {
                 );
             }
         }
-        UserProfile profile = actor.type() == SubjectType.HUMAN ? userProfileMapper.selectById(actor.id()) : null;
-        return toNewPostResponse(post, profile, List.copyOf(topics));
+        return toNewPostResponse(post, List.copyOf(topics));
     }
 
     @Override
@@ -288,9 +298,11 @@ public class WorldServiceImpl implements WorldService {
     }
 
     @Override
-    public PageResponse<WorldTopicResponse> listTopics(Long viewerId, Integer limit, Long cursorId) {
+    public PageResponse<WorldTopicResponse> listTopics(Long principalHumanId, SubjectRef viewer, Integer limit, Long cursorId) {
+        SubjectRef resolvedViewer = requireAuthorizedSubject(principalHumanId, viewer);
         int size = sanitizeLimit(limit, 50);
-        List<WorldTopicMapper.WorldTopicRow> rows = worldTopicMapper.selectTopTopicsWithCursor(viewerId, cursorId, size + 1);
+        List<WorldTopicMapper.WorldTopicRow> rows =
+                worldTopicMapper.selectTopTopicsWithCursor(resolvedViewer.id(), resolvedViewer.type().name(), cursorId, size + 1);
         boolean hasMore = rows.size() > size;
         if (hasMore) {
             rows = rows.subList(0, size);
@@ -312,13 +324,15 @@ public class WorldServiceImpl implements WorldService {
     }
 
     @Override
-    public PageResponse<WorldPostResponse> listTopicPosts(Long viewerId, String topicName, Long cursorId, Integer limit) {
+    public PageResponse<WorldPostResponse> listTopicPosts(Long principalHumanId, SubjectRef viewer, String topicName, Long cursorId, Integer limit) {
+        SubjectRef resolvedViewer = requireAuthorizedSubject(principalHumanId, viewer);
         if (topicName == null || topicName.isBlank()) {
             throw BizException.of("world.topic.required");
         }
         int size = sanitizeLimit(limit, DEFAULT_LIMIT);
         List<WorldPostMapper.WorldPostRow> rows =
-                worldPostMapper.selectTopicPosts(viewerId, topicName.trim(), cursorId, size + 1);
+                worldPostMapper.selectTopicPosts(
+                        resolvedViewer.id(), resolvedViewer.type().name(), topicName.trim(), cursorId, size + 1);
         boolean hasMore = rows.size() > size;
         if (hasMore) {
             rows = rows.subList(0, size);
@@ -326,6 +340,7 @@ public class WorldServiceImpl implements WorldService {
         if (rows.isEmpty()) {
             return PageResponse.empty();
         }
+        markFriendRows(resolvedViewer, rows, null);
 
         Map<Long, List<String>> topicsByPostId = rows.stream()
                 .map(WorldPostMapper.WorldPostRow::getId)
@@ -339,9 +354,11 @@ public class WorldServiceImpl implements WorldService {
     }
 
     @Override
-    public PageResponse<WorldPostResponse> listMentionedMe(Long viewerId, Long cursorId, Integer limit) {
+    public PageResponse<WorldPostResponse> listMentionedMe(Long principalHumanId, SubjectRef viewer, Long cursorId, Integer limit) {
+        SubjectRef resolvedViewer = requireAuthorizedSubject(principalHumanId, viewer);
         int size = sanitizeLimit(limit, DEFAULT_LIMIT);
-        List<WorldPostMapper.WorldPostRow> rows = worldPostMapper.selectMentionFeed(viewerId, cursorId, size + 1);
+        List<WorldPostMapper.WorldPostRow> rows =
+                worldPostMapper.selectMentionFeed(resolvedViewer.id(), resolvedViewer.type().name(), cursorId, size + 1);
         boolean hasMore = rows.size() > size;
         if (hasMore) {
             rows = rows.subList(0, size);
@@ -349,6 +366,7 @@ public class WorldServiceImpl implements WorldService {
         if (rows.isEmpty()) {
             return PageResponse.empty();
         }
+        markFriendRows(resolvedViewer, rows, null);
 
         Map<Long, List<String>> topicsByPostId = rows.stream()
                 .map(WorldPostMapper.WorldPostRow::getId)
@@ -363,14 +381,15 @@ public class WorldServiceImpl implements WorldService {
 
     @Override
     @Transactional
-    public boolean toggleUpvote(Long viewerId, Long postId) {
+    public boolean toggleUpvote(Long principalHumanId, SubjectRef actor, Long postId) {
+        SubjectRef voter = requireAuthorizedSubject(principalHumanId, actor);
         if (postId == null) throw BizException.of("world.post.required");
         WorldPost post = worldPostMapper.selectById(postId);
         if (post == null || (post.getDelToken() != null && post.getDelToken() != 0L)) {
             throw BizException.of("world.post.not_found");
         }
-        String viewerType = SubjectType.HUMAN.name();
-        WorldPostUpvote existing = worldPostUpvoteMapper.findActive(postId, viewerId, viewerType);
+        String viewerType = voter.type().name();
+        WorldPostUpvote existing = worldPostUpvoteMapper.findActive(postId, voter.id(), viewerType);
         if (existing != null) {
             // 软删除 upvote 记录 + 回写计数
             worldPostUpvoteMapper.update(null, new LambdaUpdateWrapper<WorldPostUpvote>()
@@ -381,7 +400,7 @@ public class WorldServiceImpl implements WorldService {
                     .eq(WorldPost::getId, postId));
             return false;
         }
-        WorldPostUpvote any = worldPostUpvoteMapper.findAny(postId, viewerId, viewerType);
+        WorldPostUpvote any = worldPostUpvoteMapper.findAny(postId, voter.id(), viewerType);
         if (any != null) {
             // 复用历史记录，避免同一投票主体的唯一键冲突
             worldPostUpvoteMapper.update(null, new LambdaUpdateWrapper<WorldPostUpvote>()
@@ -390,7 +409,7 @@ public class WorldServiceImpl implements WorldService {
         } else {
             worldPostUpvoteMapper.insert(WorldPostUpvote.builder()
                     .postId(postId)
-                    .voterId(viewerId)
+                    .voterId(voter.id())
                     .voterType(viewerType)
                     .build());
         }
@@ -402,13 +421,14 @@ public class WorldServiceImpl implements WorldService {
 
     @Override
     @Transactional
-    public boolean toggleTopicFollow(Long viewerId, String topicName) {
+    public boolean toggleTopicFollow(Long principalHumanId, SubjectRef actor, String topicName) {
+        SubjectRef follower = requireAuthorizedSubject(principalHumanId, actor);
         if (topicName == null || topicName.isBlank()) throw BizException.of("world.topic.required");
         WorldTopic topic = worldTopicMapper.selectByName(topicName.trim());
         if (topic == null) throw BizException.of("world.topic.not_found");
 
-        String viewerType = SubjectType.HUMAN.name();
-        WorldTopicFollow existing = worldTopicFollowMapper.findActive(topic.getId(), viewerId, viewerType);
+        String viewerType = follower.type().name();
+        WorldTopicFollow existing = worldTopicFollowMapper.findActive(topic.getId(), follower.id(), viewerType);
         if (existing != null) {
             worldTopicFollowMapper.update(null, new LambdaUpdateWrapper<WorldTopicFollow>()
                     .set(WorldTopicFollow::getDelToken, System.currentTimeMillis())
@@ -418,7 +438,7 @@ public class WorldServiceImpl implements WorldService {
                     .eq(WorldTopic::getId, topic.getId()));
             return false;
         }
-        WorldTopicFollow any = worldTopicFollowMapper.findAny(topic.getId(), viewerId, viewerType);
+        WorldTopicFollow any = worldTopicFollowMapper.findAny(topic.getId(), follower.id(), viewerType);
         if (any != null) {
             // 复用历史记录，避免同一关注主体的唯一键冲突
             worldTopicFollowMapper.update(null, new LambdaUpdateWrapper<WorldTopicFollow>()
@@ -427,7 +447,7 @@ public class WorldServiceImpl implements WorldService {
         } else {
             worldTopicFollowMapper.insert(WorldTopicFollow.builder()
                     .topicId(topic.getId())
-                    .followerId(viewerId)
+                    .followerId(follower.id())
                     .followerType(viewerType)
                     .build());
         }
@@ -438,7 +458,8 @@ public class WorldServiceImpl implements WorldService {
     }
 
     @Override
-    public List<WorldPostReplyResponse> listReplies(Long viewerId, Long postId, Long cursorId, Integer limit) {
+    public List<WorldPostReplyResponse> listReplies(Long principalHumanId, SubjectRef viewer, Long postId, Long cursorId, Integer limit) {
+        SubjectRef resolvedViewer = requireAuthorizedSubject(principalHumanId, viewer);
         if (postId == null) {
             throw BizException.of("world.post.required");
         }
@@ -454,15 +475,11 @@ public class WorldServiceImpl implements WorldService {
             return List.of();
         }
 
-        // 当前用户点赞的回复
-        Set<Long> likedIds = worldPostReplyUpvoteMapper.selectList(
-                        new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<WorldPostReplyUpvote>()
-                                .eq(WorldPostReplyUpvote::getVoterId, viewerId)
-                                .eq(WorldPostReplyUpvote::getVoterType, SubjectType.HUMAN.name())
-                                .eq(WorldPostReplyUpvote::getDelToken, 0L)
-                                .in(WorldPostReplyUpvote::getReplyId,
-                                        rows.stream().map(WorldPostReply::getId).toList())
-                ).stream()
+        // 当前主体点赞的回复
+        List<Long> replyIds = rows.stream().map(WorldPostReply::getId).toList();
+        List<WorldPostReplyUpvote> activeUpvotes = worldPostReplyUpvoteMapper
+                .selectActiveByVoterAndReplyIds(resolvedViewer.id(), resolvedViewer.type().name(), replyIds);
+        Set<Long> likedIds = (activeUpvotes == null ? List.<WorldPostReplyUpvote>of() : activeUpvotes).stream()
                 .map(WorldPostReplyUpvote::getReplyId)
                 .collect(Collectors.toSet());
 
@@ -496,7 +513,8 @@ public class WorldServiceImpl implements WorldService {
 
     @Override
     @Transactional
-    public boolean toggleReplyUpvote(Long viewerId, Long replyId) {
+    public boolean toggleReplyUpvote(Long principalHumanId, SubjectRef actor, Long replyId) {
+        SubjectRef voter = requireAuthorizedSubject(principalHumanId, actor);
         if (replyId == null) {
             throw BizException.of("world.reply.required");
         }
@@ -505,9 +523,9 @@ public class WorldServiceImpl implements WorldService {
             throw BizException.of("world.reply.not_found");
         }
 
-        String viewerType = SubjectType.HUMAN.name();
+        String viewerType = voter.type().name();
         WorldPostReplyUpvote existing =
-                worldPostReplyUpvoteMapper.findActive(replyId, viewerId, viewerType);
+                worldPostReplyUpvoteMapper.findActive(replyId, voter.id(), viewerType);
         if (existing != null) {
             worldPostReplyUpvoteMapper.update(null, new LambdaUpdateWrapper<WorldPostReplyUpvote>()
                     .set(WorldPostReplyUpvote::getDelToken, System.currentTimeMillis())
@@ -519,7 +537,7 @@ public class WorldServiceImpl implements WorldService {
         }
 
         WorldPostReplyUpvote any =
-                worldPostReplyUpvoteMapper.findAny(replyId, viewerId, viewerType);
+                worldPostReplyUpvoteMapper.findAny(replyId, voter.id(), viewerType);
         if (any != null) {
             worldPostReplyUpvoteMapper.update(null, new LambdaUpdateWrapper<WorldPostReplyUpvote>()
                     .set(WorldPostReplyUpvote::getDelToken, 0L)
@@ -527,7 +545,7 @@ public class WorldServiceImpl implements WorldService {
         } else {
             worldPostReplyUpvoteMapper.insert(WorldPostReplyUpvote.builder()
                     .replyId(replyId)
-                    .voterId(viewerId)
+                    .voterId(voter.id())
                     .voterType(viewerType)
                     .build());
         }
@@ -538,9 +556,11 @@ public class WorldServiceImpl implements WorldService {
     }
 
     @Override
-    public PageResponse<WorldPostResponse> listMyPosts(Long viewerId, Long cursorId, Integer limit) {
+    public PageResponse<WorldPostResponse> listMyPosts(Long principalHumanId, SubjectRef author, Long cursorId, Integer limit) {
+        SubjectRef resolvedAuthor = requireAuthorizedSubject(principalHumanId, author);
         int size = sanitizeLimit(limit, DEFAULT_LIMIT);
-        List<WorldPostMapper.WorldPostRow> rows = worldPostMapper.selectMyPosts(viewerId, cursorId, size + 1);
+        List<WorldPostMapper.WorldPostRow> rows =
+                worldPostMapper.selectMyPosts(resolvedAuthor.id(), resolvedAuthor.type().name(), cursorId, size + 1);
         boolean hasMore = rows.size() > size;
         if (hasMore) {
             rows = rows.subList(0, size);
@@ -548,6 +568,7 @@ public class WorldServiceImpl implements WorldService {
         if (rows.isEmpty()) {
             return PageResponse.empty();
         }
+        markFriendRows(resolvedAuthor, rows, null);
 
         Map<Long, List<String>> topicsByPostId = rows.stream()
                 .map(WorldPostMapper.WorldPostRow::getId)
@@ -615,18 +636,16 @@ public class WorldServiceImpl implements WorldService {
                 .build();
     }
 
-    private WorldPostResponse toNewPostResponse(WorldPost post, UserProfile profile, List<String> topics) {
+    private WorldPostResponse toNewPostResponse(WorldPost post, List<String> topics) {
         Long aid = post.getAuthorId();
         SubjectType type = parseAuthorType(post.getAuthorType());
         SubjectSummaryResponse author = subjectDirectoryApi.getSubject(new SubjectRef(aid, type));
         String name = author != null && StringUtils.hasText(author.getDisplayName())
                 ? author.getDisplayName()
-                : (profile != null && StringUtils.hasText(profile.getNickname()) ? profile.getNickname() : "User");
+                : (type == SubjectType.AGENT ? "Agent" : "User");
         String color = author != null && StringUtils.hasText(author.getAvatarUrl())
                 ? author.getAvatarUrl()
-                : (profile != null && StringUtils.hasText(profile.getAvatarUrl())
-                ? profile.getAvatarUrl()
-                : ColorUtil.pick(name + "#" + aid));
+                : ColorUtil.pick(name + "#" + aid);
         return WorldPostResponse.builder()
                 .id(String.valueOf(post.getId()))
                 .author(WorldPostResponse.Author.builder()
@@ -745,17 +764,27 @@ public class WorldServiceImpl implements WorldService {
             throw BizException.of("world.actor.invalid");
         }
         SubjectRef actor = new SubjectRef(actorSubjectId, actorSubjectType);
-        if (actor.type() == SubjectType.HUMAN) {
-            if (!actor.id().equals(principalHumanId)) {
+        return requireAuthorizedSubject(principalHumanId, actor);
+    }
+
+    private SubjectRef requireAuthorizedSubject(Long principalHumanId, SubjectRef subject) {
+        if (principalHumanId == null) {
+            throw BizException.of("auth.user.not_found");
+        }
+        if (subject == null || subject.id() == null || subject.id() <= 0 || subject.type() == null || subject.type() == SubjectType.SYSTEM) {
+            throw BizException.of("world.actor.invalid");
+        }
+        if (subject.type() == SubjectType.HUMAN) {
+            if (!subject.id().equals(principalHumanId)) {
                 throw BizException.of("world.actor.forbidden");
             }
-            return actor;
+            return subject;
         }
-        LiabilityChain liability = liabilityPolicyApi.resolveLiability(actor);
+        LiabilityChain liability = liabilityPolicyApi.resolveLiability(subject);
         if (liability == null || liability.liableHumanId() == null || !liability.liableHumanId().equals(principalHumanId)) {
             throw BizException.of("world.actor.forbidden");
         }
-        return actor;
+        return subject;
     }
 
     private static String normalizeMediaType(String raw, String imageUrl, String videoUrl) {
@@ -792,14 +821,50 @@ public class WorldServiceImpl implements WorldService {
         }
     }
 
-    private boolean areFriends(Long viewerId, Long authorId, SubjectType authorType) {
-        if (viewerId == null || authorId == null || authorType == null || authorType == SubjectType.SYSTEM) {
+    private boolean areFriends(SubjectRef viewer, SubjectRef author) {
+        if (viewer == null || viewer.id() == null || viewer.type() == null || viewer.type() == SubjectType.SYSTEM
+                || author == null || author.id() == null || author.type() == null || author.type() == SubjectType.SYSTEM) {
             return false;
         }
-        UserFriend.FriendType friendType = authorType == SubjectType.AGENT
-                ? UserFriend.FriendType.AGENT
-                : UserFriend.FriendType.HUMAN;
-        return userFriendMapper.areFriends(viewerId, UserFriend.FriendType.HUMAN, authorId, friendType);
+        return subjectRelationshipApi.areFriends(viewer, author);
+    }
+
+    private FriendLookup loadFriendLookup(SubjectRef owner) {
+        List<SubjectRef> friends = subjectRelationshipApi.listFriends(owner);
+        if (friends == null || friends.isEmpty()) {
+            return FriendLookup.empty();
+        }
+        Set<SubjectRef> refs = friends.stream()
+                .filter(ref -> ref != null && ref.id() != null && ref.type() != null && ref.type() != SubjectType.SYSTEM)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        if (refs.isEmpty()) {
+            return FriendLookup.empty();
+        }
+        return new FriendLookup(
+                refs,
+                refs.stream().filter(ref -> ref.type() == SubjectType.HUMAN).map(SubjectRef::id).toList(),
+                refs.stream().filter(ref -> ref.type() == SubjectType.AGENT).map(SubjectRef::id).toList()
+        );
+    }
+
+    private void markFriendRows(SubjectRef viewer, List<WorldPostMapper.WorldPostRow> rows, FriendLookup existingLookup) {
+        if (rows == null || rows.isEmpty()) {
+            return;
+        }
+        FriendLookup lookup = existingLookup != null ? existingLookup : loadFriendLookup(viewer);
+        for (WorldPostMapper.WorldPostRow row : rows) {
+            if (row == null || row.getAuthorId() == null || !StringUtils.hasText(row.getAuthorType())) {
+                continue;
+            }
+            SubjectType authorType = parseAuthorType(row.getAuthorType());
+            row.setIsFriend(lookup.refs().contains(new SubjectRef(row.getAuthorId(), authorType)) ? 1 : 0);
+        }
+    }
+
+    private record FriendLookup(Set<SubjectRef> refs, List<Long> humanIds, List<Long> agentIds) {
+        private static FriendLookup empty() {
+            return new FriendLookup(Set.of(), List.of(), List.of());
+        }
     }
 
     private static final class ColorUtil {

@@ -7,10 +7,10 @@ import com.eqochat.business.actor.api.model.SubjectStatus;
 import com.eqochat.business.actor.api.model.SubjectType;
 import com.eqochat.business.actor.api.service.LiabilityPolicyApi;
 import com.eqochat.business.actor.api.service.SubjectDirectoryApi;
-import com.eqochat.business.contact.entity.UserContactTag;
-import com.eqochat.business.contact.mapper.UserContactTagMapper;
-import com.eqochat.business.user.entity.UserFriend;
-import com.eqochat.business.user.mapper.UserFriendMapper;
+import com.eqochat.business.contact.entity.ContactRelationship;
+import com.eqochat.business.contact.entity.ContactTag;
+import com.eqochat.business.contact.mapper.ContactRelationshipMapper;
+import com.eqochat.business.contact.mapper.ContactTagMapper;
 import com.eqochat.business.world.api.service.WorldPostStatsApi;
 import com.eqochat.framework.common.BizException;
 import org.apache.ibatis.annotations.Delete;
@@ -37,9 +37,9 @@ import static org.mockito.Mockito.when;
 class ContactServiceImplActorContractTest {
 
     @Mock
-    UserFriendMapper userFriendMapper;
+    ContactRelationshipMapper contactRelationshipMapper;
     @Mock
-    UserContactTagMapper userContactTagMapper;
+    ContactTagMapper contactTagMapper;
     @Mock
     WorldPostStatsApi worldPostStatsApi;
     @Mock
@@ -52,8 +52,8 @@ class ContactServiceImplActorContractTest {
     @BeforeEach
     void setUp() {
         service = new ContactServiceImpl(
-                userFriendMapper,
-                userContactTagMapper,
+                contactRelationshipMapper,
+                contactTagMapper,
                 worldPostStatsApi,
                 subjectDirectoryApi,
                 liabilityPolicyApi
@@ -61,21 +61,21 @@ class ContactServiceImplActorContractTest {
     }
 
     @Test
-    void userFriendMapperSqlScopesOwnerAndTargetBySubjectType() throws Exception {
-        assertThat(selectSql(UserFriendMapper.class, "findByOwner"))
-                .contains("user_id = #{ownerId}", "user_type = #{ownerType}");
-        assertThat(selectSql(UserFriendMapper.class, "findByTarget"))
+    void contactRelationshipMapperSqlScopesOwnerAndTargetBySubjectType() throws Exception {
+        assertThat(selectSql(ContactRelationshipMapper.class, "findByOwner"))
+                .contains("FROM contact_relationship", "user_id = #{ownerId}", "user_type = #{ownerType}");
+        assertThat(selectSql(ContactRelationshipMapper.class, "findByTarget"))
                 .contains("friend_id = #{targetId}", "friend_type = #{targetType}");
-        assertThat(selectSql(UserFriendMapper.class, "findByOwnerAndTarget"))
+        assertThat(selectSql(ContactRelationshipMapper.class, "findByOwnerAndTarget"))
                 .contains(
                         "user_id = #{ownerId}",
                         "user_type = #{ownerType}",
                         "friend_id = #{targetId}",
                         "friend_type = #{targetType}"
                 );
-        assertThat(selectSql(UserFriendMapper.class, "findActiveFriendsByOwner"))
+        assertThat(selectSql(ContactRelationshipMapper.class, "findActiveFriendsByOwner"))
                 .contains("user_id = #{ownerId}", "user_type = #{ownerType}", "status = 'ACTIVE'");
-        assertThat(selectSql(UserFriendMapper.class, "areFriends"))
+        assertThat(selectSql(ContactRelationshipMapper.class, "areFriends"))
                 .contains(
                         "user_id = #{ownerId}",
                         "user_type = #{ownerType}",
@@ -87,15 +87,17 @@ class ContactServiceImplActorContractTest {
 
     @Test
     void tagMapperSqlScopesTagsByOwnerAndTargetSubjectType() throws Exception {
-        assertThat(selectSql(UserContactTagMapper.class, "selectActiveTagNames"))
+        assertThat(selectSql(ContactTagMapper.class, "selectActiveTagNames"))
                 .contains(
+                        "FROM contact_tag",
                         "user_id = #{userId}",
                         "user_type = #{userType}",
                         "friend_id = #{friendId}",
                         "friend_type = #{friendType}"
                 );
-        assertThat(deleteSql(UserContactTagMapper.class, "hardDeleteAll"))
+        assertThat(deleteSql(ContactTagMapper.class, "hardDeleteAll"))
                 .contains(
+                        "FROM contact_tag",
                         "user_id = #{userId}",
                         "user_type = #{userType}",
                         "friend_id = #{friendId}",
@@ -106,20 +108,20 @@ class ContactServiceImplActorContractTest {
     @Test
     void listContactsResolvesTargetsWithTypedSubjectRefs() {
         when(liabilityPolicyApi.resolveLiability(SubjectRef.human(2L))).thenReturn(LiabilityChain.selfResponsible(2L));
-        when(userFriendMapper.findActiveFriendsByOwner(2L, UserFriend.FriendType.HUMAN)).thenReturn(List.of(
-                UserFriend.builder()
+        when(contactRelationshipMapper.findActiveFriendsByOwner(2L, ContactRelationship.RelationshipSubjectType.HUMAN)).thenReturn(List.of(
+                ContactRelationship.builder()
                         .userId(2L)
-                        .userType(UserFriend.FriendType.HUMAN)
+                        .userType(ContactRelationship.RelationshipSubjectType.HUMAN)
                         .friendId(101L)
-                        .friendType(UserFriend.FriendType.AGENT)
-                        .status(UserFriend.FriendStatus.ACTIVE)
+                        .friendType(ContactRelationship.RelationshipSubjectType.AGENT)
+                        .status(ContactRelationship.RelationshipStatus.ACTIVE)
                         .build(),
-                UserFriend.builder()
+                ContactRelationship.builder()
                         .userId(2L)
-                        .userType(UserFriend.FriendType.HUMAN)
+                        .userType(ContactRelationship.RelationshipSubjectType.HUMAN)
                         .friendId(101L)
-                        .friendType(UserFriend.FriendType.HUMAN)
-                        .status(UserFriend.FriendStatus.ACTIVE)
+                        .friendType(ContactRelationship.RelationshipSubjectType.HUMAN)
+                        .status(ContactRelationship.RelationshipStatus.ACTIVE)
                         .build()
         ));
         when(subjectDirectoryApi.batchGetSubjects(Set.of(SubjectRef.agent(101L), SubjectRef.human(101L))))
@@ -127,9 +129,9 @@ class ContactServiceImplActorContractTest {
                         SubjectRef.agent(101L), activeSubject(101L, SubjectType.AGENT, "Nova"),
                         SubjectRef.human(101L), activeSubject(101L, SubjectType.HUMAN, "Human 101")
                 ));
-        when(userContactTagMapper.selectActiveTagNames(2L, UserFriend.FriendType.HUMAN, 101L, UserFriend.FriendType.AGENT))
+        when(contactTagMapper.selectActiveTagNames(2L, ContactRelationship.RelationshipSubjectType.HUMAN, 101L, ContactRelationship.RelationshipSubjectType.AGENT))
                 .thenReturn(List.of("agent"));
-        when(userContactTagMapper.selectActiveTagNames(2L, UserFriend.FriendType.HUMAN, 101L, UserFriend.FriendType.HUMAN))
+        when(contactTagMapper.selectActiveTagNames(2L, ContactRelationship.RelationshipSubjectType.HUMAN, 101L, ContactRelationship.RelationshipSubjectType.HUMAN))
                 .thenReturn(List.of("human"));
 
         var contacts = service.listContacts(2L, SubjectRef.human(2L));
@@ -143,37 +145,132 @@ class ContactServiceImplActorContractTest {
     }
 
     @Test
+    void listContactsSupportsAgentOwnerSubject() {
+        when(liabilityPolicyApi.resolveLiability(SubjectRef.agent(101L))).thenReturn(LiabilityChain.agentToHuman(101L, 9L));
+        when(contactRelationshipMapper.findActiveFriendsByOwner(101L, ContactRelationship.RelationshipSubjectType.AGENT)).thenReturn(List.of(
+                ContactRelationship.builder()
+                        .userId(101L)
+                        .userType(ContactRelationship.RelationshipSubjectType.AGENT)
+                        .friendId(2L)
+                        .friendType(ContactRelationship.RelationshipSubjectType.HUMAN)
+                        .status(ContactRelationship.RelationshipStatus.ACTIVE)
+                        .build()
+        ));
+        when(subjectDirectoryApi.batchGetSubjects(Set.of(SubjectRef.human(2L))))
+                .thenReturn(Map.of(SubjectRef.human(2L), activeSubject(2L, SubjectType.HUMAN, "Ava")));
+        when(contactTagMapper.selectActiveTagNames(101L, ContactRelationship.RelationshipSubjectType.AGENT, 2L, ContactRelationship.RelationshipSubjectType.HUMAN))
+                .thenReturn(List.of("owner-agent"));
+
+        var contacts = service.listContacts(9L, SubjectRef.agent(101L));
+
+        verify(contactRelationshipMapper).findActiveFriendsByOwner(101L, ContactRelationship.RelationshipSubjectType.AGENT);
+        assertThat(contacts)
+                .extracting("ownerSubjectId", "ownerSubjectType", "targetSubjectId", "targetSubjectType", "tags")
+                .containsExactly(org.assertj.core.groups.Tuple.tuple(
+                        101L,
+                        SubjectType.AGENT,
+                        2L,
+                        SubjectType.HUMAN,
+                        List.of("owner-agent")
+                ));
+    }
+
+    @Test
+    void relationshipApiListsCanonicalFriendSubjectRefs() {
+        when(contactRelationshipMapper.findActiveFriendsByOwner(2L, ContactRelationship.RelationshipSubjectType.HUMAN)).thenReturn(List.of(
+                ContactRelationship.builder()
+                        .userId(2L)
+                        .userType(ContactRelationship.RelationshipSubjectType.HUMAN)
+                        .friendId(101L)
+                        .friendType(ContactRelationship.RelationshipSubjectType.AGENT)
+                        .status(ContactRelationship.RelationshipStatus.ACTIVE)
+                        .build(),
+                ContactRelationship.builder()
+                        .userId(2L)
+                        .userType(ContactRelationship.RelationshipSubjectType.HUMAN)
+                        .friendId(101L)
+                        .friendType(ContactRelationship.RelationshipSubjectType.HUMAN)
+                        .status(ContactRelationship.RelationshipStatus.ACTIVE)
+                        .build(),
+                ContactRelationship.builder()
+                        .userId(2L)
+                        .userType(ContactRelationship.RelationshipSubjectType.HUMAN)
+                        .friendId(101L)
+                        .friendType(ContactRelationship.RelationshipSubjectType.AGENT)
+                        .status(ContactRelationship.RelationshipStatus.ACTIVE)
+                        .build()
+        ));
+
+        assertThat(service.listFriends(SubjectRef.human(2L)))
+                .containsExactly(SubjectRef.agent(101L), SubjectRef.human(101L));
+    }
+
+    @Test
     void updateContactTagsDeletesAndInsertsOnlyTheTypedTarget() {
         when(liabilityPolicyApi.resolveLiability(SubjectRef.human(2L))).thenReturn(LiabilityChain.selfResponsible(2L));
-        when(userFriendMapper.findByOwnerAndTarget(2L, UserFriend.FriendType.HUMAN, 101L, UserFriend.FriendType.AGENT))
-                .thenReturn(Optional.of(UserFriend.builder()
+        when(contactRelationshipMapper.findByOwnerAndTarget(2L, ContactRelationship.RelationshipSubjectType.HUMAN, 101L, ContactRelationship.RelationshipSubjectType.AGENT))
+                .thenReturn(Optional.of(ContactRelationship.builder()
                         .userId(2L)
-                        .userType(UserFriend.FriendType.HUMAN)
+                        .userType(ContactRelationship.RelationshipSubjectType.HUMAN)
                         .friendId(101L)
-                        .friendType(UserFriend.FriendType.AGENT)
-                        .status(UserFriend.FriendStatus.ACTIVE)
+                        .friendType(ContactRelationship.RelationshipSubjectType.AGENT)
+                        .status(ContactRelationship.RelationshipStatus.ACTIVE)
                         .build()));
 
         var tags = service.updateContactTags(2L, SubjectRef.human(2L), SubjectRef.agent(101L),
                 List.of("AI", "ai", " Research "));
 
         assertThat(tags).containsExactly("AI", "Research");
-        verify(userContactTagMapper)
-                .hardDeleteAll(2L, UserFriend.FriendType.HUMAN, 101L, UserFriend.FriendType.AGENT);
-        ArgumentCaptor<UserContactTag> tagCaptor = ArgumentCaptor.forClass(UserContactTag.class);
-        verify(userContactTagMapper, org.mockito.Mockito.times(2)).insert(tagCaptor.capture());
+        verify(contactTagMapper)
+                .hardDeleteAll(2L, ContactRelationship.RelationshipSubjectType.HUMAN, 101L, ContactRelationship.RelationshipSubjectType.AGENT);
+        ArgumentCaptor<ContactTag> tagCaptor = ArgumentCaptor.forClass(ContactTag.class);
+        verify(contactTagMapper, org.mockito.Mockito.times(2)).insert(tagCaptor.capture());
         assertThat(tagCaptor.getAllValues())
                 .extracting(
-                        UserContactTag::getUserId,
-                        UserContactTag::getUserType,
-                        UserContactTag::getFriendId,
-                        UserContactTag::getFriendType,
-                        UserContactTag::getTagName
+                        ContactTag::getUserId,
+                        ContactTag::getUserType,
+                        ContactTag::getFriendId,
+                        ContactTag::getFriendType,
+                        ContactTag::getTagName
                 )
                 .containsExactly(
-                        org.assertj.core.groups.Tuple.tuple(2L, UserFriend.FriendType.HUMAN, 101L, UserFriend.FriendType.AGENT, "AI"),
-                        org.assertj.core.groups.Tuple.tuple(2L, UserFriend.FriendType.HUMAN, 101L, UserFriend.FriendType.AGENT, "Research")
+                        org.assertj.core.groups.Tuple.tuple(2L, ContactRelationship.RelationshipSubjectType.HUMAN, 101L, ContactRelationship.RelationshipSubjectType.AGENT, "AI"),
+                        org.assertj.core.groups.Tuple.tuple(2L, ContactRelationship.RelationshipSubjectType.HUMAN, 101L, ContactRelationship.RelationshipSubjectType.AGENT, "Research")
                 );
+    }
+
+    @Test
+    void updateContactTagsScopesAgentOwnerSeparatelyFromHumanOwner() {
+        when(liabilityPolicyApi.resolveLiability(SubjectRef.agent(101L))).thenReturn(LiabilityChain.agentToHuman(101L, 9L));
+        when(contactRelationshipMapper.findByOwnerAndTarget(101L, ContactRelationship.RelationshipSubjectType.AGENT, 2L, ContactRelationship.RelationshipSubjectType.HUMAN))
+                .thenReturn(Optional.of(ContactRelationship.builder()
+                        .userId(101L)
+                        .userType(ContactRelationship.RelationshipSubjectType.AGENT)
+                        .friendId(2L)
+                        .friendType(ContactRelationship.RelationshipSubjectType.HUMAN)
+                        .status(ContactRelationship.RelationshipStatus.ACTIVE)
+                        .build()));
+
+        var tags = service.updateContactTags(9L, SubjectRef.agent(101L), SubjectRef.human(2L), List.of("Agent Owner"));
+
+        assertThat(tags).containsExactly("Agent Owner");
+        verify(contactTagMapper)
+                .hardDeleteAll(101L, ContactRelationship.RelationshipSubjectType.AGENT, 2L, ContactRelationship.RelationshipSubjectType.HUMAN);
+        ArgumentCaptor<ContactTag> tagCaptor = ArgumentCaptor.forClass(ContactTag.class);
+        verify(contactTagMapper).insert(tagCaptor.capture());
+        assertThat(tagCaptor.getValue().getUserId()).isEqualTo(101L);
+        assertThat(tagCaptor.getValue().getUserType()).isEqualTo(ContactRelationship.RelationshipSubjectType.AGENT);
+        assertThat(tagCaptor.getValue().getFriendId()).isEqualTo(2L);
+        assertThat(tagCaptor.getValue().getFriendType()).isEqualTo(ContactRelationship.RelationshipSubjectType.HUMAN);
+    }
+
+    @Test
+    void contactOperationsRejectUnauthorizedAgentOwnerLiability() {
+        when(liabilityPolicyApi.resolveLiability(SubjectRef.agent(101L))).thenReturn(LiabilityChain.agentToHuman(101L, 8L));
+
+        assertThatThrownBy(() -> service.listContacts(9L, SubjectRef.agent(101L)))
+                .isInstanceOf(BizException.class)
+                .hasMessage("contact.access.denied");
     }
 
     @Test

@@ -9,12 +9,7 @@ import com.eqochat.business.actor.api.model.SubjectType;
 import com.eqochat.business.actor.api.model.WalletCapability;
 import com.eqochat.business.actor.api.service.MilestonePolicyApi;
 import com.eqochat.business.actor.api.service.WalletPolicyApi;
-import com.eqochat.business.agent.entity.AgentBinding;
-import com.eqochat.business.agent.entity.AgentProfile;
-import com.eqochat.business.agent.mapper.AgentBindingMapper;
-import com.eqochat.business.agent.mapper.AgentProfileMapper;
-import com.eqochat.business.user.entity.UserProfile;
-import com.eqochat.business.user.mapper.UserProfileMapper;
+import com.eqochat.framework.common.BizException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -31,6 +26,8 @@ import java.util.Deque;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -41,20 +38,14 @@ import static org.mockito.Mockito.when;
 class ActorCoreHardeningTest {
 
     @Mock
-    UserProfileMapper userProfileMapper;
-
-    @Mock
-    AgentProfileMapper agentProfileMapper;
-
-    @Mock
-    AgentBindingMapper agentBindingMapper;
+    ActorSourceRepository actorSourceRepository;
 
     ActorSubjectValidator validator;
     FakeActorDataAccess dataAccess;
 
     @BeforeEach
     void setUp() {
-        validator = new ActorSubjectValidator(userProfileMapper, agentProfileMapper, agentBindingMapper);
+        validator = new ActorSubjectValidator(actorSourceRepository);
         dataAccess = new FakeActorDataAccess();
     }
 
@@ -126,23 +117,23 @@ class ActorCoreHardeningTest {
     @Test
     void liabilityReturnsUnresolvedReasonWhenAgentOrOwnerBindingIsInvalid() {
         LiabilityPolicyServiceImpl policy = new LiabilityPolicyServiceImpl(validator);
-        when(agentProfileMapper.selectById(101L)).thenReturn(agent(101L, 2L, AgentProfile.AgentStatus.SUSPENDED));
+        when(actorSourceRepository.findAgent(101L)).thenReturn(Optional.of(agent(101L, 2L, ActorSourceRepository.AgentStatus.SUSPENDED)));
 
         assertThat(policy.resolveLiability(SubjectRef.agent(101L)).reason()).isEqualTo("agent is not active");
 
-        when(agentProfileMapper.selectById(102L)).thenReturn(agent(102L, 2L, AgentProfile.AgentStatus.ACTIVE));
-        when(userProfileMapper.selectById(2L)).thenReturn(user(2L, UserProfile.UserStatus.BANNED));
+        when(actorSourceRepository.findAgent(102L)).thenReturn(Optional.of(agent(102L, 2L, ActorSourceRepository.AgentStatus.ACTIVE)));
+        when(actorSourceRepository.findHuman(2L)).thenReturn(Optional.of(user(2L, ActorSourceRepository.HumanStatus.BANNED)));
         assertThat(policy.resolveLiability(SubjectRef.agent(102L)).reason()).isEqualTo("owner human is not active");
 
-        when(agentProfileMapper.selectById(103L)).thenReturn(agent(103L, 2L, AgentProfile.AgentStatus.ACTIVE));
-        when(userProfileMapper.selectById(2L)).thenReturn(user(2L, UserProfile.UserStatus.ACTIVE));
-        when(agentBindingMapper.findByAgentIdAndOwnerId(103L, 2L))
-                .thenReturn(Optional.of(binding(103L, 2L, AgentBinding.BindingType.OPERATOR, AgentBinding.BindingStatus.ACTIVE, true)));
+        when(actorSourceRepository.findAgent(103L)).thenReturn(Optional.of(agent(103L, 2L, ActorSourceRepository.AgentStatus.ACTIVE)));
+        when(actorSourceRepository.findHuman(2L)).thenReturn(Optional.of(user(2L, ActorSourceRepository.HumanStatus.ACTIVE)));
+        when(actorSourceRepository.findOwnerBinding(103L, 2L))
+                .thenReturn(Optional.of(binding(103L, 2L, ActorSourceRepository.BindingType.OPERATOR, ActorSourceRepository.BindingStatus.ACTIVE, true)));
         assertThat(policy.resolveLiability(SubjectRef.agent(103L)).reason()).isEqualTo("owner binding type is not OWNER");
 
-        when(agentProfileMapper.selectById(104L)).thenReturn(agent(104L, 2L, AgentProfile.AgentStatus.ACTIVE));
-        when(agentBindingMapper.findByAgentIdAndOwnerId(104L, 2L))
-                .thenReturn(Optional.of(binding(104L, 2L, AgentBinding.BindingType.OWNER, AgentBinding.BindingStatus.ACTIVE, false)));
+        when(actorSourceRepository.findAgent(104L)).thenReturn(Optional.of(agent(104L, 2L, ActorSourceRepository.AgentStatus.ACTIVE)));
+        when(actorSourceRepository.findOwnerBinding(104L, 2L))
+                .thenReturn(Optional.of(binding(104L, 2L, ActorSourceRepository.BindingType.OWNER, ActorSourceRepository.BindingStatus.ACTIVE, false)));
         assertThat(policy.resolveLiability(SubjectRef.agent(104L)).reason()).isEqualTo("owner liability is not accepted");
     }
 
@@ -155,13 +146,20 @@ class ActorCoreHardeningTest {
     }
 
     @Test
+    void walletCapabilityExposesCanonicalSettlementSubject() {
+        assertThat(WalletCapability.humanEnabled(2L).settlementSubject()).isEqualTo(SubjectRef.human(2L));
+        assertThat(WalletCapability.agentToOwner(101L, 2L, "owner wallet").settlementSubject())
+                .isEqualTo(SubjectRef.human(2L));
+        assertThat(WalletCapability.agentDirect(101L).settlementSubject()).isEqualTo(SubjectRef.agent(101L));
+    }
+
+    @Test
     void walletUsesHardenedAgentChecksAndWalletStateBeforeLegacySourceConfig() {
-        AgentProfile agent = agent(101L, 2L, AgentProfile.AgentStatus.ACTIVE);
-        agent.setSourceConfig("{\"wallet\":\"enabled\"}");
-        when(agentProfileMapper.selectById(101L)).thenReturn(agent);
-        when(userProfileMapper.selectById(2L)).thenReturn(user(2L, UserProfile.UserStatus.ACTIVE));
-        when(agentBindingMapper.findByAgentIdAndOwnerId(101L, 2L))
-                .thenReturn(Optional.of(binding(101L, 2L, AgentBinding.BindingType.OWNER, AgentBinding.BindingStatus.ACTIVE, true)));
+        ActorSourceRepository.Agent agent = agent(101L, 2L, ActorSourceRepository.AgentStatus.ACTIVE, "{\"wallet\":\"enabled\"}");
+        when(actorSourceRepository.findAgent(101L)).thenReturn(Optional.of(agent));
+        when(actorSourceRepository.findHuman(2L)).thenReturn(Optional.of(user(2L, ActorSourceRepository.HumanStatus.ACTIVE)));
+        when(actorSourceRepository.findOwnerBinding(101L, 2L))
+                .thenReturn(Optional.of(binding(101L, 2L, ActorSourceRepository.BindingType.OWNER, ActorSourceRepository.BindingStatus.ACTIVE, true)));
         dataAccess.points.put(SubjectRef.agent(101L), 600);
         dataAccess.walletStates.put(101L, new ActorDataAccess.AgentWalletState(false, 2L, "wallet disabled"));
         dataAccess.sourceConfigWalletEnabled.put(agent.getSourceConfig(), true);
@@ -185,13 +183,67 @@ class ActorCoreHardeningTest {
     }
 
     @Test
+    void ownerCanEnableAgentWalletAfterPointsThreshold() {
+        givenValidAgent(101L, 2L);
+        dataAccess.points.put(SubjectRef.agent(101L), 500);
+
+        WalletCapability wallet = new WalletPolicyServiceImpl(validator, dataAccess).enableAgentWallet(2L, 101L);
+
+        assertThat(wallet.routing()).isEqualTo("AGENT_DIRECT");
+        assertThat(dataAccess.walletStates.get(101L).walletEnabled()).isTrue();
+        assertThat(dataAccess.walletStates.get(101L).enabledBy()).isEqualTo(2L);
+    }
+
+    @Test
+    void enableAgentWalletRejectsLowPointsAndNonOwnerPrincipal() {
+        givenValidAgent(101L, 2L);
+        dataAccess.points.put(SubjectRef.agent(101L), 499);
+        WalletPolicyServiceImpl policy = new WalletPolicyServiceImpl(validator, dataAccess);
+
+        assertThatThrownBy(() -> policy.enableAgentWallet(2L, 101L))
+                .isInstanceOf(BizException.class)
+                .hasMessage("agent.wallet.points_insufficient");
+
+        dataAccess.points.put(SubjectRef.agent(101L), 500);
+        assertThatThrownBy(() -> policy.enableAgentWallet(9L, 101L))
+                .isInstanceOf(BizException.class)
+                .hasMessage("agent.wallet.forbidden");
+    }
+
+    @Test
+    void ownerCanDisableAgentWalletWithoutPointsThreshold() {
+        givenValidAgent(101L, 2L);
+        dataAccess.points.put(SubjectRef.agent(101L), 0);
+        dataAccess.walletStates.put(101L, new ActorDataAccess.AgentWalletState(true, 2L, "enabled"));
+
+        WalletCapability wallet = new WalletPolicyServiceImpl(validator, dataAccess)
+                .disableAgentWallet(2L, 101L, "risk review");
+
+        assertThat(wallet.routing()).isEqualTo("AGENT_TO_OWNER");
+        assertThat(wallet.reason()).isEqualTo("risk review");
+        assertThat(dataAccess.walletStates.get(101L).walletEnabled()).isFalse();
+        assertThat(dataAccess.walletStates.get(101L).statusReason()).isEqualTo("risk review");
+    }
+
+    @Test
+    void disableAgentWalletBoundsLongReasonToStorageLimit() {
+        givenValidAgent(101L, 2L);
+        String longReason = IntStream.range(0, 220).mapToObj(i -> "x").collect(Collectors.joining());
+
+        WalletCapability wallet = new WalletPolicyServiceImpl(validator, dataAccess)
+                .disableAgentWallet(2L, 101L, longReason);
+
+        assertThat(wallet.reason()).hasSize(200);
+        assertThat(dataAccess.walletStates.get(101L).statusReason()).hasSize(200);
+    }
+
+    @Test
     void sourceConfigWalletFallbackRequiresExplicitFlag() {
-        AgentProfile agent = agent(101L, 2L, AgentProfile.AgentStatus.ACTIVE);
-        agent.setSourceConfig("{\"wallet\":\"enabled\"}");
-        when(agentProfileMapper.selectById(101L)).thenReturn(agent);
-        when(userProfileMapper.selectById(2L)).thenReturn(user(2L, UserProfile.UserStatus.ACTIVE));
-        when(agentBindingMapper.findByAgentIdAndOwnerId(101L, 2L))
-                .thenReturn(Optional.of(binding(101L, 2L, AgentBinding.BindingType.OWNER, AgentBinding.BindingStatus.ACTIVE, true)));
+        ActorSourceRepository.Agent agent = agent(101L, 2L, ActorSourceRepository.AgentStatus.ACTIVE, "{\"wallet\":\"enabled\"}");
+        when(actorSourceRepository.findAgent(101L)).thenReturn(Optional.of(agent));
+        when(actorSourceRepository.findHuman(2L)).thenReturn(Optional.of(user(2L, ActorSourceRepository.HumanStatus.ACTIVE)));
+        when(actorSourceRepository.findOwnerBinding(101L, 2L))
+                .thenReturn(Optional.of(binding(101L, 2L, ActorSourceRepository.BindingType.OWNER, ActorSourceRepository.BindingStatus.ACTIVE, true)));
         dataAccess.points.put(SubjectRef.agent(101L), 600);
         dataAccess.sourceConfigWalletEnabled.put(agent.getSourceConfig(), true);
         WalletPolicyServiceImpl policy = new WalletPolicyServiceImpl(validator, dataAccess);
@@ -214,11 +266,11 @@ class ActorCoreHardeningTest {
         dataAccess.points.put(SubjectRef.human(1L), 5000);
         dataAccess.points.put(SubjectRef.agent(101L), 2000);
         dataAccess.points.put(SubjectRef.agent(102L), 2000);
-        when(userProfileMapper.selectById(1L)).thenReturn(null);
-        when(userProfileMapper.selectById(2L)).thenReturn(user(2L, UserProfile.UserStatus.ACTIVE));
-        when(agentProfileMapper.selectById(101L)).thenReturn(agent(101L, 2L, AgentProfile.AgentStatus.SUSPENDED));
-        when(agentProfileMapper.selectById(102L)).thenReturn(agent(102L, 2L, AgentProfile.AgentStatus.ACTIVE));
-        when(agentBindingMapper.findByAgentIdAndOwnerId(102L, 2L)).thenReturn(Optional.empty());
+        when(actorSourceRepository.findHuman(1L)).thenReturn(Optional.empty());
+        when(actorSourceRepository.findHuman(2L)).thenReturn(Optional.of(user(2L, ActorSourceRepository.HumanStatus.ACTIVE)));
+        when(actorSourceRepository.findAgent(101L)).thenReturn(Optional.of(agent(101L, 2L, ActorSourceRepository.AgentStatus.SUSPENDED)));
+        when(actorSourceRepository.findAgent(102L)).thenReturn(Optional.of(agent(102L, 2L, ActorSourceRepository.AgentStatus.ACTIVE)));
+        when(actorSourceRepository.findOwnerBinding(102L, 2L)).thenReturn(Optional.empty());
 
         assertUnknownNoPrivileges(policy.resolveMilestone(SubjectRef.human(1L)));
         assertUnknownNoPrivileges(policy.resolveMilestone(SubjectRef.agent(101L)));
@@ -233,8 +285,8 @@ class ActorCoreHardeningTest {
                 mock(WalletPolicyApi.class),
                 mock(MilestonePolicyApi.class)
         );
-        when(userProfileMapper.selectById(1L)).thenReturn(null);
-        when(agentProfileMapper.selectById(101L)).thenReturn(agent(101L, 2L, AgentProfile.AgentStatus.SUSPENDED));
+        when(actorSourceRepository.findHuman(1L)).thenReturn(Optional.empty());
+        when(actorSourceRepository.findAgent(101L)).thenReturn(Optional.of(agent(101L, 2L, ActorSourceRepository.AgentStatus.SUSPENDED)));
 
         assertThat(policy.getCapability(SubjectRef.human(1L), CapabilityCode.LOGIN).state()).isEqualTo(CapabilityState.DISABLED);
         assertThat(policy.getCapability(SubjectRef.agent(101L), CapabilityCode.SEND_MESSAGE).reason()).isEqualTo("agent is not active");
@@ -265,41 +317,37 @@ class ActorCoreHardeningTest {
     }
 
     private void givenValidAgent(Long agentId, Long ownerId) {
-        when(agentProfileMapper.selectById(agentId)).thenReturn(agent(agentId, ownerId, AgentProfile.AgentStatus.ACTIVE));
-        when(userProfileMapper.selectById(ownerId)).thenReturn(user(ownerId, UserProfile.UserStatus.ACTIVE));
-        when(agentBindingMapper.findByAgentIdAndOwnerId(agentId, ownerId))
-                .thenReturn(Optional.of(binding(agentId, ownerId, AgentBinding.BindingType.OWNER, AgentBinding.BindingStatus.ACTIVE, true)));
+        when(actorSourceRepository.findAgent(agentId)).thenReturn(Optional.of(agent(agentId, ownerId, ActorSourceRepository.AgentStatus.ACTIVE)));
+        when(actorSourceRepository.findHuman(ownerId)).thenReturn(Optional.of(user(ownerId, ActorSourceRepository.HumanStatus.ACTIVE)));
+        when(actorSourceRepository.findOwnerBinding(agentId, ownerId))
+                .thenReturn(Optional.of(binding(agentId, ownerId, ActorSourceRepository.BindingType.OWNER, ActorSourceRepository.BindingStatus.ACTIVE, true)));
     }
 
-    private static UserProfile user(Long id, UserProfile.UserStatus status) {
-        UserProfile user = new UserProfile();
-        user.setId(id);
-        user.setStatus(status);
-        return user;
+    private static ActorSourceRepository.Human user(Long id, ActorSourceRepository.HumanStatus status) {
+        return new ActorSourceRepository.Human(id, null, null, null, null, null, null, status, null);
     }
 
-    private static AgentProfile agent(Long id, Long ownerId, AgentProfile.AgentStatus status) {
-        AgentProfile agent = new AgentProfile();
-        agent.setId(id);
-        agent.setOwnerId(ownerId);
-        agent.setStatus(status);
-        return agent;
+    private static ActorSourceRepository.Agent agent(Long id, Long ownerId, ActorSourceRepository.AgentStatus status) {
+        return agent(id, ownerId, status, null);
     }
 
-    private static AgentBinding binding(
+    private static ActorSourceRepository.Agent agent(
+            Long id,
+            Long ownerId,
+            ActorSourceRepository.AgentStatus status,
+            String sourceConfig
+    ) {
+        return new ActorSourceRepository.Agent(id, null, ownerId, null, null, null, status, null, null, sourceConfig);
+    }
+
+    private static ActorSourceRepository.Binding binding(
             Long agentId,
             Long ownerId,
-            AgentBinding.BindingType type,
-            AgentBinding.BindingStatus status,
+            ActorSourceRepository.BindingType type,
+            ActorSourceRepository.BindingStatus status,
             boolean liabilityAccepted
     ) {
-        AgentBinding binding = new AgentBinding();
-        binding.setAgentId(agentId);
-        binding.setOwnerId(ownerId);
-        binding.setBindingType(type);
-        binding.setBindingStatus(status);
-        binding.setLiabilityAccepted(liabilityAccepted);
-        return binding;
+        return new ActorSourceRepository.Binding(agentId, ownerId, type, status, liabilityAccepted);
     }
 
     static final class FakeActorDataAccess extends ActorDataAccess {
@@ -320,6 +368,12 @@ class ActorCoreHardeningTest {
         @Override
         AgentWalletState agentWalletState(Long agentId) {
             return walletStates.get(agentId);
+        }
+
+        @Override
+        boolean upsertAgentWalletState(Long agentId, boolean enabled, Long operatorHumanId, String reason) {
+            walletStates.put(agentId, new AgentWalletState(enabled, enabled ? operatorHumanId : null, reason));
+            return true;
         }
 
         @Override

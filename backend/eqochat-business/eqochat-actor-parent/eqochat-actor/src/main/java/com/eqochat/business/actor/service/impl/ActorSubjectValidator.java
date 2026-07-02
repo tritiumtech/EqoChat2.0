@@ -2,12 +2,6 @@ package com.eqochat.business.actor.service.impl;
 
 import com.eqochat.business.actor.api.model.SubjectRef;
 import com.eqochat.business.actor.api.model.SubjectType;
-import com.eqochat.business.agent.entity.AgentBinding;
-import com.eqochat.business.agent.entity.AgentProfile;
-import com.eqochat.business.agent.mapper.AgentBindingMapper;
-import com.eqochat.business.agent.mapper.AgentProfileMapper;
-import com.eqochat.business.user.entity.UserProfile;
-import com.eqochat.business.user.mapper.UserProfileMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -15,9 +9,7 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 class ActorSubjectValidator {
 
-    private final UserProfileMapper userProfileMapper;
-    private final AgentProfileMapper agentProfileMapper;
-    private final AgentBindingMapper agentBindingMapper;
+    private final ActorSourceRepository actorSourceRepository;
 
     ActorSubjectValidation validateOrdinaryCapabilities(SubjectRef ref) {
         ActorSubjectValidation base = validateActiveSubject(ref);
@@ -41,11 +33,11 @@ class ActorSubjectValidator {
             return validateHuman(ref.id());
         }
         if (ref.type() == SubjectType.AGENT) {
-            AgentProfile agent = agentProfileMapper.selectById(ref.id());
+            ActorSourceRepository.Agent agent = actorSourceRepository.findAgent(ref.id()).orElse(null);
             if (agent == null) {
                 return ActorSubjectValidation.invalid(ref, "agent not found");
             }
-            if (agent.getStatus() != AgentProfile.AgentStatus.ACTIVE) {
+            if (agent.getStatus() != ActorSourceRepository.AgentStatus.ACTIVE) {
                 return ActorSubjectValidation.invalid(ref, null, agent, null, "agent is not active");
             }
             return ActorSubjectValidation.valid(ref, null, agent, null, null);
@@ -58,11 +50,11 @@ class ActorSubjectValidator {
         if (humanId == null) {
             return ActorSubjectValidation.invalid(ref, "human id is null");
         }
-        UserProfile human = userProfileMapper.selectById(humanId);
+        ActorSourceRepository.Human human = actorSourceRepository.findHuman(humanId).orElse(null);
         if (human == null) {
             return ActorSubjectValidation.invalid(ref, "human not found");
         }
-        if (human.getStatus() != UserProfile.UserStatus.ACTIVE) {
+        if (human.getStatus() != ActorSourceRepository.HumanStatus.ACTIVE) {
             return ActorSubjectValidation.invalid(ref, human, null, null, "human is not active");
         }
         return ActorSubjectValidation.valid(ref, human, null, null, null);
@@ -74,37 +66,37 @@ class ActorSubjectValidator {
             return ActorSubjectValidation.invalid(ref, "agent id is null");
         }
 
-        AgentProfile agent = agentProfileMapper.selectById(agentId);
+        ActorSourceRepository.Agent agent = actorSourceRepository.findAgent(agentId).orElse(null);
         if (agent == null) {
             return ActorSubjectValidation.invalid(ref, "agent not found");
         }
-        if (agent.getStatus() != AgentProfile.AgentStatus.ACTIVE) {
+        if (agent.getStatus() != ActorSourceRepository.AgentStatus.ACTIVE) {
             return ActorSubjectValidation.invalid(ref, null, agent, null, "agent is not active");
         }
         if (agent.getOwnerId() == null) {
             return ActorSubjectValidation.invalid(ref, null, agent, null, "agent owner is missing");
         }
 
-        UserProfile owner = userProfileMapper.selectById(agent.getOwnerId());
+        ActorSourceRepository.Human owner = actorSourceRepository.findHuman(agent.getOwnerId()).orElse(null);
         if (owner == null) {
             return ActorSubjectValidation.invalid(ref, null, agent, null, "owner human not found");
         }
-        if (owner.getStatus() != UserProfile.UserStatus.ACTIVE) {
+        if (owner.getStatus() != ActorSourceRepository.HumanStatus.ACTIVE) {
             return ActorSubjectValidation.invalid(ref, owner, agent, null, "owner human is not active");
         }
 
-        AgentBinding binding = agentBindingMapper.findByAgentIdAndOwnerId(agent.getId(), agent.getOwnerId())
+        ActorSourceRepository.Binding binding = actorSourceRepository.findOwnerBinding(agent.getId(), agent.getOwnerId())
                 .orElse(null);
         if (binding == null) {
             return ActorSubjectValidation.invalid(ref, owner, agent, null, "owner binding not found");
         }
-        if (binding.getBindingType() != AgentBinding.BindingType.OWNER) {
+        if (binding.bindingType() != ActorSourceRepository.BindingType.OWNER) {
             return ActorSubjectValidation.invalid(ref, owner, agent, binding, "owner binding type is not OWNER");
         }
-        if (binding.getBindingStatus() != AgentBinding.BindingStatus.ACTIVE) {
+        if (binding.bindingStatus() != ActorSourceRepository.BindingStatus.ACTIVE) {
             return ActorSubjectValidation.invalid(ref, owner, agent, binding, "owner binding is not active");
         }
-        if (!Boolean.TRUE.equals(binding.getLiabilityAccepted())) {
+        if (!Boolean.TRUE.equals(binding.liabilityAccepted())) {
             return ActorSubjectValidation.invalid(ref, owner, agent, binding, "owner liability is not accepted");
         }
 
@@ -114,17 +106,17 @@ class ActorSubjectValidator {
 
 record ActorSubjectValidation(
         SubjectRef ref,
-        UserProfile human,
-        AgentProfile agent,
-        AgentBinding binding,
+        ActorSourceRepository.Human human,
+        ActorSourceRepository.Agent agent,
+        ActorSourceRepository.Binding binding,
         String reason
 ) {
 
     static ActorSubjectValidation valid(
             SubjectRef ref,
-            UserProfile human,
-            AgentProfile agent,
-            AgentBinding binding,
+            ActorSourceRepository.Human human,
+            ActorSourceRepository.Agent agent,
+            ActorSourceRepository.Binding binding,
             String reason
     ) {
         return new ActorSubjectValidation(ref, human, agent, binding, reason);
@@ -136,9 +128,9 @@ record ActorSubjectValidation(
 
     static ActorSubjectValidation invalid(
             SubjectRef ref,
-            UserProfile human,
-            AgentProfile agent,
-            AgentBinding binding,
+            ActorSourceRepository.Human human,
+            ActorSourceRepository.Agent agent,
+            ActorSourceRepository.Binding binding,
             String reason
     ) {
         return new ActorSubjectValidation(ref, human, agent, binding, reason);

@@ -6,12 +6,15 @@ import { useUserStore } from '@/store/modules/user'
 import { useChatStore } from '@/store/modules/chat'
 import { useFriendRequestStore } from '@/store/modules/friendRequest'
 import { useNotificationStore } from '@/store/modules/notification'
+import { useActiveSubjectStore } from '@/store/modules/activeSubject'
+import { wsClient } from '@/utils/websocket'
 import { conversationApi } from '@/api/modules/conversation'
 
 const userStore = useUserStore()
 const chatStore = useChatStore()
 const friendRequestStore = useFriendRequestStore()
 const notificationStore = useNotificationStore()
+const activeSubjectStore = useActiveSubjectStore()
 
 const parsePrincipalHumanIdFromToken = (token?: string | null): number | null => {
   if (!token) return null
@@ -32,8 +35,7 @@ const parsePrincipalHumanIdFromToken = (token?: string | null): number | null =>
   }
 }
 
-const ensureRealtime = () => {
-  // 如果被踢下线，不再尝试连接
+const ensureRealtime = async () => {
   if (chatStore.isSessionKicked) {
     return
   }
@@ -42,16 +44,26 @@ const ensureRealtime = () => {
     notificationStore.stopRealtime()
     return
   }
+
   const principalHumanId = parsePrincipalHumanIdFromToken(userStore.token)
   chatStore.setCurrentPrincipalHumanId(principalHumanId)
+  await activeSubjectStore.ensureLoaded()
+
+  const subject = activeSubjectStore.currentSubject
+  if (!subject) {
+    chatStore.setCurrentActiveSubject(null)
+    wsClient.setActiveSubject(null)
+    chatStore.stopRealtime()
+    notificationStore.stopRealtime()
+    return
+  }
+
+  chatStore.setCurrentActiveSubject(subject)
+  wsClient.setActiveSubject({ subjectId: subject.subjectId, subjectType: subject.subjectType })
   chatStore.startRealtime(userStore.token)
-  // 启动通知实时监听
   notificationStore.startRealtime()
 }
 
-/**
- * 处理被挤下线或会话过期
- */
 const handleSessionExpired = (message?: string) => {
   chatStore.stopRealtime()
   userStore.logout()
@@ -66,11 +78,7 @@ const handleSessionExpired = (message?: string) => {
   })
 }
 
-/**
- * 拦截 401 响应
- */
 const setupUnauthorizedInterceptor = () => {
-  // 保存原始的 uni.request
   const originalRequest = uni.request
   // @ts-ignore
   uni.request = (options: UniApp.RequestOptions) => {
@@ -78,7 +86,6 @@ const setupUnauthorizedInterceptor = () => {
     const originalFail = options.fail
 
     options.success = (res: any) => {
-      // 检测到 401 未授权，可能是被挤下线或 token 过期
       if (res.statusCode === 401) {
         handleSessionExpired('您的登录已失效，请重新登录')
         return
@@ -98,7 +105,7 @@ onLaunch(() => {
   console.log('EqoChat App Launch')
   userStore.syncFromStorage()
   setupUnauthorizedInterceptor()
-  ensureRealtime()
+  void ensureRealtime()
   // #ifndef MP-WEIXIN || MP-ALIPAY
   needHideNativeTabbar &&
     uni.hideTabBar({
@@ -107,41 +114,36 @@ onLaunch(() => {
     })
   // #endif
 
-  // 预加载角标数据，确保 tabbar 角标在 app 启动时就显示
   if (userStore.token) {
-    preloadBadgeData()
+    void preloadBadgeData()
   }
 })
 
-/**
- * 预加载 tabbar 角标所需数据
- */
 const preloadBadgeData = async () => {
-  // 并行加载会话列表、好友申请、通知
+  try {
+    await activeSubjectStore.ensureLoaded()
+  } catch {
+    return
+  }
+  if (!activeSubjectStore.currentSubject) {
+    return
+  }
+
   await Promise.all([
-    // 加载会话列表用于计算未读消息数
     conversationApi
-      .listConversations()
+      .listConversations(activeSubjectStore.conversationViewerParams())
       .then((list) => {
         chatStore.setConversations(list)
       })
-      .catch(() => {
-        // 忽略错误，保持 UX 流畅
-      }),
-    // 加载好友申请列表
-    friendRequestStore.loadReceivedRequests(true).catch(() => {
-      // 忽略错误
-    }),
-    // 加载通知列表
-    notificationStore.loadNotifications(30).catch(() => {
-      // 忽略错误
-    }),
+      .catch(() => {}),
+    friendRequestStore.loadReceivedRequests(true).catch(() => {}),
+    notificationStore.loadNotifications(30).catch(() => {}),
   ])
 }
 
 onShow(() => {
   userStore.syncFromStorage()
-  ensureRealtime()
+  void ensureRealtime()
 })
 </script>
 

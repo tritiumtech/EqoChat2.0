@@ -3,6 +3,7 @@ package com.eqochat.business.contact.controller.friend;
 import com.eqochat.business.actor.api.model.SubjectRef;
 import com.eqochat.business.actor.api.model.SubjectType;
 import com.eqochat.framework.common.ApiResponse;
+import com.eqochat.framework.common.BizException;
 import com.eqochat.framework.common.UserContext;
 import com.eqochat.business.contact.api.dto.request.UpdateContactTagsRequest;
 import com.eqochat.business.contact.api.dto.response.ContactDetailResponse;
@@ -28,9 +29,12 @@ public class ContactController {
 
     @GetMapping
     public ApiResponse<List<ContactResponse>> listContacts(@RequestParam(required = false) String q,
-                                                          @RequestParam(required = false) String status) {
+                                                          @RequestParam(required = false) String status,
+                                                          @RequestParam(required = false) Long ownerSubjectId,
+                                                          @RequestParam(required = false) SubjectType ownerSubjectType) {
         Long principalHumanId = UserContext.requireCurrentUser();
-        List<ContactResponse> list = contactService.listContacts(principalHumanId, SubjectRef.human(principalHumanId));
+        SubjectRef owner = resolveOwner(ownerSubjectId, ownerSubjectType);
+        List<ContactResponse> list = contactService.listContacts(principalHumanId, owner);
         if (q != null && !q.isBlank()) {
             String keyword = q.trim().toLowerCase();
             list = list.stream()
@@ -52,24 +56,40 @@ public class ContactController {
 
     @GetMapping("/{targetType}/{targetId}")
     public ApiResponse<ContactDetailResponse> getContactDetail(@PathVariable SubjectType targetType,
-                                                               @PathVariable Long targetId) {
+                                                               @PathVariable Long targetId,
+                                                               @RequestParam(required = false) Long ownerSubjectId,
+                                                               @RequestParam(required = false) SubjectType ownerSubjectType) {
         Long principalHumanId = UserContext.requireCurrentUser();
+        SubjectRef owner = resolveOwner(ownerSubjectId, ownerSubjectType);
         return ApiResponse.success(contactService.getContactDetail(
                 principalHumanId,
-                SubjectRef.human(principalHumanId),
+                owner,
                 new SubjectRef(targetId, targetType)));
     }
 
     @PutMapping("/{targetType}/{targetId}/tags")
     public ApiResponse<List<String>> updateContactTags(@PathVariable SubjectType targetType,
                                                        @PathVariable Long targetId,
+                                                       @RequestParam(required = false) Long ownerSubjectId,
+                                                       @RequestParam(required = false) SubjectType ownerSubjectType,
                                                        @RequestBody(required = false) @Valid UpdateContactTagsRequest request) {
         Long principalHumanId = UserContext.requireCurrentUser();
+        SubjectRef owner = resolveOwner(ownerSubjectId, ownerSubjectType);
         List<String> tags = request != null ? request.getTags() : null;
         return ApiResponse.success(contactService.updateContactTags(
                 principalHumanId,
-                SubjectRef.human(principalHumanId),
+                owner,
                 new SubjectRef(targetId, targetType),
                 tags));
+    }
+
+    private static SubjectRef resolveOwner(Long ownerSubjectId, SubjectType ownerSubjectType) {
+        if (ownerSubjectId == null || ownerSubjectType == null) {
+            throw BizException.of("contact.subject.invalid");
+        }
+        if (ownerSubjectType == SubjectType.SYSTEM) {
+            throw BizException.of("contact.subject.invalid");
+        }
+        return new SubjectRef(ownerSubjectId, ownerSubjectType);
     }
 }

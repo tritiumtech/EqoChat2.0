@@ -1,6 +1,7 @@
 package com.eqochat.business.contact.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.eqochat.business.actor.api.model.SubjectType;
 import lombok.*;
 
 import java.time.LocalDateTime;
@@ -22,7 +23,10 @@ public class GroupMember {
     private Long groupId;
     
     @TableField("user_id")
-    private Long userId;
+    private Long memberId;
+
+    @TableField("member_type")
+    private SubjectType memberType;
     
     @TableField("role")
     private MemberRole role;

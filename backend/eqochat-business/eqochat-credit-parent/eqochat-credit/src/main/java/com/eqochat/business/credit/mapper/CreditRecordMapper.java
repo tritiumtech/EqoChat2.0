@@ -1,6 +1,7 @@
 package com.eqochat.business.credit.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.eqochat.business.actor.api.model.SubjectRef;
 import com.eqochat.business.credit.entity.CreditRecord;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -31,4 +32,13 @@ public interface CreditRecordMapper extends BaseMapper<CreditRecord> {
     Integer sumTodayChangeBySubject(
             @Param("subjectId") Long subjectId, 
             @Param("subjectType") String subjectType);
+
+    @Select("SELECT * FROM credit_record WHERE operator_id = #{operatorId} AND operator_type = #{operatorType} AND del_token = '0' ORDER BY create_time DESC")
+    List<CreditRecord> findByOperator(
+            @Param("operatorId") Long operatorId,
+            @Param("operatorType") String operatorType);
+
+    default List<CreditRecord> findByOperator(SubjectRef operator) {
+        return findByOperator(operator.id(), operator.type().name());
+    }
 }

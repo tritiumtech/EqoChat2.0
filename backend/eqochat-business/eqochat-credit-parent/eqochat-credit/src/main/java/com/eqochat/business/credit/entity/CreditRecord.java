@@ -41,6 +41,9 @@ public class CreditRecord {
     
     @TableField("operator_id")
     private Long operatorId;
+
+    @TableField("operator_type")
+    private SubjectType operatorType;
     
     // ========== 审计字段 ==========
     

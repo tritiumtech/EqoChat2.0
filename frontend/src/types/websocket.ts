@@ -14,6 +14,8 @@ export enum MessageType {
   PRESENCE_OFFLINE = 'PRESENCE_OFFLINE',
   PRESENCE_TYPING = 'PRESENCE_TYPING',
   CONNECT_ACK = 'CONNECT_ACK',
+  SUBJECT_SUBSCRIBE = 'SUBJECT_SUBSCRIBE',
+  SUBJECT_SUBSCRIBED = 'SUBJECT_SUBSCRIBED',
   PING = 'PING',
   PONG = 'PONG',
   ERROR = 'ERROR',
@@ -53,6 +55,8 @@ export interface BaseMessage {
   type: MessageType
   senderSubjectId: string
   senderSubjectType: SubjectType
+  recipientSubjectId?: string
+  recipientSubjectType?: SubjectType
   timestamp: string
   payload: unknown
 }
@@ -96,6 +100,11 @@ export interface ConnectAckPayload {
   principalHumanId: string
   connectionId: string
   serverTime: number
+}
+
+export interface SubjectSubscribePayload {
+  subjectId: string
+  subjectType: SubjectType
 }
 
 // 错误内容

@@ -2,18 +2,22 @@ package com.eqochat.business.notification.service.impl;
 
 import com.eqochat.business.actor.api.model.SubjectRef;
 import com.eqochat.business.actor.api.model.SubjectType;
-import com.eqochat.framework.common.BizException;
-import com.eqochat.business.notification.entity.Notification;
 import com.eqochat.business.notification.api.dto.response.NotificationResponse;
-import com.eqochat.business.notification.mapper.NotificationMapper;
 import com.eqochat.business.notification.api.service.NotificationService;
+import com.eqochat.business.notification.entity.Notification;
+import com.eqochat.business.notification.mapper.NotificationMapper;
+import com.eqochat.framework.common.BizException;
+import com.eqochat.framework.websocket.WebSocketMessage;
+import com.eqochat.framework.websocket.WebSocketSender;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -21,13 +25,16 @@ import java.util.List;
 public class NotificationServiceImpl implements NotificationService {
 
     private final NotificationMapper notificationMapper;
+    private final WebSocketSender webSocketSender;
 
     @Override
     public List<NotificationResponse> listNotifications(SubjectRef recipient, Integer limit) {
         SubjectRef ref = requireRecipient(recipient);
         int size = limit == null || limit <= 0 ? 50 : Math.min(limit, 100);
         List<Notification> list = notificationMapper.findByRecipient(ref.id(), ref.type().name());
-        if (list.isEmpty()) return List.of();
+        if (list.isEmpty()) {
+            return List.of();
+        }
         return list.stream()
                 .limit(size)
                 .map(this::toResponse)
@@ -39,7 +46,9 @@ public class NotificationServiceImpl implements NotificationService {
         SubjectRef ref = requireRecipient(recipient);
         int size = limit == null || limit <= 0 ? 50 : Math.min(limit, 100);
         List<Notification> list = notificationMapper.findUnreadByRecipient(ref.id(), ref.type().name());
-        if (list.isEmpty()) return List.of();
+        if (list.isEmpty()) {
+            return List.of();
+        }
         return list.stream()
                 .limit(size)
                 .map(this::toResponse)
@@ -55,7 +64,9 @@ public class NotificationServiceImpl implements NotificationService {
     @Override
     public void markRead(SubjectRef recipient, Long notificationId) {
         SubjectRef ref = requireRecipient(recipient);
-        if (notificationId == null) throw BizException.of("notification.id.required");
+        if (notificationId == null) {
+            throw BizException.of("notification.id.required");
+        }
         Notification n = notificationMapper.findByIdForRecipient(notificationId, ref.id(), ref.type().name());
         if (n == null) {
             throw BizException.of("notification.not_found");
@@ -85,7 +96,7 @@ public class NotificationServiceImpl implements NotificationService {
         SubjectRef recipientRef = requireRecipient(recipient);
         SubjectRef senderRef = requireSender(sender);
         if (!StringUtils.hasText(title)) {
-            log.warn("发送通知失败: title为空");
+            log.warn("send notification skipped: title is blank");
             return;
         }
 
@@ -95,11 +106,10 @@ public class NotificationServiceImpl implements NotificationService {
                     ? Notification.NotificationType.valueOf(type)
                     : Notification.NotificationType.SYSTEM;
         } catch (IllegalArgumentException e) {
-            log.warn("未知通知类型: {}, 使用SYSTEM类型", type);
+            log.warn("unknown notification type: {}, falling back to SYSTEM", type);
             notificationType = Notification.NotificationType.SYSTEM;
         }
 
-        // 截断内容避免过长
         String shortContent = content;
         if (shortContent != null && shortContent.length() > 500) {
             shortContent = shortContent.substring(0, 497) + "...";
@@ -120,10 +130,38 @@ public class NotificationServiceImpl implements NotificationService {
 
         try {
             notificationMapper.insert(notification);
-            log.debug("发送通知成功: recipient={}, type={}, title={}", recipientRef, type, title);
+            log.debug("send notification succeeded: recipient={}, type={}, title={}", recipientRef, type, title);
         } catch (Exception e) {
-            log.error("发送通知失败: recipient={}, type={}", recipientRef, type, e);
+            log.error("send notification failed: recipient={}, type={}", recipientRef, type, e);
+            return;
         }
+
+        try {
+            pushRealtime(notification);
+        } catch (Exception e) {
+            log.warn("push realtime notification failed: recipient={}, type={}", recipientRef, type, e);
+        }
+    }
+
+    private void pushRealtime(Notification notification) {
+        if (notification.getRecipientId() == null || notification.getRecipientType() == null) {
+            return;
+        }
+        String recipientId = String.valueOf(notification.getRecipientId());
+        String recipientType = notification.getRecipientType().name();
+        WebSocketMessage.BaseMessage message = WebSocketMessage.BaseMessage.builder()
+                .id(notification.getId() != null ? String.valueOf(notification.getId()) : UUID.randomUUID().toString())
+                .type(WebSocketMessage.MessageType.NOTIFICATION)
+                .senderSubjectId(notification.getSenderId() != null ? String.valueOf(notification.getSenderId()) : "0")
+                .senderSubjectType(notification.getSenderType() != null
+                        ? notification.getSenderType().name()
+                        : SubjectType.SYSTEM.name())
+                .recipientSubjectId(recipientId)
+                .recipientSubjectType(recipientType)
+                .timestamp(notification.getCreateTime() != null ? notification.getCreateTime() : LocalDateTime.now())
+                .payload(toResponse(notification))
+                .build();
+        webSocketSender.sendToSubject(recipientId, recipientType, message);
     }
 
     private NotificationResponse toResponse(Notification n) {
@@ -152,10 +190,7 @@ public class NotificationServiceImpl implements NotificationService {
     }
 
     private static SubjectRef requireSender(SubjectRef sender) {
-        if (sender == null || sender.type() == null) {
-            throw BizException.of("notification.sender.required");
-        }
-        if (sender.id() == null) {
+        if (sender == null || sender.type() == null || sender.id() == null) {
             throw BizException.of("notification.sender.required");
         }
         return sender;

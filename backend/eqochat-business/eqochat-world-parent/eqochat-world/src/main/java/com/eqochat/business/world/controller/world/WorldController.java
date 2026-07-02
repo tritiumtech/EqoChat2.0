@@ -9,8 +9,11 @@ import com.eqochat.business.world.api.dto.response.WorldPostReplyResponse;
 import com.eqochat.business.world.api.dto.response.WorldPostResponse;
 import com.eqochat.business.world.api.dto.response.WorldShareLinkResponse;
 import com.eqochat.business.world.api.dto.response.WorldTopicResponse;
+import com.eqochat.business.actor.api.model.SubjectRef;
+import com.eqochat.business.actor.api.model.SubjectType;
 import com.eqochat.business.world.WorldService;
 import com.eqochat.business.world.WorldUploadService;
+import com.eqochat.framework.common.BizException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -39,21 +42,17 @@ public class WorldController {
     @GetMapping("/posts")
     public ApiResponse<PageResponse<WorldPostResponse>> listPosts(@RequestParam(required = false) String sort,
                                                          @RequestParam(required = false) Long cursorId,
-                                                         @RequestParam(required = false) Integer limit) {
-        return ApiResponse.success(worldService.listFeed(UserContext.requireCurrentUser(), sort, cursorId, limit));
+                                                         @RequestParam(required = false) Integer limit,
+                                                         @RequestParam(required = false) Long viewerSubjectId,
+                                                         @RequestParam(required = false) String viewerSubjectType) {
+        Long principalHumanId = UserContext.requireCurrentUser();
+        SubjectRef viewer = requireExplicitSubject(viewerSubjectId, viewerSubjectType);
+        return ApiResponse.success(worldService.listFeed(principalHumanId, viewer, sort, cursorId, limit));
     }
 
     /**
      * 某好友最近发布的动态（需互为好友）。
      */
-    @GetMapping("/users/{authorId}/posts")
-    public ApiResponse<PageResponse<WorldPostResponse>> listPostsByAuthor(@PathVariable Long authorId,
-                                                                   @RequestParam(required = false) Long cursorId,
-                                                                   @RequestParam(required = false) Integer limit) {
-        return ApiResponse.success(worldService.listPostsByAuthor(
-                UserContext.requireCurrentUser(), authorId, "HUMAN", cursorId, limit));
-    }
-
     /**
      * Canonical subject author timeline. authorType must be HUMAN/AGENT/SYSTEM.
      */
@@ -61,9 +60,13 @@ public class WorldController {
     public ApiResponse<PageResponse<WorldPostResponse>> listPostsBySubjectAuthor(@PathVariable String authorType,
                                                                                  @PathVariable Long authorId,
                                                                                  @RequestParam(required = false) Long cursorId,
-                                                                                 @RequestParam(required = false) Integer limit) {
+                                                                                 @RequestParam(required = false) Integer limit,
+                                                                                 @RequestParam(required = false) Long viewerSubjectId,
+                                                                                 @RequestParam(required = false) String viewerSubjectType) {
+        Long principalHumanId = UserContext.requireCurrentUser();
+        SubjectRef viewer = requireExplicitSubject(viewerSubjectId, viewerSubjectType);
         return ApiResponse.success(worldService.listPostsByAuthor(
-                UserContext.requireCurrentUser(), authorId, authorType, cursorId, limit));
+                principalHumanId, viewer, new SubjectRef(authorId, parseSubjectType(authorType, "world.author.type.invalid")), cursorId, limit));
     }
 
     @PostMapping("/posts")
@@ -78,38 +81,62 @@ public class WorldController {
 
     @GetMapping("/topics")
     public ApiResponse<PageResponse<WorldTopicResponse>> listTopics(@RequestParam(required = false) Integer limit,
-                                                           @RequestParam(required = false) Long cursorId) {
-        return ApiResponse.success(worldService.listTopics(UserContext.requireCurrentUser(), limit, cursorId));
+                                                           @RequestParam(required = false) Long cursorId,
+                                                           @RequestParam(required = false) Long viewerSubjectId,
+                                                           @RequestParam(required = false) String viewerSubjectType) {
+        Long principalHumanId = UserContext.requireCurrentUser();
+        SubjectRef viewer = requireExplicitSubject(viewerSubjectId, viewerSubjectType);
+        return ApiResponse.success(worldService.listTopics(principalHumanId, viewer, limit, cursorId));
     }
 
     @GetMapping("/topics/{name}/posts")
     public ApiResponse<PageResponse<WorldPostResponse>> listTopicPosts(@PathVariable String name,
                                                                @RequestParam(required = false) Long cursorId,
-                                                               @RequestParam(required = false) Integer limit) {
-        return ApiResponse.success(worldService.listTopicPosts(UserContext.requireCurrentUser(), name, cursorId, limit));
+                                                               @RequestParam(required = false) Integer limit,
+                                                               @RequestParam(required = false) Long viewerSubjectId,
+                                                               @RequestParam(required = false) String viewerSubjectType) {
+        Long principalHumanId = UserContext.requireCurrentUser();
+        SubjectRef viewer = requireExplicitSubject(viewerSubjectId, viewerSubjectType);
+        return ApiResponse.success(worldService.listTopicPosts(principalHumanId, viewer, name, cursorId, limit));
     }
 
     @GetMapping("/mentions")
     public ApiResponse<PageResponse<WorldPostResponse>> listMentionedMe(@RequestParam(required = false) Long cursorId,
-                                                                @RequestParam(required = false) Integer limit) {
-        return ApiResponse.success(worldService.listMentionedMe(UserContext.requireCurrentUser(), cursorId, limit));
+                                                                @RequestParam(required = false) Integer limit,
+                                                                @RequestParam(required = false) Long viewerSubjectId,
+                                                                @RequestParam(required = false) String viewerSubjectType) {
+        Long principalHumanId = UserContext.requireCurrentUser();
+        SubjectRef viewer = requireExplicitSubject(viewerSubjectId, viewerSubjectType);
+        return ApiResponse.success(worldService.listMentionedMe(principalHumanId, viewer, cursorId, limit));
     }
 
     @GetMapping("/my-posts")
     public ApiResponse<PageResponse<WorldPostResponse>> listMyPosts(@RequestParam(required = false) Long cursorId,
-                                                            @RequestParam(required = false) Integer limit) {
-        return ApiResponse.success(worldService.listMyPosts(UserContext.requireCurrentUser(), cursorId, limit));
+                                                            @RequestParam(required = false) Integer limit,
+                                                            @RequestParam(required = false) Long viewerSubjectId,
+                                                            @RequestParam(required = false) String viewerSubjectType) {
+        Long principalHumanId = UserContext.requireCurrentUser();
+        SubjectRef author = requireExplicitSubject(viewerSubjectId, viewerSubjectType);
+        return ApiResponse.success(worldService.listMyPosts(principalHumanId, author, cursorId, limit));
     }
 
     @PostMapping("/posts/{postId}/upvote")
-    public ApiResponse<Map<String, Object>> toggleUpvote(@PathVariable Long postId) {
-        boolean upvoted = worldService.toggleUpvote(UserContext.requireCurrentUser(), postId);
+    public ApiResponse<Map<String, Object>> toggleUpvote(@PathVariable Long postId,
+                                                         @RequestParam(required = false) Long actorSubjectId,
+                                                         @RequestParam(required = false) String actorSubjectType) {
+        Long principalHumanId = UserContext.requireCurrentUser();
+        SubjectRef actor = requireExplicitSubject(actorSubjectId, actorSubjectType);
+        boolean upvoted = worldService.toggleUpvote(principalHumanId, actor, postId);
         return ApiResponse.success(Map.of("upvoted", upvoted));
     }
 
     @PostMapping("/topics/{name}/follow")
-    public ApiResponse<Map<String, Object>> toggleFollow(@PathVariable String name) {
-        boolean following = worldService.toggleTopicFollow(UserContext.requireCurrentUser(), name);
+    public ApiResponse<Map<String, Object>> toggleFollow(@PathVariable String name,
+                                                         @RequestParam(required = false) Long actorSubjectId,
+                                                         @RequestParam(required = false) String actorSubjectType) {
+        Long principalHumanId = UserContext.requireCurrentUser();
+        SubjectRef actor = requireExplicitSubject(actorSubjectId, actorSubjectType);
+        boolean following = worldService.toggleTopicFollow(principalHumanId, actor, name);
         return ApiResponse.success(Map.of("following", following));
     }
 
@@ -121,16 +148,24 @@ public class WorldController {
     }
 
     @PostMapping("/replies/{replyId}/upvote")
-    public ApiResponse<Map<String, Object>> toggleReplyUpvote(@PathVariable Long replyId) {
-        boolean upvoted = worldService.toggleReplyUpvote(UserContext.requireCurrentUser(), replyId);
+    public ApiResponse<Map<String, Object>> toggleReplyUpvote(@PathVariable Long replyId,
+                                                              @RequestParam(required = false) Long actorSubjectId,
+                                                              @RequestParam(required = false) String actorSubjectType) {
+        Long principalHumanId = UserContext.requireCurrentUser();
+        SubjectRef actor = requireExplicitSubject(actorSubjectId, actorSubjectType);
+        boolean upvoted = worldService.toggleReplyUpvote(principalHumanId, actor, replyId);
         return ApiResponse.success(Map.of("upvoted", upvoted));
     }
 
     @GetMapping("/posts/{postId}/replies")
     public ApiResponse<List<WorldPostReplyResponse>> listReplies(@PathVariable Long postId,
                                                                  @RequestParam(required = false) Long cursorId,
-                                                                 @RequestParam(required = false) Integer limit) {
-        return ApiResponse.success(worldService.listReplies(UserContext.requireCurrentUser(), postId, cursorId, limit));
+                                                                 @RequestParam(required = false) Integer limit,
+                                                                 @RequestParam(required = false) Long viewerSubjectId,
+                                                                 @RequestParam(required = false) String viewerSubjectType) {
+        Long principalHumanId = UserContext.requireCurrentUser();
+        SubjectRef viewer = requireExplicitSubject(viewerSubjectId, viewerSubjectType);
+        return ApiResponse.success(worldService.listReplies(principalHumanId, viewer, postId, cursorId, limit));
     }
 
     @PostMapping(value = "/uploads", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -153,5 +188,20 @@ public class WorldController {
                 .header(HttpHeaders.CACHE_CONTROL, "public, max-age=86400")
                 .contentType(mediaType)
                 .body(resource);
+    }
+
+    private static SubjectRef requireExplicitSubject(Long subjectId, String subjectType) {
+        if (subjectId == null || subjectType == null) {
+            throw BizException.of("world.actor.invalid");
+        }
+        return new SubjectRef(subjectId, parseSubjectType(subjectType, "world.actor.invalid"));
+    }
+
+    private static SubjectType parseSubjectType(String subjectType, String errorCode) {
+        try {
+            return SubjectType.from(subjectType);
+        } catch (RuntimeException ex) {
+            throw BizException.of(errorCode);
+        }
     }
 }

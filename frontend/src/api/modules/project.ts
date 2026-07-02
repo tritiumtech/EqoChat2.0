@@ -110,13 +110,27 @@ export interface CreateProjectPayload {
   ownerSubjectType: ProjectBusinessSubjectType
 }
 
+export interface ProjectViewerParams {
+  viewerSubjectId?: number
+  viewerSubjectType?: ProjectBusinessSubjectType
+}
+
+export interface ProjectActorParams {
+  actorSubjectId: number
+  actorSubjectType: ProjectBusinessSubjectType
+}
+
 export interface UpdateProjectBidPayload {
   newBid: number
+  actorSubjectId: number
+  actorSubjectType: ProjectBusinessSubjectType
 }
 
 export interface TransferProjectOwnershipPayload {
   newOwnerSubjectId: number
   newOwnerSubjectType: ProjectBusinessSubjectType
+  actorSubjectId: number
+  actorSubjectType: ProjectBusinessSubjectType
 }
 
 export interface CreateProjectTaskPayload {
@@ -126,17 +140,29 @@ export interface CreateProjectTaskPayload {
   priority: 'low' | 'medium' | 'high'
   assigneeSubjectId: number
   assigneeSubjectType: ProjectBusinessSubjectType
+  actorSubjectId: number
+  actorSubjectType: ProjectBusinessSubjectType
+}
+
+export interface CreateProjectPaymentPayload {
+  amount: number
+  recipientSubjectId: number
+  recipientSubjectType: ProjectBusinessSubjectType
+  status?: string
+  date?: string
+  actorSubjectId: number
+  actorSubjectType: ProjectBusinessSubjectType
 }
 
 export const projectApi = {
-  listMyProjects() {
-    return request.get<ProjectSummary[]>('/api/v1/projects')
+  listMyProjects(params?: ProjectViewerParams) {
+    return request.get<ProjectSummary[]>('/api/v1/projects', params)
   },
   createProject(data: CreateProjectPayload) {
     return request.post<ProjectDetail>('/api/v1/projects', data)
   },
-  getProjectDetail(projectId: number | string) {
-    return request.get<ProjectDetail>(`/api/v1/projects/${projectId}`)
+  getProjectDetail(projectId: number | string, params?: ProjectViewerParams) {
+    return request.get<ProjectDetail>(`/api/v1/projects/${projectId}`, params)
   },
   requestBidUpdate(projectId: number | string, data: UpdateProjectBidPayload) {
     return request.post<void>(`/api/v1/projects/${projectId}/bid-update`, data)
@@ -144,19 +170,22 @@ export const projectApi = {
   transferOwnership(projectId: number | string, data: TransferProjectOwnershipPayload) {
     return request.post<void>(`/api/v1/projects/${projectId}/transfer`, data)
   },
-  shareLink(projectId: number | string) {
-    return request.get<{ url: string }>(`/api/v1/projects/${projectId}/share-link`)
+  shareLink(projectId: number | string, params?: ProjectViewerParams) {
+    return request.get<{ url: string }>(`/api/v1/projects/${projectId}/share-link`, params)
   },
-  listSidebarTasks(projectId: number | string) {
-    return request.get<ProjectTask[]>(`/api/v1/projects/${projectId}/sidebar/tasks`)
+  listSidebarTasks(projectId: number | string, params?: ProjectViewerParams) {
+    return request.get<ProjectTask[]>(`/api/v1/projects/${projectId}/sidebar/tasks`, params)
   },
-  listSidebarPayments(projectId: number | string) {
-    return request.get<ProjectPayment[]>(`/api/v1/projects/${projectId}/sidebar/payments`)
+  listSidebarPayments(projectId: number | string, params?: ProjectViewerParams) {
+    return request.get<ProjectPayment[]>(`/api/v1/projects/${projectId}/sidebar/payments`, params)
   },
-  listSidebarFiles(projectId: number | string) {
-    return request.get<ProjectFile[]>(`/api/v1/projects/${projectId}/sidebar/files`)
+  listSidebarFiles(projectId: number | string, params?: ProjectViewerParams) {
+    return request.get<ProjectFile[]>(`/api/v1/projects/${projectId}/sidebar/files`, params)
   },
   createTask(projectId: number | string, data: CreateProjectTaskPayload) {
     return request.post<ProjectTask>(`/api/v1/projects/${projectId}/tasks`, data)
+  },
+  createPayment(projectId: number | string, data: CreateProjectPaymentPayload) {
+    return request.post<ProjectPayment>(`/api/v1/projects/${projectId}/payments`, data)
   },
 }

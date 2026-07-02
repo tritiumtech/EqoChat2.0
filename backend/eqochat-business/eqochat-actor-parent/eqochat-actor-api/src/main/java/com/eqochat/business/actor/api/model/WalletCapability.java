@@ -9,6 +9,13 @@ public record WalletCapability(
         String reason
 ) {
 
+    public SubjectRef settlementSubject() {
+        if (settlementHumanId != null) {
+            return SubjectRef.human(settlementHumanId);
+        }
+        return directRecipient;
+    }
+
     public static WalletCapability humanEnabled(Long humanId) {
         return new WalletCapability(
                 CapabilityState.ENABLED,

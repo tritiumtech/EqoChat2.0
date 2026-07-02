@@ -1,107 +1,124 @@
 <template>
-  <scroll-view class="page" scroll-y>
-    <view class="profile-head">
-      <view class="profile-row">
-        <view class="avatar" :style="avatarStyle">
-          <text class="avatar-text">{{ initials }}</text>
+  <view class="page">
+    <scroll-view class="profile-scroll" scroll-y>
+      <view class="profile-head">
+        <view class="profile-row">
+          <view class="avatar" :style="avatarStyle">
+            <text class="avatar-text">{{ initials }}</text>
+          </view>
+          <view class="profile-text">
+            <text class="profile-name">{{ userInfo?.nickname || t('common.not_logged_in') }}</text>
+            <text class="profile-email">{{ subLine }}</text>
+            <view class="level-pill">
+              <text>{{ tf('page.profile.level_short', { n: levelInfo.level, name: t(levelInfo.nameKey) }) }}</text>
+            </view>
+          </view>
         </view>
-        <view class="profile-text">
-          <text class="profile-name">{{ userInfo?.nickname || t('common.not_logged_in') }}</text>
-          <text class="profile-email">{{ subLine }}</text>
-          <view class="level-pill">
-            <text>{{ tf('page.profile.level_short', { n: levelInfo.level, name: t(levelInfo.nameKey) }) }}</text>
+        <view class="progress-card">
+          <view class="progress-top">
+            <text class="progress-label">{{ tf('page.profile.points', { n: userPoints }) }}</text>
+            <text class="progress-hint">{{ levelInfo.isMax ? t('page.profile.level_max') : tf('page.profile.points_to_level', { n: levelInfo.need, name: t(levelInfo.nextNameKey) }) }}</text>
+          </view>
+          <view class="progress-track">
+            <view class="progress-fill" :style="{ width: levelInfo.pct + '%' }" />
+          </view>
+          <view class="progress-feet">
+            <text>{{ tf('page.profile.level_abbr', { n: levelInfo.level }) }}</text>
+            <text>{{ tf('page.profile.level_abbr', { n: levelInfo.nextLevel }) }}</text>
+          </view>
+        </view>
+        <view class="active-subject-card" @click="openMyAgents">
+          <view class="active-subject-main">
+            <text class="active-subject-label">{{ t('page.profile.active_subject_label') }}</text>
+            <text class="active-subject-name">{{ activeSubjectName }}</text>
+          </view>
+          <text class="active-subject-type">{{ activeSubjectTypeLabel }}</text>
+        </view>
+      </view>
+
+      <view class="menu-block">
+        <button class="menu-row" @click="openSettings">
+          <view class="menu-icon">S</view>
+          <view class="menu-body">
+            <text class="menu-title">{{ t('page.profile.menu_settings') }}</text>
+            <text class="menu-desc">{{ t('page.profile.menu_settings_desc') }}</text>
+          </view>
+          <text class="chev">&gt;</text>
+        </button>
+        <button class="menu-row" @click="openNotifications">
+          <view class="menu-icon">N</view>
+          <view class="menu-body">
+            <text class="menu-title">{{ t('page.profile.menu_notifications') }}</text>
+            <text class="menu-desc">{{ unreadCount > 0 ? tf('page.profile.unread_count', { n: unreadCount }) : t('page.profile.menu_notifications_desc') }}</text>
+          </view>
+          <text class="chev">&gt;</text>
+        </button>
+        <button class="menu-row" @click="openMyAgents">
+          <view class="menu-icon">A</view>
+          <view class="menu-body">
+            <text class="menu-title">{{ t('page.profile.menu_my_agents') }}</text>
+            <text class="menu-desc">{{ t('page.profile.menu_my_agents_desc') }}</text>
+          </view>
+          <text class="chev">&gt;</text>
+        </button>
+        <button class="menu-row" @click="noop">
+          <view class="menu-icon">L</view>
+          <view class="menu-body">
+            <text class="menu-title">{{ t('page.profile.menu_payment_methods') }}</text>
+            <text class="menu-desc">{{ t('page.profile.menu_payment_methods_desc') }}</text>
+          </view>
+          <text class="chev">&gt;</text>
+        </button>
+        <button class="menu-row" @click="noop">
+          <view class="menu-icon">P</view>
+          <view class="menu-body">
+            <text class="menu-title">{{ t('page.profile.menu_privacy') }}</text>
+            <text class="menu-desc">{{ t('page.profile.menu_privacy_desc') }}</text>
+          </view>
+          <text class="chev">&gt;</text>
+        </button>
+        <button class="menu-row" @click="noop">
+          <view class="menu-icon">?</view>
+          <view class="menu-body">
+            <text class="menu-title">{{ t('page.profile.menu_help') }}</text>
+            <text class="menu-desc">{{ t('page.profile.menu_help_desc') }}</text>
+          </view>
+          <text class="chev">&gt;</text>
+        </button>
+      </view>
+
+      <view class="logout-wrap">
+        <Button
+          v-if="!showLogoutConfirm"
+          variant="danger"
+          size="large"
+          shape="round"
+          block
+          @click="showLogoutConfirm = true"
+        >
+          {{ t('common.logout') }}
+        </Button>
+
+        <view v-else class="logout-confirm-wrap">
+          <text class="logout-confirm-text">{{ t('page.profile.logout_confirm') }}</text>
+          <view class="logout-confirm-actions">
+            <Button variant="secondary" size="medium" shape="round" @click="showLogoutConfirm = false">
+              {{ t('common.cancel') }}
+            </Button>
+            <Button variant="danger" size="medium" shape="round" :loading="loggingOut" @click="handleLogout">
+              {{ t('common.confirm') }}
+            </Button>
           </view>
         </view>
       </view>
-      <view class="progress-card">
-        <view class="progress-top">
-          <text class="progress-label">★ {{ tf('page.profile.points', { n: userPoints }) }}</text>
-          <text class="progress-hint">{{ levelInfo.isMax ? t('page.profile.level_max') : tf('page.profile.points_to_level', { n: levelInfo.need, name: t(levelInfo.nextNameKey) }) }}</text>
-        </view>
-        <view class="progress-track">
-          <view class="progress-fill" :style="{ width: levelInfo.pct + '%' }" />
-        </view>
-        <view class="progress-feet">
-          <text>{{ tf('page.profile.level_abbr', { n: levelInfo.level }) }}</text>
-          <text>{{ tf('page.profile.level_abbr', { n: levelInfo.nextLevel }) }}</text>
-        </view>
-      </view>
-    </view>
-
-    <view class="menu-block">
-      <button class="menu-row" @click="openSettings">
-        <view class="menu-icon">⚙️</view>
-        <view class="menu-body">
-          <text class="menu-title">{{ t('page.profile.menu_settings') }}</text>
-          <text class="menu-desc">{{ t('page.profile.menu_settings_desc') }}</text>
-        </view>
-        <text class="chev">›</text>
-      </button>
-      <button class="menu-row" @click="openNotifications">
-        <view class="menu-icon">🔔</view>
-        <view class="menu-body">
-          <text class="menu-title">{{ t('page.profile.menu_notifications') }}</text>
-          <text class="menu-desc">{{ unreadCount > 0 ? tf('page.profile.unread_count', { n: unreadCount }) : t('page.profile.menu_notifications_desc') }}</text>
-        </view>
-        <text class="chev">›</text>
-      </button>
-      <button class="menu-row" @click="openMyAgents">
-        <view class="menu-icon">🤖</view>
-        <view class="menu-body">
-          <text class="menu-title">{{ t('page.profile.menu_my_agents') }}</text>
-          <text class="menu-desc">{{ t('page.profile.menu_my_agents_desc') }}</text>
-        </view>
-        <text class="chev">›</text>
-      </button>
-      <button class="menu-row" @click="noop">
-        <view class="menu-icon">🛡</view>
-        <view class="menu-body">
-          <text class="menu-title">{{ t('page.profile.menu_privacy') }}</text>
-          <text class="menu-desc">{{ t('page.profile.menu_privacy_desc') }}</text>
-        </view>
-        <text class="chev">›</text>
-      </button>
-      <button class="menu-row" @click="noop">
-        <view class="menu-icon">?</view>
-        <view class="menu-body">
-          <text class="menu-title">{{ t('page.profile.menu_help') }}</text>
-          <text class="menu-desc">{{ t('page.profile.menu_help_desc') }}</text>
-        </view>
-        <text class="chev">›</text>
-      </button>
-    </view>
-
-    <view class="logout-wrap">
-      <Button 
-        v-if="!showLogoutConfirm" 
-        variant="danger" 
-        size="large" 
-        shape="round" 
-        block 
-        @click="showLogoutConfirm = true"
-      >
-        {{ t('common.logout') }}
-      </Button>
-      
-      <view v-else class="logout-confirm-wrap">
-        <text class="logout-confirm-text">{{ t('page.profile.logout_confirm') }}</text>
-        <view class="logout-confirm-actions">
-          <Button variant="secondary" size="medium" shape="round" @click="showLogoutConfirm = false">
-            {{ t('common.cancel') }}
-          </Button>
-          <Button variant="danger" size="medium" shape="round" :loading="loggingOut" @click="handleLogout">
-            {{ t('common.confirm') }}
-          </Button>
-        </view>
-      </view>
-    </view>
-  </scroll-view>
+    </scroll-view>
+  </view>
 
   <view v-if="showNotifications" class="sheet-mask" @click="showNotifications = false">
     <view class="sheet" @click.stop>
       <view class="sheet-head">
         <text class="sheet-title">{{ t('page.profile.menu_notifications') }}</text>
-        <text class="sheet-close" @click="showNotifications = false">✕</text>
+        <text class="sheet-close" @click="showNotifications = false">x</text>
       </view>
       <view class="notice-filter-row">
         <view class="notice-filter-btn" :class="{ active: notificationFilter === 'all' }" @click="notificationFilter = 'all'">{{ t('page.contact.filter_all') }}</view>
@@ -121,7 +138,7 @@
     <view class="sheet" @click.stop>
       <view class="sheet-head">
         <text class="sheet-title">{{ t('page.profile.menu_settings') }}</text>
-        <text class="sheet-close" @click="showSettings = false">✕</text>
+        <text class="sheet-close" @click="showSettings = false">x</text>
       </view>
       <view class="sheet-settings">
         <text class="setting-label">{{ t('page.profile.language') }}</text>
@@ -145,14 +162,36 @@
     <view class="sheet" @click.stop>
       <view class="sheet-head">
         <text class="sheet-title">{{ t('page.profile.my_agents.title') }}</text>
-        <text class="sheet-close" @click="closeMyAgents">✕</text>
+        <text class="sheet-close" @click="closeMyAgents">x</text>
       </view>
 
       <scroll-view class="sheet-body" scroll-y>
         <view v-if="myAgentsLoading" class="sheet-empty">{{ t('page.profile.my_agents.loading') }}</view>
-        <view v-else-if="myAgents.length === 0" class="sheet-empty">{{ t('page.profile.my_agents.empty') }}</view>
+        <view v-else-if="myAgents.length === 0 && !activeSubjectStore.humanSubject" class="sheet-empty">{{ t('page.profile.my_agents.empty') }}</view>
 
-        <view v-for="a in myAgents" :key="a.id" class="agent-row">
+        <view
+          v-if="!myAgentsLoading && activeSubjectStore.humanSubject"
+          class="agent-row selectable"
+          :class="{ selected: isSelectedSubject(activeSubjectStore.humanSubject.subjectId, activeSubjectStore.humanSubject.subjectType) }"
+          @click="selectHumanSubject"
+        >
+          <view class="agent-avatar human-avatar">
+            <text class="agent-avatar-text">{{ (activeSubjectStore.humanSubject.displayName || '?').slice(0, 1) }}</text>
+          </view>
+          <view class="agent-main">
+            <text class="agent-name">{{ activeSubjectStore.humanSubject.displayName }}</text>
+            <text class="agent-desc">HUMAN</text>
+          </view>
+          <text v-if="isSelectedSubject(activeSubjectStore.humanSubject.subjectId, activeSubjectStore.humanSubject.subjectType)" class="selected-mark">✓</text>
+        </view>
+
+        <view
+          v-for="a in myAgents"
+          :key="a.id"
+          class="agent-row selectable"
+          :class="{ selected: isSelectedSubject(agentSubjectId(a), 'AGENT') }"
+          @click="selectAgentSubject(a)"
+        >
           <view class="agent-avatar">
             <text class="agent-avatar-text">{{ (a.name || '').slice(0, 1) || '?' }}</text>
           </view>
@@ -168,9 +207,24 @@
 
             <view class="agent-bottom">
               <text class="agent-credit">{{ t('page.profile.my_agents.credit_score_label') }}{{ a.creditScore ?? 0 }}</text>
-              <text v-if="a.walletEnabled" class="wallet-ok">{{ t('page.profile.my_agents.wallet_enabled') }}</text>
+              <text :class="a.walletEnabled ? 'wallet-ok' : 'wallet-off'">
+                {{ a.walletEnabled ? t('page.profile.my_agents.wallet_enabled') : t('page.profile.my_agents.wallet_disabled') }}
+              </text>
+            </view>
+            <view class="agent-action-row" @click.stop>
+              <Button
+                size="mini"
+                shape="round"
+                :variant="a.walletEnabled ? 'outline' : 'primary'"
+                :loading="walletUpdatingAgentId === a.id"
+                :disabled="walletUpdatingAgentId !== null && walletUpdatingAgentId !== a.id"
+                @click="toggleAgentWallet(a)"
+              >
+                {{ a.walletEnabled ? t('page.profile.my_agents.disable_wallet') : t('page.profile.my_agents.enable_wallet') }}
+              </Button>
             </view>
           </view>
+          <text v-if="isSelectedSubject(agentSubjectId(a), 'AGENT')" class="selected-mark">✓</text>
         </view>
       </scroll-view>
     </view>
@@ -187,7 +241,11 @@ import { userApi, type UserInfo } from '@/api/modules/user'
 import { useUserStore } from '@/store/modules/user'
 import { setLocale } from '../../locale/i18n'
 import { useNotificationStore } from '@/store/modules/notification'
-import { agentApi, type MyAgentItem } from '@/api/modules/agent'
+import { useFriendRequestStore } from '@/store/modules/friendRequest'
+import { useActiveSubjectStore } from '@/store/modules/activeSubject'
+import { agentApi, type AgentWalletPolicyResponse, type MyAgentItem } from '@/api/modules/agent'
+import type { ContactSubjectType } from '@/api/modules/contact'
+import { wsClient } from '@/utils/websocket'
 import Button from '@/components/Button.vue'
 import FgTabbar from '@/tabbar/index.vue'
 
@@ -195,15 +253,20 @@ const userStore = useUserStore()
 const userInfo = ref<UserInfo | null>(userStore.userInfo || null)
 const { t, tf, locale } = useI18nWithFormat()
 const notificationStore = useNotificationStore()
+const friendRequestStore = useFriendRequestStore()
+const activeSubjectStore = useActiveSubjectStore()
 const notificationFilter = ref<'all' | 'mention'>('all')
 const showNotifications = ref(false)
 const showSettings = ref(false)
 const showMyAgents = ref(false)
 const myAgents = ref<MyAgentItem[]>([])
 const myAgentsLoading = ref(false)
+const walletUpdatingAgentId = ref<number | null>(null)
 const showLogoutConfirm = ref(false)
 const loggingOut = ref(false)
 const unreadCount = computed(() => notificationStore.unreadCount)
+const activeSubjectName = computed(() => activeSubjectStore.currentLabel || t('page.profile.active_subject_unselected'))
+const activeSubjectTypeLabel = computed(() => activeSubjectStore.currentSubject?.subjectType || '--')
 const filteredNotifications = computed(() => {
   const list = notificationStore.notifications
   if (notificationFilter.value === 'all') return list
@@ -269,18 +332,25 @@ const avatarStyle = computed(() => ({
 const fetchUserInfo = async () => {
   if (!userStore.isLoggedIn) {
     uni.reLaunch({ url: '/pages/auth/login' })
-    return
+    return false
   }
   try {
     const data = await userApi.me()
     userInfo.value = data
     userStore.setUserInfo(data)
+    return true
   } catch (err: any) {
     uni.showToast({ title: err?.message || t('toast.load_failed'), icon: 'none' })
+    if (!userInfo.value) {
+      userStore.logout()
+      uni.reLaunch({ url: '/pages/auth/login' })
+    }
+    return false
   }
 }
 
 const loadNotifications = async () => {
+  await activeSubjectStore.ensureLoaded()
   await notificationStore.loadNotifications(30)
 }
 
@@ -299,12 +369,87 @@ const openSettings = () => {
 const loadMyAgents = async () => {
   try {
     myAgentsLoading.value = true
-    myAgents.value = await agentApi.getMyAgents()
+    await activeSubjectStore.ensureLoaded(true)
+    myAgents.value = [...activeSubjectStore.agents]
   } catch (err: any) {
     uni.showToast({ title: err?.message || t('toast.load_failed'), icon: 'none' })
     myAgents.value = []
   } finally {
     myAgentsLoading.value = false
+  }
+}
+
+const agentSubjectId = (agent: MyAgentItem) => Number(agent.agentSubjectId ?? agent.id)
+
+const applyWalletPolicy = (agentId: number, wallet: AgentWalletPolicyResponse) => {
+  const update = (agent: MyAgentItem) => agent.id === agentId
+    ? {
+        ...agent,
+        walletEnabled: wallet.walletEnabled,
+        walletPolicyState: wallet.walletPolicyState,
+        walletRouting: wallet.walletRouting,
+        walletPolicyReason: wallet.walletPolicyReason,
+        directRecipientSubjectId: wallet.directRecipientSubjectId,
+        directRecipientSubjectType: wallet.directRecipientSubjectType,
+        settlementSubjectId: wallet.settlementSubjectId,
+        settlementSubjectType: wallet.settlementSubjectType,
+        settlementHumanId: wallet.settlementHumanId,
+        financialAutonomy: wallet.financialAutonomy,
+      }
+    : agent
+  myAgents.value = myAgents.value.map(update)
+  activeSubjectStore.agents = activeSubjectStore.agents.map(update)
+}
+
+const isSelectedSubject = (subjectId: number, subjectType: ContactSubjectType) => {
+  const current = activeSubjectStore.currentSubject
+  return !!current && current.subjectId === Number(subjectId) && current.subjectType === subjectType
+}
+
+const refreshSubjectScopedData = async () => {
+  const subject = activeSubjectStore.currentSubject
+  if (subject) {
+    wsClient.setActiveSubject({ subjectId: subject.subjectId, subjectType: subject.subjectType })
+  }
+  notificationStore.setNotifications([])
+  friendRequestStore.clear()
+  await Promise.all([
+    loadNotifications(),
+    friendRequestStore.loadReceivedRequests(true),
+  ])
+}
+
+const selectHumanSubject = async () => {
+  if (!activeSubjectStore.setHuman()) return
+  await refreshSubjectScopedData()
+  closeMyAgents()
+}
+
+const selectAgentSubject = async (agent: MyAgentItem) => {
+  const subjectId = agentSubjectId(agent)
+  if (!Number.isFinite(subjectId) || subjectId <= 0) return
+  if (!activeSubjectStore.setActiveSubject({ subjectId, subjectType: 'AGENT' })) return
+  await refreshSubjectScopedData()
+  closeMyAgents()
+}
+
+const toggleAgentWallet = async (agent: MyAgentItem) => {
+  if (walletUpdatingAgentId.value !== null) return
+  const agentId = Number(agent.id)
+  if (!Number.isFinite(agentId) || agentId <= 0) return
+  walletUpdatingAgentId.value = agentId
+  try {
+    const wallet = agent.walletEnabled
+      ? await agentApi.disableWallet(agentId, 'owner disabled from profile')
+      : await agentApi.enableWallet(agentId)
+    applyWalletPolicy(agentId, wallet)
+    await activeSubjectStore.ensureLoaded(true)
+    myAgents.value = [...activeSubjectStore.agents]
+    uni.showToast({ title: t('page.profile.my_agents.wallet_updated'), icon: 'none' })
+  } catch (err: any) {
+    uni.showToast({ title: err?.message || t('toast.load_failed'), icon: 'none' })
+  } finally {
+    walletUpdatingAgentId.value = null
   }
 }
 
@@ -347,8 +492,15 @@ const noop = () => {
   uni.showToast({ title: t('toast.coming_soon'), icon: 'none' })
 }
 
-onShow(() => {
-  fetchUserInfo()
+onShow(async () => {
+  const hasUser = await fetchUserInfo()
+  if (!hasUser) return
+  await activeSubjectStore.ensureLoaded(true)
+  if (!activeSubjectStore.currentSubject) {
+    uni.reLaunch({ url: '/pages/auth/login' })
+    return
+  }
+  myAgents.value = [...activeSubjectStore.agents]
   loadNotifications()
   uni.setNavigationBarTitle({ title: t('page.profile.title') })
 })
@@ -360,54 +512,67 @@ onShow(() => {
 
 .page {
   height: 100vh;
-  background: linear-gradient(165deg, var(--c-bg) 0%, var(--c-bg-2) 100%);
+  display: flex;
+  flex-direction: column;
+  background: var(--c-page);
   box-sizing: border-box;
+  overflow: hidden;
+}
+
+.profile-scroll {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  box-sizing: border-box;
+  padding-top: 0;
   padding-bottom: var(--page-pad-bottom-tabbar);
 }
 
 .profile-head {
-  margin: 0;
-  padding: calc(var(--status-bar-height) + 16rpx) 24rpx 24rpx;
-  background: rgba(255, 255, 255, 0.75);
-  backdrop-filter: blur(14rpx);
+  width: 100%;
+  max-width: var(--page-content-max);
+  margin: 0 auto;
+  padding: calc(var(--status-bar-height) + 28rpx) 24rpx 24rpx;
+  background: #fff;
+  box-sizing: border-box;
   border-radius: 0;
-  border-bottom: 1rpx solid rgba(0, 0, 0, 0.06);
-  box-shadow: 0 8rpx 24rpx rgba(0, 0, 0, 0.04);
+  border-bottom: 1rpx solid var(--c-border);
+  box-shadow: none;
 }
 
 .profile-row {
   display: flex;
   gap: 28rpx;
-  align-items: center;
+  align-items: flex-start;
   margin-bottom: 28rpx;
 }
 
 .avatar {
-  width: 112rpx;
-  height: 112rpx;
-  border-radius: var(--radius-lg);
+  width: var(--avatar-size);
+  height: var(--avatar-size);
+  border-radius: var(--radius-avatar);
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: var(--c-shadow-soft);
+  box-shadow: none;
   flex-shrink: 0;
 }
 
 .avatar-text {
-  font-size: 48rpx;
-  font-weight: 700;
+  font-size: 34rpx;
+  font-weight: 800;
   color: #fff;
 }
 
 .profile-text {
   flex: 1;
   min-width: 0;
+  min-height: var(--avatar-size);
   display: flex;
   flex-direction: column;
   justify-content: center;
   align-items: flex-start;
-  height: 112rpx;
-  gap: 8rpx;
+  gap: 10rpx;
   box-sizing: border-box;
 }
 
@@ -416,7 +581,7 @@ onShow(() => {
   font-weight: 700;
   color: var(--c-ink);
   display: block;
-  line-height: 36rpx;
+  line-height: 1.2;
   width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -427,7 +592,7 @@ onShow(() => {
   font-size: 24rpx;
   color: var(--c-muted);
   display: block;
-  line-height: 36rpx;
+  line-height: 1.25;
   width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -446,14 +611,58 @@ onShow(() => {
   font-size: 22rpx;
   font-weight: 600;
   color: var(--c-primary);
-  line-height: 22rpx;
+  line-height: 1.2;
 }
 
 .progress-card {
   padding: 24rpx;
-  border-radius: var(--radius-xl);
-  background: rgba(255, 255, 255, 0.6);
-  border: 1rpx solid rgba(0, 0, 0, 0.08);
+  border-radius: var(--radius-card);
+  background: var(--c-surface-muted);
+  border: 1rpx solid var(--c-border);
+}
+
+.active-subject-card {
+  margin-top: 18rpx;
+  padding: 18rpx 20rpx;
+  border-radius: var(--radius-card);
+  background: #fff;
+  border: 1rpx solid var(--c-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+}
+
+.active-subject-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6rpx;
+}
+
+.active-subject-label {
+  font-size: 22rpx;
+  color: var(--c-muted);
+}
+
+.active-subject-name {
+  font-size: 28rpx;
+  font-weight: 800;
+  color: var(--c-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.active-subject-type {
+  flex-shrink: 0;
+  padding: 6rpx 12rpx;
+  border-radius: var(--radius-md);
+  background: rgba(3, 2, 19, 0.08);
+  color: var(--c-primary);
+  font-size: 20rpx;
+  font-weight: 800;
 }
 
 .progress-top {
@@ -496,11 +705,15 @@ onShow(() => {
 }
 
 .menu-block {
-  margin: 20rpx 24rpx;
+  width: 100%;
+  max-width: var(--page-content-max);
+  margin: 20rpx auto;
+  padding: 0 24rpx;
   display: flex;
   flex-direction: column;
   gap: 12rpx;
   align-items: stretch;
+  box-sizing: border-box;
 }
 
 .menu-row {
@@ -508,11 +721,10 @@ onShow(() => {
   align-items: center;
   gap: 20rpx;
   padding: 24rpx 24rpx;
-  background: rgba(255, 255, 255, 0.6);
-  backdrop-filter: blur(12rpx);
-  border: 1rpx solid rgba(0, 0, 0, 0.08);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--c-shadow-soft);
+  background: #fff;
+  border: 1rpx solid var(--c-border);
+  border-radius: var(--radius-card);
+  box-shadow: none;
   text-align: left;
   transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease;
   width: 100%;
@@ -523,11 +735,14 @@ onShow(() => {
   width: 64rpx;
   height: 64rpx;
   border-radius: var(--radius-md);
-  background: rgba(255, 255, 255, 0.9);
+  background: var(--c-surface-muted);
+  border: 1rpx solid var(--c-border);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 30rpx;
+  font-weight: 800;
+  color: var(--c-ink);
   flex-shrink: 0;
 }
 
@@ -573,9 +788,13 @@ onShow(() => {
 
 
 .logout-wrap {
-  margin: 20rpx 24rpx;
+  width: 100%;
+  max-width: var(--page-content-max);
+  margin: 20rpx auto;
+  padding: 0 24rpx;
   display: flex;
   justify-content: center;
+  box-sizing: border-box;
 }
 
 .logout-confirm-wrap {
@@ -722,6 +941,15 @@ onShow(() => {
   margin-bottom: 12rpx;
 }
 
+.agent-row.selectable {
+  align-items: center;
+}
+
+.agent-row.selected {
+  border-color: rgba(3, 2, 19, 0.24);
+  background: rgba(3, 2, 19, 0.04);
+}
+
 .agent-avatar {
   width: 72rpx;
   height: 72rpx;
@@ -734,6 +962,10 @@ onShow(() => {
   flex-shrink: 0;
 }
 
+.human-avatar {
+  background: linear-gradient(135deg, #0EA5E9f0, #0EA5E9d8);
+}
+
 .agent-avatar-text {
   color: #fff;
   font-size: 28rpx;
@@ -743,6 +975,20 @@ onShow(() => {
 .agent-main {
   flex: 1;
   min-width: 0;
+}
+
+.selected-mark {
+  flex-shrink: 0;
+  width: 44rpx;
+  height: 44rpx;
+  border-radius: 999rpx;
+  background: var(--c-primary);
+  color: #fff;
+  font-size: 26rpx;
+  font-weight: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .agent-name {
@@ -798,15 +1044,31 @@ onShow(() => {
   color: var(--c-muted);
 }
 
-.wallet-ok {
+.wallet-ok,
+.wallet-off {
   font-size: 20rpx;
   font-weight: 800;
-  color: #059669;
-  background: rgba(16, 185, 129, 0.12);
-  border: 1rpx solid rgba(16, 185, 129, 0.22);
   border-radius: var(--radius-pill);
   padding: 6rpx 12rpx;
   white-space: nowrap;
+}
+
+.wallet-ok {
+  color: #059669;
+  background: rgba(16, 185, 129, 0.12);
+  border: 1rpx solid rgba(16, 185, 129, 0.22);
+}
+
+.wallet-off {
+  color: #92400e;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1rpx solid rgba(245, 158, 11, 0.22);
+}
+
+.agent-action-row {
+  margin-top: 12rpx;
+  display: flex;
+  justify-content: flex-end;
 }
 
 .notice {

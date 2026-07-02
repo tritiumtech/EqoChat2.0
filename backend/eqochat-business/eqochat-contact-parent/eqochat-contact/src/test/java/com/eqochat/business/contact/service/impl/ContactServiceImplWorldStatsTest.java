@@ -8,10 +8,9 @@ import com.eqochat.business.actor.api.model.LiabilityChain;
 import com.eqochat.business.actor.api.service.LiabilityPolicyApi;
 import com.eqochat.business.actor.api.service.SubjectDirectoryApi;
 import com.eqochat.business.contact.api.dto.response.ContactDetailResponse;
-import com.eqochat.business.contact.entity.UserContactTag;
-import com.eqochat.business.contact.mapper.UserContactTagMapper;
-import com.eqochat.business.user.entity.UserFriend;
-import com.eqochat.business.user.mapper.UserFriendMapper;
+import com.eqochat.business.contact.entity.ContactRelationship;
+import com.eqochat.business.contact.mapper.ContactRelationshipMapper;
+import com.eqochat.business.contact.mapper.ContactTagMapper;
 import com.eqochat.business.world.api.service.WorldPostStatsApi;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -22,7 +21,6 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -30,9 +28,9 @@ import static org.mockito.Mockito.when;
 class ContactServiceImplWorldStatsTest {
 
     @Mock
-    UserFriendMapper userFriendMapper;
+    ContactRelationshipMapper contactRelationshipMapper;
     @Mock
-    UserContactTagMapper userContactTagMapper;
+    ContactTagMapper contactTagMapper;
     @Mock
     WorldPostStatsApi worldPostStatsApi;
     @Mock
@@ -43,20 +41,20 @@ class ContactServiceImplWorldStatsTest {
     @Test
     void agentContactDetailUsesSubjectAwareWorldPostStats() {
         ContactServiceImpl service = new ContactServiceImpl(
-                userFriendMapper,
-                userContactTagMapper,
+                contactRelationshipMapper,
+                contactTagMapper,
                 worldPostStatsApi,
                 subjectDirectoryApi,
                 liabilityPolicyApi
         );
         when(liabilityPolicyApi.resolveLiability(SubjectRef.human(2L))).thenReturn(LiabilityChain.selfResponsible(2L));
-        when(userFriendMapper.findByOwnerAndTarget(2L, UserFriend.FriendType.HUMAN, 101L, UserFriend.FriendType.AGENT))
-                .thenReturn(Optional.of(UserFriend.builder()
+        when(contactRelationshipMapper.findByOwnerAndTarget(2L, ContactRelationship.RelationshipSubjectType.HUMAN, 101L, ContactRelationship.RelationshipSubjectType.AGENT))
+                .thenReturn(Optional.of(ContactRelationship.builder()
                         .userId(2L)
-                        .userType(UserFriend.FriendType.HUMAN)
+                        .userType(ContactRelationship.RelationshipSubjectType.HUMAN)
                         .friendId(101L)
-                        .friendType(UserFriend.FriendType.AGENT)
-                        .status(UserFriend.FriendStatus.ACTIVE)
+                        .friendType(ContactRelationship.RelationshipSubjectType.AGENT)
+                        .status(ContactRelationship.RelationshipStatus.ACTIVE)
                         .delToken(0L)
                         .build()));
         when(subjectDirectoryApi.getSubject(SubjectRef.agent(101L)))
@@ -67,7 +65,7 @@ class ContactServiceImplWorldStatsTest {
                         .status(SubjectStatus.ACTIVE)
                         .capabilityTags(List.of("research"))
                         .build());
-        when(userContactTagMapper.selectActiveTagNames(2L, UserFriend.FriendType.HUMAN, 101L, UserFriend.FriendType.AGENT))
+        when(contactTagMapper.selectActiveTagNames(2L, ContactRelationship.RelationshipSubjectType.HUMAN, 101L, ContactRelationship.RelationshipSubjectType.AGENT))
                 .thenReturn(List.of("ai"));
         when(worldPostStatsApi.countByAuthor(101L, "AGENT")).thenReturn(7L);
 
@@ -76,6 +74,5 @@ class ContactServiceImplWorldStatsTest {
         assertThat(detail.getWorldPostCount()).isEqualTo(7);
         assertThat(detail.getTargetSubjectType()).isEqualTo(SubjectType.AGENT);
         verify(worldPostStatsApi).countByAuthor(101L, "AGENT");
-        verify(worldPostStatsApi, never()).countByAuthorId(101L);
     }
 }

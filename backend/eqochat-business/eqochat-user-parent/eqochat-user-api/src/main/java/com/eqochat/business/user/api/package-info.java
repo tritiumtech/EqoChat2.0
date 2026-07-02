@@ -1,12 +1,8 @@
 /**
- * EqoChat 用户模块 API
- * 
- * 提供用户相关的对外接口和 DTO，包括：
- * - 认证服务（AuthService）
- * - 用户服务（UserService）
- * - 用户资料服务（UserProfileService）
- * - 请求/响应 DTO
- * 
- * 本模块可被其他业务模块依赖。
+ * User module API.
+ *
+ * <p>The User module owns authentication and human source profile APIs. Public
+ * subject discovery/profile surfaces live in the Actor module under
+ * {@code /api/v1/subjects}.
  */
 package com.eqochat.business.user.api;

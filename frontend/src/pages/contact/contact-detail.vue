@@ -61,7 +61,7 @@
             </view>
             <button class="credit-details-btn" @click="showCreditDetails = !showCreditDetails">
               <text>{{ showCreditDetails ? t('action.hide') : t('action.details') }}</text>
-              <text class="chev">{{ showCreditDetails ? '▲' : '▼' }}</text>
+              <text class="chev">{{ showCreditDetails ? '^' : 'v' }}</text>
             </button>
           </view>
 
@@ -178,12 +178,14 @@ import { conversationApi } from '@/api/modules/conversation'
 import { creditApi, type CreditProfile, type CreditSubjectType } from '@/api/modules/credits'
 import { worldApi, type WorldPost } from '@/api/modules/world'
 import { useUserStore } from '@/store/modules/user'
+import { useActiveSubjectStore } from '@/store/modules/activeSubject'
 
 const contact = ref<ContactDetail | null>(null)
 const loading = ref(false)
 const targetSubjectId = ref(0)
 const targetSubjectType = ref<ContactSubjectType>('HUMAN')
 const userStore = useUserStore()
+const activeSubjectStore = useActiveSubjectStore()
 const { t } = useI18n({ useScope: 'global' })
 const newTag = ref('')
 const topicTags = ref<string[]>([])
@@ -236,7 +238,12 @@ const loadRecentPosts = async () => {
   if (!contact.value) return
   activityLoading.value = true
   try {
-    recentPosts.value = await worldApi.listPostsByAuthor(contact.value.targetSubjectId, contact.value.targetSubjectType, { limit: 10 })
+    const viewer = activeSubjectStore.worldSubjectParams()
+    recentPosts.value = await worldApi.listPostsByAuthor(contact.value.targetSubjectId, contact.value.targetSubjectType, {
+      limit: 10,
+      viewerSubjectId: viewer?.subjectId,
+      viewerSubjectType: viewer?.subjectType,
+    })
   } catch {
     recentPosts.value = []
   } finally {
@@ -253,7 +260,8 @@ const loadContact = async () => {
   }
   loading.value = true
   try {
-    contact.value = await contactApi.getContactDetail(targetSubjectType.value, id)
+    await activeSubjectStore.ensureLoaded()
+    contact.value = await contactApi.getContactDetail(targetSubjectType.value, id, activeSubjectStore.contactOwnerParams())
     avatarStyle.value = buildAvatarStyle(contact.value.nickname || String(contact.value.targetSubjectId))
     topicTags.value = contact.value.tags || []
     await Promise.all([loadCreditProfile(), loadRecentPosts()])
@@ -269,7 +277,7 @@ const persistTags = async (nextTags: string[]) => {
   const id = contact.value?.targetSubjectId ?? targetSubjectId.value
   const type = contact.value?.targetSubjectType ?? targetSubjectType.value
   if (!id) return
-  const saved = await contactApi.updateContactTags(type, id, nextTags)
+  const saved = await contactApi.updateContactTags(type, id, nextTags, activeSubjectStore.contactOwnerParams())
   topicTags.value = saved || []
   if (contact.value) contact.value = { ...contact.value, tags: topicTags.value }
 }
@@ -306,9 +314,11 @@ const startChat = async () => {
   const type = contact.value?.targetSubjectType ?? targetSubjectType.value
   if (!id) return
   try {
+    await activeSubjectStore.ensureLoaded()
     const data = await conversationApi.createConversation({
       targetSubjectId: id,
       targetSubjectType: type,
+      ...activeSubjectStore.conversationCreatorParams(),
     })
     const title = encodeURIComponent(contact.value?.nickname || data.title || t('common.conversation'))
     uni.redirectTo({
@@ -329,11 +339,12 @@ function normalizeSubjectType(value: unknown): ContactSubjectType {
   return String(value || 'HUMAN').toUpperCase() === 'AGENT' ? 'AGENT' : 'HUMAN'
 }
 
-onShow(() => {
+onShow(async () => {
   if (!userStore.isLoggedIn) {
     uni.reLaunch({ url: '/pages/auth/login' })
     return
   }
+  await activeSubjectStore.ensureLoaded()
   uni.setNavigationBarTitle({ title: t('page.contact.detail') })
 })
 </script>

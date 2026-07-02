@@ -77,9 +77,9 @@ const authorText = computed(() => {
 })
 
 const avatarGlyph = computed(() => {
-  if (props.isSelf) return '👤'
-  if (isAgent.value) return '🤖'
-  return '👤'
+  if (isAgent.value && !props.isSelf) return 'AI'
+  const source = String(props.avatarText || props.author || '').trim()
+  return (source.slice(0, 1) || (props.isSelf ? 'M' : 'H')).toUpperCase()
 })
 
 const avatarClass = computed(() => {
@@ -281,4 +281,3 @@ const isAttachmentOnly = computed(() => {
   white-space: nowrap;
 }
 </style>
-

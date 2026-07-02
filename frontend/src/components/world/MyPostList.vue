@@ -10,7 +10,7 @@
     <template #top>
       <PageHeader
         :title="t('page.world.title')"
-        action-icon="⌕"
+        action-icon="S"
         action-variant="bordered"
         action-size="md"
         :has-tabs="true"
@@ -60,7 +60,7 @@
       </template>
     </view>
     <template #bottom>
-      <view style="height: 20rpx;"></view>
+      <view class="tabbar-spacer"></view>
     </template>
   </z-paging>
 </template>
@@ -68,7 +68,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useI18nWithFormat } from '@/composables/useI18nWithFormat'
-import { worldApi, type WorldPost } from '@/api/modules/world'
+import { worldApi, type WorldPost, type WorldSubjectParams } from '@/api/modules/world'
 import { getApiErrorMessage } from '@/utils/request'
 import PageHeader from '@/components/PageHeader.vue'
 import TimelineHeader from './TimelineHeader.vue'
@@ -81,6 +81,7 @@ const props = defineProps<{
   tabOptions: { name: string; value: string }[]
   activeTabIndex: number
   normalizePost: (post: WorldPost) => WorldPost
+  viewer?: WorldSubjectParams
 }>()
 
 const emit = defineEmits<{
@@ -139,7 +140,12 @@ const queryMyPosts = async (pageNo: number, pageSize: number) => {
   try {
     const isRefresh = pageNo === 1
     const reqCursorId = isRefresh ? undefined : cursorId.value
-    const res = await worldApi.listMyPosts({ cursorId: reqCursorId, limit: pageSize })
+    const res = await worldApi.listMyPosts({
+      cursorId: reqCursorId,
+      limit: pageSize,
+      viewerSubjectId: props.viewer?.subjectId,
+      viewerSubjectType: props.viewer?.subjectType,
+    })
     const list = res.items.map(props.normalizePost)
 
     if (isRefresh) {
@@ -206,6 +212,14 @@ defineExpose({
 }
 
 .my-post-list-content {
+  width: 100%;
+  max-width: var(--page-content-max);
+  margin: 0 auto;
   padding: 20rpx 24rpx 0;
+  box-sizing: border-box;
+}
+
+.tabbar-spacer {
+  height: var(--page-pad-bottom-tabbar);
 }
 </style>

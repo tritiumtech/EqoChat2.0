@@ -14,11 +14,17 @@ import {
   type PresencePayload,
   type ConnectAckPayload,
   type ErrorPayload,
+  type SubjectSubscribePayload,
   type WebSocketCallbacks,
   type WebSocketConfig,
   type ConnectionInfo
 } from '@/types/websocket'
 import { WS_BASE_URL } from '@/utils/runtime-config'
+
+export interface WebSocketSubjectRef {
+  subjectId: string | number
+  subjectType: SubjectType | keyof typeof SubjectType | string
+}
 
 // 默认配置
 const DEFAULT_CONFIG: WebSocketConfig = {
@@ -34,6 +40,7 @@ class WebSocketClient {
   private token: string = ''
   private principalHumanId: string = ''
   private connectionId: string = ''
+  private activeSubject: WebSocketSubjectRef | null = null
   
   // 状态
   private isConnected: boolean = false
@@ -51,6 +58,31 @@ class WebSocketClient {
   
   // 配置
   private config: WebSocketConfig = DEFAULT_CONFIG
+
+  private getMessageSubject(subject?: WebSocketSubjectRef): { subjectId: string; subjectType: SubjectType } {
+    const source = subject ?? this.activeSubject
+    const rawType = String(source?.subjectType || '').toUpperCase()
+    const subjectType = rawType === SubjectType.AGENT
+      ? SubjectType.AGENT
+      : rawType === SubjectType.HUMAN
+        ? SubjectType.HUMAN
+        : null
+    const rawId = source?.subjectId
+    if (!subjectType || rawId == null || String(rawId).trim() === '') {
+      throw new Error('websocket subject is required')
+    }
+    return {
+      subjectId: String(rawId),
+      subjectType,
+    }
+  }
+
+  private getActiveSubscriptionSubject(): { subjectId: string; subjectType: SubjectType } | null {
+    if (!this.activeSubject) {
+      return null
+    }
+    return this.getMessageSubject(this.activeSubject)
+  }
 
   /**
    * 初始化WebSocket
@@ -156,6 +188,7 @@ class WebSocketClient {
       }
       
       this.startHeartbeat()
+      this.subscribeActiveSubject()
       
       if (this.callbacks.onOpen) {
         this.callbacks.onOpen()
@@ -196,17 +229,24 @@ class WebSocketClient {
    * @param type 消息类型
    * @param payload 消息内容
    */
-  send(type: MessageType, payload: unknown): boolean {
+  send(type: MessageType, payload: unknown, subject?: WebSocketSubjectRef): boolean {
     if (!this.isConnected) {
       console.error('WebSocket未连接，无法发送消息')
       return false
     }
 
+    let sender: { subjectId: string; subjectType: SubjectType }
+    try {
+      sender = this.getMessageSubject(subject)
+    } catch (e) {
+      console.error('WebSocket subject unavailable:', e)
+      return false
+    }
     const message: BaseMessage = {
       id: this.generateMessageId(),
       type,
-      senderSubjectId: this.principalHumanId,
-      senderSubjectType: SubjectType.HUMAN,
+      senderSubjectId: sender.subjectId,
+      senderSubjectType: sender.subjectType,
       timestamp: new Date().toISOString(),
       payload
     }
@@ -229,6 +269,46 @@ class WebSocketClient {
     }
   }
 
+  setActiveSubject(subject?: WebSocketSubjectRef | null): void {
+    this.activeSubject = subject || null
+    if (this.isConnected) {
+      this.subscribeActiveSubject()
+    }
+  }
+
+  subscribeActiveSubject(subject?: WebSocketSubjectRef): boolean {
+    if (subject) {
+      this.activeSubject = subject
+    }
+    if (!this.isConnected) {
+      return false
+    }
+    const target = this.getActiveSubscriptionSubject()
+    if (!target) {
+      console.warn('active subject unavailable; skip WebSocket subject subscription')
+      return false
+    }
+    const payload: SubjectSubscribePayload = {
+      subjectId: target.subjectId,
+      subjectType: target.subjectType,
+    }
+    const message: BaseMessage = {
+      id: this.generateMessageId(),
+      type: MessageType.SUBJECT_SUBSCRIBE,
+      senderSubjectId: '0',
+      senderSubjectType: SubjectType.SYSTEM,
+      timestamp: new Date().toISOString(),
+      payload,
+    }
+    try {
+      this.ws?.send({ data: JSON.stringify(message) })
+      return true
+    } catch (e) {
+      console.error('active subject subscription failed:', e)
+      return false
+    }
+  }
+
   /**
    * 发送聊天消息
    * @param conversationId 会话ID
@@ -240,7 +320,8 @@ class WebSocketClient {
     conversationId: string,
     content: string,
     messageType: ContentType = ContentType.TEXT,
-    options?: Partial<ChatMessagePayload>
+    options?: Partial<ChatMessagePayload>,
+    subject?: WebSocketSubjectRef
   ): boolean {
     const payload: ChatMessagePayload = {
       conversationId,
@@ -250,7 +331,7 @@ class WebSocketClient {
       replyToMessageId: options?.replyToMessageId,
       intentData: options?.intentData
     }
-    return this.send(MessageType.CHAT_MESSAGE, payload)
+    return this.send(MessageType.CHAT_MESSAGE, payload, subject)
   }
 
   /**
@@ -258,14 +339,21 @@ class WebSocketClient {
    * @param conversationId 会话ID
    * @param isTyping 是否正在输入
    */
-  sendTyping(conversationId: string, isTyping: boolean = true): boolean {
+  sendTyping(conversationId: string, isTyping: boolean = true, subject?: WebSocketSubjectRef): boolean {
+    let sender: { subjectId: string; subjectType: SubjectType }
+    try {
+      sender = this.getMessageSubject(subject)
+    } catch (e) {
+      console.error('WebSocket subject unavailable:', e)
+      return false
+    }
     const payload: TypingPayload = {
       conversationId,
-      subjectId: this.principalHumanId,
-      subjectType: SubjectType.HUMAN,
+      subjectId: sender.subjectId,
+      subjectType: sender.subjectType,
       isTyping
     }
-    return this.send(MessageType.CHAT_TYPING, payload)
+    return this.send(MessageType.CHAT_TYPING, payload, sender)
   }
 
   /**
@@ -273,21 +361,45 @@ class WebSocketClient {
    * @param conversationId 会话ID
    * @param messageId 消息ID
    */
-  sendReadReceipt(conversationId: string, messageId: string): boolean {
+  sendReadReceipt(conversationId: string, messageId: string, subject?: WebSocketSubjectRef): boolean {
+    let reader: { subjectId: string; subjectType: SubjectType }
+    try {
+      reader = this.getMessageSubject(subject)
+    } catch (e) {
+      console.error('WebSocket subject unavailable:', e)
+      return false
+    }
     const payload: ReadReceiptPayload = {
       conversationId,
       messageId,
-      readerSubjectId: this.principalHumanId,
-      readerSubjectType: SubjectType.HUMAN
+      readerSubjectId: reader.subjectId,
+      readerSubjectType: reader.subjectType
     }
-    return this.send(MessageType.CHAT_READ, payload)
+    return this.send(MessageType.CHAT_READ, payload, reader)
   }
 
   /**
    * 发送心跳
    */
   sendHeartbeat(): boolean {
-    return this.send(MessageType.PING, {})
+    if (!this.isConnected) {
+      return false
+    }
+    const message: BaseMessage = {
+      id: this.generateMessageId(),
+      type: MessageType.PING,
+      senderSubjectId: '0',
+      senderSubjectType: SubjectType.SYSTEM,
+      timestamp: new Date().toISOString(),
+      payload: {},
+    }
+    try {
+      this.ws?.send({ data: JSON.stringify(message) })
+      return true
+    } catch (e) {
+      console.error('heartbeat send failed:', e)
+      return false
+    }
   }
 
   /**

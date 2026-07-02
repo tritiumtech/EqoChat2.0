@@ -4,9 +4,12 @@ import lombok.extern.slf4j.Slf4j;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.validation.BindException;
 import org.springframework.validation.FieldError;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 import java.util.stream.Collectors;
 
 @RestControllerAdvice
@@ -36,6 +39,13 @@ public class GlobalExceptionHandler {
                 .map(FieldError::getDefaultMessage)
                 .collect(Collectors.joining("; "));
         return ApiResponse.error(400, message);
+    }
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    public ApiResponse<Void> handleNoResourceFound(NoResourceFoundException ex, HttpServletRequest request) {
+        log.warn("No resource found [{} {}]: {}", request.getMethod(), request.getRequestURI(), ex.getMessage());
+        return ApiResponse.error(404, "error.not_found");
     }
 
     @ExceptionHandler(RuntimeException.class)

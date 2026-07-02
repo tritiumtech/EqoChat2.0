@@ -5,7 +5,5 @@ package com.eqochat.business.world.api.service;
  */
 public interface WorldPostStatsApi {
 
-    long countByAuthorId(Long authorId);
-
     long countByAuthor(Long authorId, String authorType);
 }

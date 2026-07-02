@@ -1,9 +1,9 @@
 package com.eqochat.business.chat.websocket;
 
+import com.eqochat.business.actor.api.model.SubjectType;
+import com.eqochat.business.chat.api.service.ConversationParticipantService;
 import com.eqochat.business.chat.entity.ConversationParticipant;
 import com.eqochat.business.chat.entity.Message;
-import com.eqochat.business.chat.api.service.ConversationParticipantService;
-import com.eqochat.business.actor.api.model.SubjectType;
 import com.eqochat.framework.websocket.WebSocketMessage;
 import com.eqochat.framework.websocket.WebSocketSender;
 import com.eqochat.framework.websocket.WebSocketSessionManager;
@@ -14,9 +14,6 @@ import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
 
-/**
- * HTTP 等非 WebSocket 通道保存消息后，向会话内在线用户补发与 WS 通道一致的实时推送。
- */
 @Component
 @RequiredArgsConstructor
 @Slf4j
@@ -32,14 +29,14 @@ public class ChatMessageRealtimeNotifier {
             return;
         }
         String conversationId = String.valueOf(msg.getConversationId());
-        joinConversationHumans(conversationId);
+        joinConversationSubjects(conversationId);
 
         Object metadata = null;
         if (msg.getContentMetadata() != null && !msg.getContentMetadata().isBlank()) {
             try {
                 metadata = objectMapper.readValue(msg.getContentMetadata(), Object.class);
             } catch (Exception e) {
-                log.debug("解析 contentMetadata 失败，按无 metadata 推送: {}", e.getMessage());
+                log.debug("parse contentMetadata failed, sending null metadata: {}", e.getMessage());
             }
         }
 
@@ -62,19 +59,30 @@ public class ChatMessageRealtimeNotifier {
                 .payload(payload)
                 .build();
 
-        webSocketSender.broadcastToConversationHumans(conversationId, out);
+        webSocketSender.broadcastToConversationSubjects(conversationId, out);
     }
 
-    private void joinConversationHumans(String conversationId) {
+    private void joinConversationSubjects(String conversationId) {
         try {
             Long convId = Long.parseLong(conversationId);
             for (ConversationParticipant participant : participantService.listByConversationId(convId)) {
-                if (participant.getParticipantId() != null && participant.getParticipantType() == SubjectType.HUMAN) {
-                    sessionManager.joinConversationAsPrincipalHuman(conversationId, participant.getParticipantId().toString());
+                if (participant.getParticipantId() == null || participant.getParticipantType() == null) {
+                    continue;
+                }
+                sessionManager.joinConversationAsSubject(
+                        conversationId,
+                        participant.getParticipantId().toString(),
+                        participant.getParticipantType().name()
+                );
+                if (participant.getParticipantType() == SubjectType.HUMAN) {
+                    sessionManager.joinConversationAsPrincipalHuman(
+                            conversationId,
+                            participant.getParticipantId().toString()
+                    );
                 }
             }
         } catch (Exception e) {
-            log.warn("加入会话广播列表失败: conversationId={}", conversationId, e);
+            log.warn("join conversation subject broadcast list failed: conversationId={}", conversationId, e);
         }
     }
 }

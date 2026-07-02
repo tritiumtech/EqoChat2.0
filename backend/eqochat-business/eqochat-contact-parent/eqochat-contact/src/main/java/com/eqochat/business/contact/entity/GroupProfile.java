@@ -1,6 +1,7 @@
 package com.eqochat.business.contact.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.eqochat.business.actor.api.model.SubjectType;
 import lombok.*;
 
 import java.time.LocalDateTime;
@@ -32,6 +33,9 @@ public class GroupProfile {
     
     @TableField("owner_id")
     private Long ownerId;
+
+    @TableField("owner_type")
+    private SubjectType ownerType;
     
     @TableField("max_members")
     private Integer maxMembers;

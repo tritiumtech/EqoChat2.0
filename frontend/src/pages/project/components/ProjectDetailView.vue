@@ -119,8 +119,8 @@
       <view class="card project-details">
         <view class="card-head">
           <text class="card-title">{{ t('page.project.details.title') }}</text>
-          <button class="btn-outline btn-outline-sm" @click="onOpenUpdateBidModal">
-            <text class="btn-outline-icon">✎</text>
+          <button v-if="currentUserIsOwner" class="btn-outline btn-outline-sm" @click="onOpenUpdateBidModal">
+            <text class="btn-outline-icon">Edit</text>
             {{ t('page.project.details.update_bid_button') }}
           </button>
         </view>
@@ -154,14 +154,14 @@
         <text class="section-title">{{ t('page.project.quick_actions.title') }}</text>
         <view class="quick-grid">
           <button class="quick-item" @click="onQuickAction('new_task')">
-            <view class="quick-icon quick-icon-blue">＋</view>
+            <view class="quick-icon quick-icon-blue">+</view>
             <view class="quick-text">
               <text class="quick-title">{{ t('page.project.quick_actions.new_task_title') }}</text>
               <text class="quick-sub">{{ t('page.project.quick_actions.new_task_subtitle') }}</text>
             </view>
           </button>
           <button class="quick-item" @click="onQuickAction('invite')">
-            <view class="quick-icon quick-icon-green">⤴</view>
+            <view class="quick-icon quick-icon-green">Up</view>
             <view class="quick-text">
               <text class="quick-title">{{ t('page.project.quick_actions.invite_title') }}</text>
               <text class="quick-sub">{{ t('page.project.quick_actions.invite_subtitle') }}</text>

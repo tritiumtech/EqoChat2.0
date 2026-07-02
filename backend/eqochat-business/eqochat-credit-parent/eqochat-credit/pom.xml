@@ -23,6 +23,10 @@
         </dependency>
         <dependency>
             <groupId>com.eqochat</groupId>
+            <artifactId>eqochat-actor-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.eqochat</groupId>
             <artifactId>eqochat-framework-common</artifactId>
         </dependency>
         <dependency>

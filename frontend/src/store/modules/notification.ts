@@ -3,8 +3,10 @@ import { ref, computed } from 'vue'
 import { notificationApi, type NotificationItem } from '@/api/modules/notification'
 import { wsClient } from '@/utils/websocket'
 import type { BaseMessage } from '@/types/websocket'
+import { useActiveSubjectStore } from '@/store/modules/activeSubject'
 
 export const useNotificationStore = defineStore('notification', () => {
+  const activeSubjectStore = useActiveSubjectStore()
   const notifications = ref<NotificationItem[]>([])
   const isLoading = ref(false)
   const wsListenerId = ref<string | null>(null)
@@ -21,7 +23,8 @@ export const useNotificationStore = defineStore('notification', () => {
     if (isLoading.value) return
     isLoading.value = true
     try {
-      const list = await notificationApi.list(limit)
+      await activeSubjectStore.ensureLoaded()
+      const list = await notificationApi.list(limit, activeSubjectStore.notificationRecipientParams())
       setNotifications(list)
     } finally {
       isLoading.value = false
@@ -33,40 +36,44 @@ export const useNotificationStore = defineStore('notification', () => {
     if (!target || target.read) return
     target.read = true
     try {
-      await notificationApi.markRead(id)
+      await activeSubjectStore.ensureLoaded()
+      await notificationApi.markRead(id, activeSubjectStore.notificationRecipientParams())
     } catch {
-      // 忽略回滚，保持 UX 流畅
+      // Keep the optimistic UX smooth; the next reload restores canonical state.
     }
   }
 
-  /**
-   * 处理 WebSocket 推送的通知
-   */
+  const isForCurrentSubject = (notification: NotificationItem, message: BaseMessage) => {
+    const current = activeSubjectStore.currentSubject
+    if (!current) return true
+    const rawId = notification.recipientSubjectId ?? message.recipientSubjectId
+    const rawType = notification.recipientSubjectType ?? message.recipientSubjectType
+    if (rawId == null || rawType == null) return true
+    const recipientId = Number(rawId)
+    const recipientType = String(rawType).toUpperCase()
+    return recipientId === current.subjectId && recipientType === current.subjectType
+  }
+
   const handleNotification = (payload: unknown, message: BaseMessage) => {
     const notification = payload as NotificationItem
     if (!notification || !notification.id) return
+    if (!isForCurrentSubject(notification, message)) return
 
-    // 避免重复添加
     const exists = notifications.value.some((n) => n.id === notification.id)
     if (exists) return
 
-    // 添加到列表顶部
     notifications.value.unshift({
       ...notification,
       read: false,
     })
 
-    // 显示提示
     uni.showToast({
-      title: notification.title || '新通知',
+      title: notification.title || 'New notification',
       icon: 'none',
       duration: 2000,
     })
   }
 
-  /**
-   * 启动 WebSocket 监听通知
-   */
   const startRealtime = () => {
     if (wsListenerId.value) return
     wsListenerId.value = wsClient.addListener({
@@ -74,9 +81,6 @@ export const useNotificationStore = defineStore('notification', () => {
     })
   }
 
-  /**
-   * 停止 WebSocket 监听
-   */
   const stopRealtime = () => {
     if (wsListenerId.value) {
       wsClient.removeListener(wsListenerId.value)

@@ -211,12 +211,12 @@ const contentParts = computed<ContentSeg[]>(() => {
 
 /* 对齐项目 2：半透明卡片 + 细边框 + 轻阴影，尺寸用 rpx 与整页一致 */
 .post-card {
-  background: rgba(255, 255, 255, 0.65);
-  border-radius: var(--radius-lg);
+  background: #fff;
+  border-radius: var(--radius-card);
   padding: 24rpx;
-  border: 1rpx solid rgba(0, 0, 0, 0.08);
-  margin-bottom: 24rpx;
-  box-shadow: 0 8rpx 20rpx rgba(15, 23, 42, 0.06);
+  border: 1rpx solid var(--c-border);
+  margin-bottom: 20rpx;
+  box-shadow: none;
 }
 
 .post-header {
@@ -229,12 +229,12 @@ const contentParts = computed<ContentSeg[]>(() => {
 .post-avatar-fallback {
   width: 80rpx;
   height: 80rpx;
-  border-radius: 50%;
+  border-radius: var(--radius-avatar);
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.12);
+  box-shadow: none;
 }
 
 .post-avatar-letter {
@@ -246,9 +246,9 @@ const contentParts = computed<ContentSeg[]>(() => {
 .post-avatar-img {
   width: 80rpx;
   height: 80rpx;
-  border-radius: 50%;
+  border-radius: var(--radius-avatar);
   flex-shrink: 0;
-  box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.1);
+  box-shadow: none;
 }
 
 .post-author {

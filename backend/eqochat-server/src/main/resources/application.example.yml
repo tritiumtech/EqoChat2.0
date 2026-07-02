@@ -29,11 +29,6 @@ spring:
         pool:
           max-active: 10
           max-idle: 8
-    neo4j:
-      uri: ${NEO4J_URI:bolt://localhost:7687}
-      authentication:
-        username: ${NEO4J_USERNAME:neo4j}
-        password: ${NEO4J_PASSWORD:change-me}
   main:
     allow-bean-definition-overriding: true
 
